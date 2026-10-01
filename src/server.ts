@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 
 import { createApp } from './app.js';
 import { ConfigError, loadConfig, type Config } from './config/env.js';
+import { createDatabase } from './core/db/prisma.js';
 import { createLogger } from './core/logging/logger.js';
 
 /**
@@ -25,7 +26,8 @@ try {
 }
 
 const logger = createLogger(config);
-const app = createApp({ config, logger });
+const db = createDatabase(config);
+const app = createApp({ config, logger, db });
 
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port, timezone: config.timezone }, 'rupai-backend listening');
@@ -35,7 +37,7 @@ function shutdown(signal: NodeJS.Signals): void {
   logger.info({ signal }, 'shutdown signal received, draining');
   server.close(() => {
     logger.info('server closed');
-    process.exit(0);
+    void db.$disconnect().finally(() => process.exit(0));
   });
   // Hard stop if in-flight requests do not drain in time (Spec P14 §6).
   setTimeout(() => {

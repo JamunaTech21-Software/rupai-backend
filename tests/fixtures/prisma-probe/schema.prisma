@@ -1,0 +1,45 @@
+// TEST FIXTURE ONLY — not part of the RupAI schema.
+// It proves that the SQL-first Prisma workflow (BACKLOG §2.1) keeps what Prisma cannot express:
+// a generated column backing a "partial unique" rule, a CHECK constraint, and per-table grants
+// that make one table append-only.
+
+generator client {
+  provider = "prisma-client"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+/// Many rows may share a code, but only one of them may be ACTIVE (partial uniqueness).
+model ProbeItem {
+  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String   @db.VarChar(20)
+  status      String   @db.VarChar(30)
+  grossArea   Decimal  @map("gross_area") @db.Decimal(14, 3)
+  plantedArea Decimal? @map("planted_area") @db.Decimal(14, 3)
+  /// GENERATED column (see migration SQL). Read-only: never set it from code.
+  activeKey   String?  @unique(map: "ux_probe_item_active") @map("active_key") @db.VarChar(60)
+
+  @@index([code], map: "ix_probe_item_code")
+  @@map("probe_item")
+}
+
+/// Append-only: the app account has no UPDATE/DELETE grant on it.
+model ProbeLog {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  message   String   @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  @@map("probe_log")
+}
+
+/// Reference data written by an idempotent seeder.
+model ProbeLookup {
+  id   BigInt @id @default(autoincrement()) @db.UnsignedBigInt
+  code String @unique(map: "ux_probe_lookup_code") @db.VarChar(20)
+  name String @db.VarChar(150)
+
+  @@map("probe_lookup")
+}

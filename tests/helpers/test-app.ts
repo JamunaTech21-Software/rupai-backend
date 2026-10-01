@@ -5,6 +5,7 @@ import type { Logger } from 'pino';
 
 import { createApp } from '../../src/app.js';
 import { loadConfig, type Config } from '../../src/config/env.js';
+import { createDatabase } from '../../src/core/db/prisma.js';
 import { createLogger } from '../../src/core/logging/logger.js';
 
 export const TEST_ENV = {
@@ -40,5 +41,7 @@ export function buildTestApp(env: Record<string, string> = {}): TestApp {
   const config = loadConfig({ ...TEST_ENV, ...env });
   const logs = new LogCapture();
   const logger = createLogger(config, logs);
-  return { app: createApp({ config, logger }), config, logger, logs };
+  // The Prisma client connects lazily, so tests that never query need no running database.
+  const db = createDatabase(config);
+  return { app: createApp({ config, logger, db }), config, logger, logs };
 }

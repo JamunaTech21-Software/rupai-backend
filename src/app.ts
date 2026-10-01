@@ -2,6 +2,7 @@ import express, { type Express } from 'express';
 import type { Logger } from 'pino';
 
 import type { Config } from './config/env.js';
+import type { Database } from './core/db/prisma.js';
 import { environmentHeader } from './middleware/environment-header.js';
 import { httpLogger } from './middleware/http-logger.js';
 import { requestContext } from './middleware/request-context.js';
@@ -9,6 +10,8 @@ import { requestContext } from './middleware/request-context.js';
 export interface AppDeps {
   readonly config: Config;
   readonly logger: Logger;
+  /** Prisma client on the DML-only app account. Passed down to module repositories as they arrive. */
+  readonly db: Database;
 }
 
 /**

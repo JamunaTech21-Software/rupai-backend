@@ -1,0 +1,26 @@
+// =============================================================================================
+// RupAI database schema — a typed MIRROR of spec Part 3. Part 3 is the authority, not this file.
+//
+// Read prisma/README.md before changing anything here. In short:
+//   * Every model maps to its Part 3 table and column names with @@map / @map (snake_case singular).
+//   * Surrogate keys:  id BigInt @id @default(autoincrement()) @db.UnsignedBigInt
+//     ULID keys (the six field-capture tables, P3 §2.2):  id String @id @db.Char(26)
+//   * Money Decimal @db.Decimal(18,4) · qty (14,3) · rate (18,8) · pct (9,4). Never Float.
+//   * States and enums are String @db.VarChar(30), validated in TypeScript. Never a Prisma enum.
+//   * Generated columns and CHECK constraints are added by hand in the migration SQL.
+//   * Migrations are created with `npm run db:migrate:new -- --name <x>` (create-only), then the
+//     SQL is reviewed and edited. `prisma db push` is never used.
+// =============================================================================================
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// Models are added epic by epic, starting with P1.01 (user, role, permission).
