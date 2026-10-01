@@ -1,0 +1,18 @@
+# MySQL server settings required by the spec (P2 §2.8, P14 §5.1). Production uses the same values.
+[mysqld]
+character_set_server            = utf8mb4
+collation_server                = utf8mb4_unicode_ci
+default_storage_engine          = InnoDB
+transaction_isolation           = READ-COMMITTED
+# Strict: never silently truncate a money column or accept an invalid date.
+sql_mode                        = STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,ONLY_FULL_GROUP_BY
+# Durability over throughput: this is accounting data.
+innodb_flush_log_at_trx_commit  = 1
+# Point-in-time recovery needs binary logs (P14 §9.1).
+log_bin                         = mysql-bin
+binlog_expire_logs_seconds      = 604800
+# The server stores UTC. Display timezone is application configuration.
+default_time_zone               = '+00:00'
+slow_query_log                  = ON
+long_query_time                 = 1
+max_connections                 = 200

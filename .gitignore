@@ -22,3 +22,7 @@ logs/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# generated Prisma clients (rebuilt by `prisma generate` on install)
+src/generated/
+tests/fixtures/**/generated/

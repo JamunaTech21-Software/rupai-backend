@@ -47,6 +47,25 @@ const envSchema = z.object({
     .min(1, 'is required')
     // Empty is already reported as "is required" by min(1).
     .refine((v) => v === '' || v.startsWith('mysql://'), 'must be a mysql:// connection URL'),
+
+  /**
+   * Connection pool size per process. MySQL max_connections must exceed
+   * (API processes + workers) × pool size + margin (Spec P14 §3.4).
+   */
+  DB_POOL_SIZE: z.coerce
+    .number(required('must be a number'))
+    .int('must be an integer')
+    .min(1, 'must be between 1 and 100')
+    .max(100, 'must be between 1 and 100')
+    .default(10),
+
+  /**
+   * MySQL 8 caching_sha2_password over a non-TLS connection needs the server's RSA key. Only enable this
+   * for a database on localhost or a trusted local network. Use TLS everywhere else.
+   */
+  DB_ALLOW_PUBLIC_KEY_RETRIEVAL: z
+    .enum(['true', 'false'], required('must be true or false'))
+    .default('false'),
 });
 
 export type AppEnv = (typeof APP_ENVS)[number];
@@ -59,7 +78,11 @@ export interface Config {
   readonly port: number;
   readonly log: { readonly level: LogLevel; readonly format: 'json' | 'pretty' };
   readonly timezone: string;
-  readonly database: { readonly url: string };
+  readonly database: {
+    readonly url: string;
+    readonly poolSize: number;
+    readonly allowPublicKeyRetrieval: boolean;
+  };
 }
 
 export class ConfigError extends Error {
@@ -98,7 +121,11 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     port: e.PORT,
     log: Object.freeze({ level: e.LOG_LEVEL, format: e.LOG_FORMAT }),
     timezone: e.APP_TIMEZONE,
-    database: Object.freeze({ url: e.DATABASE_URL }),
+    database: Object.freeze({
+      url: e.DATABASE_URL,
+      poolSize: e.DB_POOL_SIZE,
+      allowPublicKeyRetrieval: e.DB_ALLOW_PUBLIC_KEY_RETRIEVAL === 'true',
+    }),
   });
 }
 

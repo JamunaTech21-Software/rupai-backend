@@ -11,29 +11,34 @@ The REST API for **RupAI**, an integrated ERP for tea estates.
 
 - **Node.js 24 LTS.** The version is pinned in `.nvmrc`; run `nvm use`.
 - **npm 10 or later**
-- **Docker**, for MySQL and Redis (from P0.07)
+- **Docker**, for the local MySQL 8.4 (Redis and MailHog arrive in P0.07)
 
 ## Quick start
 
 ```bash
-nvm use          # Node 24
-npm install
+nvm use                  # Node 24
+npm install              # also generates the Prisma client
 cp .env.example .env
-npm run dev      # http://localhost:4000
+npm run db:up            # MySQL 8.4 in Docker, with accounts and settings
+npm run db:migrate:deploy
+npm run db:seed
+npm run dev              # http://localhost:4000
 ```
 
 ## Scripts
 
-| Script                            | What it does                                                       |
-| --------------------------------- | ------------------------------------------------------------------ |
-| `npm run dev`                     | Runs the API with reload on change (tsx watch)                     |
-| `npm run build`                   | Compiles to `dist/`                                                |
-| `npm start`                       | Runs the compiled build                                            |
-| `npm run typecheck`               | Type-checks without emitting files                                 |
-| `npm run lint` / `lint:fix`       | Runs ESLint (strict type-checked rules)                            |
-| `npm run format` / `format:check` | Runs Prettier                                                      |
-| `npm test` / `test:watch`         | Runs Vitest                                                        |
-| `npm run check`                   | Runs typecheck, lint, format check and tests. This is what CI runs |
+| Script                            | What it does                                                                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                     | Runs the API with reload on change (tsx watch)                                                                                        |
+| `npm run build`                   | Compiles to `dist/`                                                                                                                   |
+| `npm start`                       | Runs the compiled build                                                                                                               |
+| `npm run typecheck`               | Type-checks without emitting files                                                                                                    |
+| `npm run lint` / `lint:fix`       | Runs ESLint (strict type-checked rules)                                                                                               |
+| `npm run format` / `format:check` | Runs Prettier                                                                                                                         |
+| `npm test` / `test:watch`         | Runs the unit tests (no services needed)                                                                                              |
+| `npm run test:db`                 | Runs the database tests against the local MySQL (`db:up` first)                                                                       |
+| `npm run db:*`                    | Database: `up`, `down`, `migrate:new`, `migrate:dev`, `migrate:deploy`, `status`, `seed`, `drift`, `generate`. See `prisma/README.md` |
+| `npm run check`                   | Runs typecheck, lint, format check and tests. This is what CI runs                                                                    |
 
 ## Project layout
 
@@ -58,6 +63,10 @@ tests/
 - **Request id:** every request gets a request id (a ULID, or the caller's `X-Request-Id` if it is safe). It is returned in the `X-Request-Id` header and appears on every log line for that request.
 - **Logging:** logs are structured JSON (Pino). Use `getLogger(rootLogger)` inside services to get the request-bound logger. Passwords, tokens, national IDs and bank details are redacted automatically (at the top level and one level deep), and request headers and bodies are never logged.
 - **Environment header:** non-production environments send `X-Environment`, so the web app can show an environment banner.
+
+## Database
+
+MySQL 8.4 with Prisma, used **SQL-first**. Read [`prisma/README.md`](prisma/README.md) before touching the schema. In short: `schema.prisma` mirrors spec Part 3, migrations are generated with `--create-only` and hand-reviewed, and `db push` is blocked. The app connects as a DML-only account whose `UPDATE`/`DELETE` rights are granted per table, so append-only tables are enforced by the database itself.
 
 ## Non-negotiable conventions
 
