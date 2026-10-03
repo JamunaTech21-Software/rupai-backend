@@ -1,3 +1,4 @@
+import { Router } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
@@ -50,13 +51,14 @@ describe('structured request logging', () => {
   });
 
   it('gives code inside the request a logger bound to the same request_id', async () => {
-    const { app, logger, logs } = buildTestApp();
-    app.get('/work', (_req, res) => {
+    const router = Router();
+    const { app, logger, logs } = buildTestApp({}, [{ name: 'work', path: '/work', router }]);
+    router.get('/', (_req, res) => {
       getLogger(logger).info('doing work');
       res.status(204).end();
     });
 
-    const res = await request(app).get('/work');
+    const res = await request(app).get('/api/v1/work');
     const line = logs.lines.find((l) => l.msg === 'doing work');
     expect(line?.request_id).toBe(res.headers['x-request-id']);
   });
@@ -99,7 +101,14 @@ describe('environment header', () => {
   });
 
   it('is absent in production', async () => {
-    const res = await request(buildTestApp({ APP_ENV: 'production', NODE_ENV: 'production' }).app).get('/x');
+    const res = await request(
+      buildTestApp({
+        APP_ENV: 'production',
+        NODE_ENV: 'production',
+        CORS_ORIGINS: 'https://erp.example.com',
+        REDIS_URL: 'redis://127.0.0.1:6379',
+      }).app,
+    ).get('/x');
     expect(res.headers['x-environment']).toBeUndefined();
   });
 });

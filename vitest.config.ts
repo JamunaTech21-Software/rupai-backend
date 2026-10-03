@@ -3,8 +3,8 @@ import { defineConfig } from 'vitest/config';
 /**
  * Two projects:
  *   unit — fast, no external services. Run by `npm test` and `npm run check`.
- *   db   — against a real MySQL 8.4 (`npm run db:up` first). Run by `npm run test:db`.
- *          P0.06 moves this onto Testcontainers so CI needs no pre-started database.
+ *   db   — against a real MySQL 8.4 started by Testcontainers (Docker must be running), or the server
+ *          named by TEST_DB_HOST (e.g. after `npm run db:up`, faster when iterating). `npm run test:db`.
  */
 export default defineConfig({
   test: {
@@ -23,6 +23,8 @@ export default defineConfig({
           name: 'db',
           environment: 'node',
           include: ['tests/db/**/*.test.ts'],
+          // Starts a throwaway MySQL 8.4 with Testcontainers unless TEST_DB_HOST names a running server.
+          globalSetup: ['tests/db/global-setup.ts'],
           // Database tests share one MySQL server. Run files one at a time for predictable grants.
           fileParallelism: false,
           testTimeout: 60_000,

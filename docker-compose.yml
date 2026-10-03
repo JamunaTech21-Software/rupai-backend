@@ -1,5 +1,9 @@
-# Local development stack. Production runs MySQL directly on the organisation's server (Spec P14).
-# P0.07 adds Redis and MailHog here.
+# Local development stack: MySQL 8.4, Redis 7, Mailpit (SMTP catcher).
+# Production runs these directly on the organisation's server (Spec P14 §2.1). Redis and MySQL are bound
+# to localhost there too and never exposed on a network interface (P14 §8.1).
+#
+#   npm run stack:up     start everything        npm run db:up    MySQL only
+#   npm run stack:down   stop everything
 name: rupai
 
 services:
@@ -11,7 +15,7 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rupai_root_dev}
       TZ: UTC
     ports:
-      - '${MYSQL_PORT:-3306}:3306'
+      - '127.0.0.1:${MYSQL_PORT:-3306}:3306'
     volumes:
       - mysql-data:/var/lib/mysql
       - ./docker/mysql/conf.d:/etc/mysql/conf.d:ro
@@ -23,5 +27,44 @@ services:
       retries: 30
       start_period: 20s
 
+  # Queue (BullMQ, P1.15), cache, token revocation (P1.02), idempotency records and rate-limit counters.
+  # Password-protected and append-only-file persistent, as in production (P14 §3.3).
+  redis:
+    image: redis:7.4-alpine
+    container_name: rupai-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:-rupai_redis_dev}
+      - --appendonly
+      - 'yes'
+      # Queue jobs must never be silently evicted.
+      - --maxmemory-policy
+      - noeviction
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'redis-cli -a "$${REDIS_PASSWORD:-rupai_redis_dev}" --no-auth-warning ping | grep PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-rupai_redis_dev}
+
+  # Catches every email sent in development (password resets, notifications). Nothing leaves the
+  # machine. Mailpit is the maintained successor to MailHog: SMTP on 1025, web UI on 8025.
+  mail:
+    image: axllent/mailpit:v1.27
+    container_name: rupai-mail
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${SMTP_PORT:-1025}:1025'
+      - '127.0.0.1:${MAIL_UI_PORT:-8025}:8025'
+
 volumes:
   mysql-data:
+  redis-data:

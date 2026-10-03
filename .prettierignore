@@ -5,3 +5,4 @@ package-lock.json
 prisma/migrations/**/*.sql
 src/generated
 tests/fixtures/**/generated
+docs/openapi.json

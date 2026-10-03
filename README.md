@@ -11,7 +11,7 @@ The REST API for **RupAI**, an integrated ERP for tea estates.
 
 - **Node.js 24 LTS.** The version is pinned in `.nvmrc`; run `nvm use`.
 - **npm 10 or later**
-- **Docker**, for the local MySQL 8.4 (Redis and MailHog arrive in P0.07)
+- **Docker**, for the local stack (MySQL 8.4, Redis 7.4, Mailpit) and for the database tests
 
 ## Quick start
 
@@ -19,26 +19,36 @@ The REST API for **RupAI**, an integrated ERP for tea estates.
 nvm use                  # Node 24
 npm install              # also generates the Prisma client
 cp .env.example .env
-npm run db:up            # MySQL 8.4 in Docker, with accounts and settings
+npm run stack:up         # MySQL 8.4 + Redis 7.4 + Mailpit in Docker (all on 127.0.0.1)
 npm run db:migrate:deploy
 npm run db:seed
-npm run dev              # http://localhost:4000
+npm run dev              # http://localhost:4000, API docs at http://localhost:4000/docs
 ```
+
+| Service  | Address                                    | Notes                                                                     |
+| -------- | ------------------------------------------ | ------------------------------------------------------------------------- |
+| MySQL    | `127.0.0.1:3306`                           | Accounts from `docker/mysql/init`. `npm run db:up` alone starts only this |
+| Redis    | `127.0.0.1:6379`                           | Password `rupai_redis_dev`, AOF on, `noeviction`                          |
+| Mailpit  | SMTP `127.0.0.1:1025`, UI `localhost:8025` | Catches every outgoing mail (from P1.02)                                  |
+| API docs | `/docs`, `/docs/openapi.json`              | Swagger UI. On outside production, off in it (`DOCS_ENABLED`)             |
 
 ## Scripts
 
-| Script                            | What it does                                                                                                                          |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                     | Runs the API with reload on change (tsx watch)                                                                                        |
-| `npm run build`                   | Compiles to `dist/`                                                                                                                   |
-| `npm start`                       | Runs the compiled build                                                                                                               |
-| `npm run typecheck`               | Type-checks without emitting files                                                                                                    |
-| `npm run lint` / `lint:fix`       | Runs ESLint (strict type-checked rules)                                                                                               |
-| `npm run format` / `format:check` | Runs Prettier                                                                                                                         |
-| `npm test` / `test:watch`         | Runs the unit tests (no services needed)                                                                                              |
-| `npm run test:db`                 | Runs the database tests against the local MySQL (`db:up` first)                                                                       |
-| `npm run db:*`                    | Database: `up`, `down`, `migrate:new`, `migrate:dev`, `migrate:deploy`, `status`, `seed`, `drift`, `generate`. See `prisma/README.md` |
-| `npm run check`                   | Runs typecheck, lint, format check and tests. This is what CI runs                                                                    |
+| Script                            | What it does                                                                                                                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                     | Runs the API with reload on change (tsx watch)                                                                                                                                      |
+| `npm run build`                   | Compiles to `dist/`                                                                                                                                                                 |
+| `npm start`                       | Runs the compiled build                                                                                                                                                             |
+| `npm run typecheck`               | Type-checks without emitting files                                                                                                                                                  |
+| `npm run lint` / `lint:fix`       | Runs ESLint (strict type-checked rules)                                                                                                                                             |
+| `npm run format` / `format:check` | Runs Prettier                                                                                                                                                                       |
+| `npm test` / `test:watch`         | Runs the unit tests (no services needed)                                                                                                                                            |
+| `npm run test:db`                 | Runs the database tests against a throwaway MySQL 8.4 started by Testcontainers (only Docker needs to be running). Set `TEST_DB_HOST=127.0.0.1` to reuse the `db:up` server instead |
+| `npm run ci`                      | Runs exactly what CI runs: typecheck, lint, format, all tests, build, audit                                                                                                         |
+| `npm run db:*`                    | Database: `up`, `down`, `migrate:new`, `migrate:dev`, `migrate:deploy`, `status`, `seed`, `drift`, `generate`. See `prisma/README.md`                                               |
+| `npm run check`                   | Runs typecheck, lint, format check and unit tests (a quick pre-push check)                                                                                                          |
+| `npm run stack:up` / `stack:down` | Starts or stops the whole local stack (MySQL, Redis, Mailpit)                                                                                                                       |
+| `npm run docs:openapi`            | Writes the OpenAPI 3.1 document to `docs/openapi.json` (generated, not committed). Import it into Postman or Insomnia                                                               |
 
 ## Project layout
 
@@ -64,9 +74,45 @@ tests/
 - **Logging:** logs are structured JSON (Pino). Use `getLogger(rootLogger)` inside services to get the request-bound logger. Passwords, tokens, national IDs and bank details are redacted automatically (at the top level and one level deep), and request headers and bodies are never logged.
 - **Environment header:** non-production environments send `X-Environment`, so the web app can show an environment banner.
 
+## API conventions
+
+Every endpoint follows spec Part 4, through the helpers in `src/core/http`. Don't hand-roll these:
+
+- **Base path** `/api/v1`. Modules are listed in `src/modules/index.ts` (`buildModules`).
+- **Declaring endpoints:** build every module with `defineModule({ name, path, tag, platform })` and `.route({ method, path, summary, auth, params, query, body, list, ifMatch, idempotent, success, errors, handler })`. The route wires validation, the list grammar, If-Match and Idempotency-Key for you, and the same declaration generates the OpenAPI document. A declaration is checked at start-up: a missing permission (`module.action`), a public route without a reason, undeclared error codes, or a list without declared filters and sorts stops the server (Spec P4 §6).
+- **Responses:** `sendOne` / `sendCreated` / `sendPage` / `sendCursorPage`. That gives `{ data, meta: { request_id, … } }`, never a bare array. BigInt ids serialise as strings, and money as decimal strings.
+- **Errors:** throw `AppError(code, message, details)`. The central handler maps codes to statuses (`src/core/errors/codes.ts`) and sends `{ error: { code, message, details, request_id } }`. Unexpected errors become a 500 with nothing internal leaked.
+- **Validation:** `validate({ params, query, body })` with Zod strict objects. Failures give 422 `VALIDATION_FAILED`, with field paths like `lines.0.quantity`.
+- **Lists:** `listQuery(spec)` declares filterable, sortable and includable fields and the pagination mode. Anything undeclared is refused with 422 (`UNKNOWN_FILTER`, `UNKNOWN_SORT`, `UNKNOWN_INCLUDE`), and `per_page` is clamped to 200.
+- **Concurrency:** versioned resources send `ETag`. Mutations call `requireIfMatch` and `assertVersion`: a missing header gives 422 `PRECONDITION_REQUIRED`, a stale version gives 409 `VERSION_CONFLICT`.
+- **Retries:** `idempotency({ store })` on transition endpoints. The same `Idempotency-Key` replays the original response.
+- **Rate limits:** every `/api/v1` route gets the read (120/min) or write (60/min) class. Stricter classes are in `RATE_LIMIT_CLASSES`. Counters live in Redis (`rupai:rl:<class>:<user|ip>`), so the limit is shared by every API process.
+- **Health:** `GET /health` (liveness) and `GET /health/ready` (database and Redis reachable, otherwise 503), outside `/api/v1`, unauthenticated, not logged.
+
+> With `REDIS_URL` set (required in production), idempotency records (`rupai:idem:<sha256>`) and rate-limit counters are in Redis and shared across processes. Without it they fall back to per-process memory, which is for local development only; the server logs a warning.
+
+## Money, ids and dates
+
+- **Money and quantities:** use `Dec` from `src/core/money/decimal.ts`, never `number`. Validate input with `zDecimal('money' | 'qty' | 'rate' | 'pct')`, which refuses JSON numbers, exponents and extra decimal places. Round payable amounts with `roundMoney` (2 dp, half up, per component). Split totals with `allocate` (the rounding difference goes to the largest line) or `splitInstalments` (the final instalment absorbs it). Output with `toDecimalString(value, kind)`.
+- **Ids:** BIGINT ids are strings in the API (`zId` → bigint). The six field-capture tables use ULIDs (`newUlid`, `zUlid`).
+- **Dates:** business dates are `YYYY-MM-DD` (`zBusinessDate`). Always convert DATE columns with `businessDateFromDb` / `businessDateToDb`, or they shift by a day. "Today" for an estate is `todayIn(config.timezone)`. Timestamps need an explicit offset (`zTimestamp`).
+
 ## Database
 
 MySQL 8.4 with Prisma, used **SQL-first**. Read [`prisma/README.md`](prisma/README.md) before touching the schema. In short: `schema.prisma` mirrors spec Part 3, migrations are generated with `--create-only` and hand-reviewed, and `db push` is blocked. The app connects as a DML-only account whose `UPDATE`/`DELETE` rights are granted per table, so append-only tables are enforced by the database itself.
+
+## Testing
+
+| Level                       | Where                             | Runs against                                                                                                                                                                             |
+| --------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit and integration (HTTP) | `tests/unit`, `tests/integration` | Nothing external. The app is driven with Supertest                                                                                                                                       |
+| Database                    | `tests/db`                        | A **real MySQL 8.4** (Spec P13 §8.1) and Redis 7.4, started by Testcontainers with the production settings and accounts. `TEST_DB_HOST` / `TEST_REDIS_URL` reuse the local stack instead |
+
+- **Isolation:** `withRollback(db, fn)` runs a test's writes in a transaction that is always rolled back. Suites needing DDL use `createTempDatabase()` (a `rupai_tmp_*` database, dropped afterwards, with its grants revoked).
+- **Fixture:** `tests/fixtures/minimal-dataset.ts` holds the minimal dataset (P13 §7.1). Each epic adds its rows as an idempotent seeder.
+- **Acting as a user:** until real login lands (P1.02), test routers mount `testActor()`, and `as(request, userId)` sets the actor.
+- **What counts as tested:** each spec worked example, error code, state transition and invariant has a test. Coverage percentage is not a target (P13 §8.2).
+- **CI** (`.github/workflows/ci.yml`) runs `npm run ci`'s steps on every push and pull request. Any failure blocks the merge.
 
 ## Non-negotiable conventions
 

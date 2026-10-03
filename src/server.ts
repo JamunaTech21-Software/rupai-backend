@@ -4,6 +4,8 @@ import { createApp } from './app.js';
 import { ConfigError, loadConfig, type Config } from './config/env.js';
 import { createDatabase } from './core/db/prisma.js';
 import { createLogger } from './core/logging/logger.js';
+import { createPlatform } from './core/platform.js';
+import { buildModules } from './modules/index.js';
 
 /**
  * Process entry point: loads and validates configuration, binds the HTTP port, and shuts down cleanly.
@@ -27,7 +29,8 @@ try {
 
 const logger = createLogger(config);
 const db = createDatabase(config);
-const app = createApp({ config, logger, db });
+const platform = await createPlatform(config, logger);
+const app = createApp({ config, logger, db, platform, modules: buildModules({ platform }) });
 
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port, timezone: config.timezone }, 'rupai-backend listening');
@@ -37,7 +40,7 @@ function shutdown(signal: NodeJS.Signals): void {
   logger.info({ signal }, 'shutdown signal received, draining');
   server.close(() => {
     logger.info('server closed');
-    void db.$disconnect().finally(() => process.exit(0));
+    void Promise.allSettled([db.$disconnect(), platform.close()]).finally(() => process.exit(0));
   });
   // Hard stop if in-flight requests do not drain in time (Spec P14 §6).
   setTimeout(() => {
