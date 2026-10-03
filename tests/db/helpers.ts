@@ -3,14 +3,21 @@ import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 
 import { createConnection, type Connection } from 'mariadb';
+import { inject } from 'vitest';
+
+import type { Database } from '../../src/core/db/prisma.js';
+import { withTransaction, type Tx } from '../../src/core/db/transaction.js';
 
 /**
- * Database test helpers. These tests run against the local MySQL from `npm run db:up`.
- * Override the connection with TEST_DB_HOST / TEST_DB_PORT (P0.06 moves them onto Testcontainers).
+ * Database test helpers. The server is provided by tests/db/global-setup.ts: a Testcontainers MySQL 8.4
+ * by default, or the server named by TEST_DB_HOST / TEST_DB_PORT. Account names and passwords come from
+ * docker/mysql/init, which both use.
  */
+const server = inject('testDb');
+
 export const DB = {
-  host: process.env.TEST_DB_HOST ?? '127.0.0.1',
-  port: Number.parseInt(process.env.TEST_DB_PORT ?? '3306', 10),
+  host: server.host,
+  port: server.port,
   migrator: {
     user: 'rupai_migrator',
     password: process.env.TEST_DB_MIGRATOR_PASSWORD ?? 'rupai_migrator_dev',
@@ -102,4 +109,25 @@ export function prismaProbe(tmp: TempDatabase, args: string[]) {
     },
     timeout: 120_000,
   });
+}
+
+class Rollback extends Error {}
+
+/**
+ * Per-test isolation: runs `work` in a transaction and ALWAYS rolls it back, so the test leaves the
+ * database exactly as it found it. Use it for tests that write to a shared database. Suites that need
+ * DDL or several connections use createTempDatabase() instead.
+ */
+export async function withRollback<T>(db: Database, work: (tx: Tx) => Promise<T>): Promise<T> {
+  let result: { value: T } | undefined;
+  try {
+    await withTransaction(db, async (tx) => {
+      result = { value: await work(tx) };
+      throw new Rollback();
+    });
+  } catch (e) {
+    if (!(e instanceof Rollback)) throw e;
+  }
+  if (!result) throw new Error('withRollback: work did not complete');
+  return result.value;
 }

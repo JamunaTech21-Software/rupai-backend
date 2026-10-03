@@ -1,0 +1,68 @@
+# RupAI backend CI (Spec P13 §8.1).
+#
+#   every push / PR:  type check → lint → format → unit + integration → database tests (real MySQL 8.4
+#                     via Testcontainers, incl. the schema drift gate) → build → dependency audit
+#
+# Any failure blocks the merge. A red main branch is fixed before anything else is merged.
+#
+# This file assumes the git repository root IS this backend folder. If the repository root is the
+# parent RupAI/ folder instead, move this file to RupAI/.github/workflows/ and uncomment
+# `defaults.run.working-directory` below (plus the cache-dependency-path).
+
+name: backend-ci
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # defaults:
+    #   run:
+    #     working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          # cache-dependency-path: backend/package-lock.json
+
+      - name: Install (also generates the Prisma client)
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format
+        run: npm run format:check
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Database tests (Testcontainers MySQL 8.4, incl. drift gate)
+        run: npm run test:db
+
+      - name: Build
+        run: npm run build
+
+      # A known high-severity advisory exists in Prisma's own config loader (deepmerge-ts), not reachable
+      # with untrusted input. It is accepted and tracked (RUP-14). Critical findings fail the build.
+      - name: Dependency audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=critical

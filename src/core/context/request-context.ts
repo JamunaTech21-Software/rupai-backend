@@ -11,6 +11,8 @@ export interface RequestContext {
   readonly requestId: string;
   /** Child logger bound with `request_id`. Set by the HTTP logging middleware. */
   logger?: Logger;
+  /** The authenticated user's id, set by `authenticate` from P1.02. Used for per-user keys (idempotency, rate limits). */
+  actorId?: string;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();

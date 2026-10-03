@@ -74,6 +74,8 @@ describe('loadConfig', () => {
       ...TEST_ENV,
       APP_ENV: 'production',
       NODE_ENV: 'development',
+      CORS_ORIGINS: 'https://erp.example.com',
+      REDIS_URL: 'redis://:secret@127.0.0.1:6379',
       LOG_FORMAT: 'pretty',
     });
     expect(problems).toEqual([
@@ -83,7 +85,52 @@ describe('loadConfig', () => {
   });
 
   it('accepts a correct production configuration', () => {
-    const c = loadConfig({ ...TEST_ENV, APP_ENV: 'production', NODE_ENV: 'production' });
+    const c = loadConfig({
+      ...TEST_ENV,
+      APP_ENV: 'production',
+      NODE_ENV: 'production',
+      CORS_ORIGINS: 'https://erp.example.com',
+      REDIS_URL: 'redis://:secret@127.0.0.1:6379',
+    });
     expect(c.isProduction).toBe(true);
+    expect(c.docs.enabled).toBe(false);
+  });
+});
+
+describe('HTTP configuration (P0.04)', () => {
+  const prod = { ...TEST_ENV, APP_ENV: 'production', NODE_ENV: 'production' };
+
+  it('defaults CORS to the local web app outside production', () => {
+    expect(loadConfig({ ...TEST_ENV }).http.corsOrigins).toEqual([
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+    ]);
+  });
+
+  it('requires an explicit CORS origin list in production', () => {
+    expect(problemsOf(prod)).toContain('CORS_ORIGINS is required in production');
+  });
+
+  it.each([
+    ['*', 'CORS_ORIGINS must not contain a wildcard'],
+    ['https://erp.example.com/', 'CORS_ORIGINS entries must be exact origins'],
+    ['not a url', 'CORS_ORIGINS contains an invalid origin'],
+  ])('rejects CORS_ORIGINS=%s', (origins, message) => {
+    expect(problemsOf({ ...TEST_ENV, CORS_ORIGINS: origins }).join('\n')).toContain(message);
+  });
+
+  it('parses several exact origins', () => {
+    const c = loadConfig({ ...TEST_ENV, CORS_ORIGINS: 'https://erp.example.com, http://10.0.0.5:8080' });
+    expect(c.http.corsOrigins).toEqual(['https://erp.example.com', 'http://10.0.0.5:8080']);
+  });
+
+  it('refuses to disable rate limiting in production', () => {
+    expect(
+      problemsOf({ ...prod, CORS_ORIGINS: 'https://erp.example.com', RATE_LIMIT_ENABLED: 'false' }),
+    ).toContain('RATE_LIMIT_ENABLED must be true in production');
+  });
+
+  it('validates the body limit format', () => {
+    expect(problemsOf({ ...TEST_ENV, BODY_LIMIT: 'lots' })[0]).toMatch(/^BODY_LIMIT must be a size/);
   });
 });

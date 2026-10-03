@@ -26,3 +26,6 @@ logs/
 # generated Prisma clients (rebuilt by `prisma generate` on install)
 src/generated/
 tests/fixtures/**/generated/
+
+# generated OpenAPI document (`npm run docs:openapi`; live at /docs/openapi.json)
+docs/openapi.json

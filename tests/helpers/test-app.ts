@@ -3,10 +3,11 @@ import { Writable } from 'node:stream';
 import type { Express } from 'express';
 import type { Logger } from 'pino';
 
-import { createApp } from '../../src/app.js';
+import { createApp, type ApiModule } from '../../src/app.js';
 import { loadConfig, type Config } from '../../src/config/env.js';
 import { createDatabase } from '../../src/core/db/prisma.js';
 import { createLogger } from '../../src/core/logging/logger.js';
+import type { Platform } from '../../src/core/platform.js';
 
 export const TEST_ENV = {
   NODE_ENV: 'test',
@@ -37,11 +38,20 @@ export interface TestApp {
   logs: LogCapture;
 }
 
-export function buildTestApp(env: Record<string, string> = {}): TestApp {
+export function buildTestApp(
+  env: Record<string, string> = {},
+  modules: readonly ApiModule[] = [],
+  platform?: Platform,
+): TestApp {
   const config = loadConfig({ ...TEST_ENV, ...env });
   const logs = new LogCapture();
   const logger = createLogger(config, logs);
   // The Prisma client connects lazily, so tests that never query need no running database.
   const db = createDatabase(config);
-  return { app: createApp({ config, logger, db }), config, logger, logs };
+  return {
+    app: createApp({ config, logger, db, modules, ...(platform ? { platform } : {}) }),
+    config,
+    logger,
+    logs,
+  };
 }

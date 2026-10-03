@@ -66,7 +66,92 @@ const envSchema = z.object({
   DB_ALLOW_PUBLIC_KEY_RETRIEVAL: z
     .enum(['true', 'false'], required('must be true or false'))
     .default('false'),
+
+  // ---- HTTP (P0.04) ------------------------------------------------------------------------------
+
+  /**
+   * Exact browser origins allowed to call the API, comma-separated (Spec P4 §2.2.2). No wildcard, and
+   * the request Origin is never reflected. Required in production. Defaults to the local web app elsewhere.
+   */
+  CORS_ORIGINS: z.string(required('must be a comma-separated list of origins')).optional(),
+  /** Only true if the refresh token travels in a cookie (decided in P1.02). Default false. */
+  CORS_ALLOW_CREDENTIALS: z.enum(['true', 'false'], required('must be true or false')).default('false'),
+  /** How long browsers may cache a preflight response, so chatty screens are not doubled. */
+  CORS_MAX_AGE_SECONDS: z.coerce
+    .number(required('must be a number'))
+    .int('must be an integer')
+    .min(0, 'must be 0 or more')
+    .max(86400, 'must be at most 86400')
+    .default(600),
+
+  /**
+   * Which reverse proxies to trust for the client IP (Express "trust proxy"). The production API sits
+   * behind Nginx/Caddy on the same machine (Spec P14 §2.1), so the default is loopback.
+   */
+  TRUST_PROXY: z
+    .string(required('must be an Express trust-proxy value'))
+    .min(1, 'is required')
+    .default('loopback'),
+
+  /** HSTS only once a valid certificate is in place, never before. HSTS with a bad certificate locks users out (P14 §7.3). */
+  HSTS_ENABLED: z.enum(['true', 'false'], required('must be true or false')).default('false'),
+
+  /** Maximum JSON body size. */
+  BODY_LIMIT: z
+    .string(required('must be a size such as 1mb'))
+    .regex(/^\d+(?:kb|mb)$/i, 'must be a size such as 512kb or 1mb')
+    .default('1mb'),
+
+  /** Rate limiting (Spec P4 §2.9). Disable only in tests. */
+  RATE_LIMIT_ENABLED: z.enum(['true', 'false'], required('must be true or false')).default('true'),
+
+  /**
+   * Redis: shared idempotency records and rate-limit counters now, then the job queue (P1.15) and token
+   * revocation (P1.02). Required in production, because several API processes must share them. Optional
+   * in development and tests, where an in-memory fallback is used.
+   */
+  REDIS_URL: z
+    .string(required('must be a redis:// connection URL'))
+    .refine((v) => v === '' || /^rediss?:\/\//.test(v), 'must be a redis:// or rediss:// connection URL')
+    .optional(),
+
+  /** Interactive API docs at /docs. Off in production by default. */
+  DOCS_ENABLED: z.enum(['true', 'false'], required('must be true or false')).optional(),
+
+  /** Reported by the health endpoint, so what is running is never a matter of inference (P14 §11.3). */
+  APP_VERSION: z.string().min(1).default('0.0.0-dev'),
+  BUILD_COMMIT: z.string().min(1).default('unknown'),
 });
+
+const DEV_CORS_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
+/** Validates a comma-separated origin list: exact scheme://host[:port], no paths, no wildcard. */
+function parseOrigins(raw: string, problems: string[]): string[] {
+  const origins = raw
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  if (origins.length === 0) problems.push('CORS_ORIGINS must list at least one origin');
+  for (const o of origins) {
+    if (o.includes('*')) {
+      problems.push('CORS_ORIGINS must not contain a wildcard');
+      continue;
+    }
+    let u: URL;
+    try {
+      u = new URL(o);
+    } catch {
+      problems.push(`CORS_ORIGINS contains an invalid origin`);
+      continue;
+    }
+    if (!['http:', 'https:'].includes(u.protocol) || u.origin !== o) {
+      problems.push(
+        'CORS_ORIGINS entries must be exact origins like https://erp.example.com (no path or trailing slash)',
+      );
+    }
+  }
+  return origins;
+}
 
 export type AppEnv = (typeof APP_ENVS)[number];
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -83,6 +168,18 @@ export interface Config {
     readonly poolSize: number;
     readonly allowPublicKeyRetrieval: boolean;
   };
+  readonly http: {
+    readonly corsOrigins: readonly string[];
+    readonly corsAllowCredentials: boolean;
+    readonly corsMaxAgeSeconds: number;
+    readonly trustProxy: string;
+    readonly hstsEnabled: boolean;
+    readonly bodyLimit: string;
+    readonly rateLimitEnabled: boolean;
+  };
+  readonly build: { readonly version: string; readonly commit: string };
+  readonly redis: { readonly url: string | null };
+  readonly docs: { readonly enabled: boolean };
 }
 
 export class ConfigError extends Error {
@@ -112,6 +209,17 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   if (e.APP_ENV === 'production' && e.LOG_FORMAT === 'pretty') {
     problems.push('LOG_FORMAT must be json in production');
   }
+  let corsOrigins = DEV_CORS_ORIGINS;
+  if (e.CORS_ORIGINS === undefined || e.CORS_ORIGINS.trim() === '') {
+    if (e.APP_ENV === 'production') problems.push('CORS_ORIGINS is required in production');
+  } else {
+    corsOrigins = parseOrigins(e.CORS_ORIGINS, problems);
+  }
+  const redisUrl = e.REDIS_URL && e.REDIS_URL !== '' ? e.REDIS_URL : null;
+  if (e.APP_ENV === 'production' && !redisUrl) problems.push('REDIS_URL is required in production');
+  if (e.APP_ENV === 'production' && e.RATE_LIMIT_ENABLED === 'false') {
+    problems.push('RATE_LIMIT_ENABLED must be true in production');
+  }
   if (problems.length > 0) throw new ConfigError(problems);
 
   return Object.freeze({
@@ -125,6 +233,20 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       url: e.DATABASE_URL,
       poolSize: e.DB_POOL_SIZE,
       allowPublicKeyRetrieval: e.DB_ALLOW_PUBLIC_KEY_RETRIEVAL === 'true',
+    }),
+    http: Object.freeze({
+      corsOrigins: Object.freeze([...corsOrigins]),
+      corsAllowCredentials: e.CORS_ALLOW_CREDENTIALS === 'true',
+      corsMaxAgeSeconds: e.CORS_MAX_AGE_SECONDS,
+      trustProxy: e.TRUST_PROXY,
+      hstsEnabled: e.HSTS_ENABLED === 'true',
+      bodyLimit: e.BODY_LIMIT.toLowerCase(),
+      rateLimitEnabled: e.RATE_LIMIT_ENABLED === 'true',
+    }),
+    build: Object.freeze({ version: e.APP_VERSION, commit: e.BUILD_COMMIT }),
+    redis: Object.freeze({ url: redisUrl }),
+    docs: Object.freeze({
+      enabled: e.DOCS_ENABLED === undefined ? e.APP_ENV !== 'production' : e.DOCS_ENABLED === 'true',
     }),
   });
 }

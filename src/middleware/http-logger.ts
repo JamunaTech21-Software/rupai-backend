@@ -17,6 +17,8 @@ export function httpLogger(logger: Logger): RequestHandler[] {
     // carry request_id.
     customProps: (req) => ({ request_id: req.id }),
     customAttributeKeys: { responseTime: 'duration_ms' },
+    // Health probes run every few seconds. Logging each one would bury real traffic.
+    autoLogging: { ignore: (req) => (req.url ?? '').startsWith('/health') },
     customLogLevel: (_req, res, err) => {
       if (err || res.statusCode >= 500) return 'error';
       if (res.statusCode >= 400) return 'warn';

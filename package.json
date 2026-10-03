@@ -31,7 +31,11 @@
     "db:seed": "prisma db seed",
     "db:drift": "tsx scripts/check-drift.ts",
     "db:push": "node -e \"console.error(\\\"prisma db push is not allowed in this project. Use db:migrate:new and review the SQL (prisma/README.md).\\\");process.exit(1)\"",
-    "test:db": "vitest run --project db"
+    "test:db": "vitest run --project db",
+    "ci": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run test:db && npm run build && npm audit --omit=dev --audit-level=critical",
+    "docs:openapi": "tsx scripts/export-openapi.ts",
+    "stack:up": "docker compose up -d --wait",
+    "stack:down": "docker compose down"
   },
   "lint-staged": {
     "*.{ts,js,mjs,cjs}": [
@@ -45,10 +49,17 @@
   "dependencies": {
     "@prisma/adapter-mariadb": "7.10.0",
     "@prisma/client": "7.10.0",
+    "cors": "2.8.6",
     "express": "5.2.1",
+    "express-rate-limit": "8.7.0",
+    "helmet": "8.3.0",
+    "ioredis": "6.0.0",
     "mariadb": "3.4.7",
     "pino": "10.3.1",
     "pino-http": "11.0.0",
+    "qs": "6.16.0",
+    "rate-limit-redis": "6.0.1",
+    "swagger-ui-express": "5.0.1",
     "ulid": "3.0.2",
     "zod": "4.6.5"
   },
@@ -56,9 +67,13 @@
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
     "@eslint/js": "10.0.1",
+    "@testcontainers/mysql": "12.2.0",
+    "@types/cors": "2.8.19",
     "@types/express": "5.0.6",
     "@types/node": "24.19.0",
+    "@types/qs": "6.15.1",
     "@types/supertest": "7.2.1",
+    "@types/swagger-ui-express": "4.1.8",
     "eslint": "10.11.0",
     "eslint-config-prettier": "10.1.8",
     "globals": "17.13.0",
@@ -68,6 +83,7 @@
     "prettier": "3.9.9",
     "prisma": "7.10.0",
     "supertest": "7.3.0",
+    "testcontainers": "12.2.0",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.0",
@@ -76,7 +92,12 @@
   "allowScripts": {
     "esbuild@0.28.2": true,
     "prisma@7.10.0": true,
-    "@prisma/engines@7.10.0": true
+    "@prisma/engines@7.10.0": true,
+    "cpu-features": false,
+    "ssh2": false,
+    "protobufjs": false,
+    "fsevents": false,
+    "@scarf/scarf": false
   },
   "overrides": {
     "mariadb": "3.4.7",
