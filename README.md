@@ -21,7 +21,7 @@ npm install              # also generates the Prisma client
 cp .env.example .env
 npm run stack:up         # MySQL 8.4 + Redis 7.4 + Mailpit in Docker (all on 127.0.0.1)
 npm run db:migrate:deploy
-npm run db:seed
+npm run db:seed          # permission catalogue, Administrator role, bootstrap admin (BOOTSTRAP_ADMIN_*)
 npm run dev              # http://localhost:4000, API docs at http://localhost:4000/docs
 ```
 
@@ -97,6 +97,28 @@ Every endpoint follows spec Part 4, through the helpers in `src/core/http`. Don'
 - **Ids:** BIGINT ids are strings in the API (`zId` → bigint). The six field-capture tables use ULIDs (`newUlid`, `zUlid`).
 - **Dates:** business dates are `YYYY-MM-DD` (`zBusinessDate`). Always convert DATE columns with `businessDateFromDb` / `businessDateToDb`, or they shift by a day. "Today" for an estate is `todayIn(config.timezone)`. Timestamps need an explicit offset (`zTimestamp`).
 
+## Users, roles and permissions (P1.01)
+
+- **Two layers** (Spec P6 §2): a **permission** (`module.action`, e.g. `sale.approve`) decides whether a user may do something at all; **scope** (P1.03) decides which records. Declare the permission on the route (`auth: { permission: 'sale.approve' }`). `defineModule` then answers 401 without a signed-in user and 403 `PERMISSION_DENIED` without the permission, before the body is validated.
+- **Resolved on every request**, from active user → active roles → unexpired grants → permissions. A disabled user, a deactivated role or a lapsed temporary grant loses access immediately.
+- **The catalogue** (`src/modules/identity/permission-catalogue.ts`) holds every permission the application enforces: 92 modules, 630 permissions, each module's actions set by its class (P6 Table 3.2). It is seeded as system rows, and the app account cannot change them. A new module's permissions are added there, and the seed adds them.
+- **Seeded:** the catalogue, the `ADMINISTRATOR` system role (R-01: platform administration only, with no business approve, reject or post), and the bootstrap admin, user id 1. Its password comes from `BOOTSTRAP_ADMIN_PASSWORD` and must be changed at first sign-in. The other 17 roles of P6 §7 are created once the client confirms them.
+- **Guards:** a new user has no roles; passwords are argon2id and never returned; a system role can only be renamed; a role held by anyone cannot be deleted; at least one active user always holds the Administrator role permanently (`LAST_ADMINISTRATOR`).
+- Own-account endpoints (`/auth/me`, sessions, password change) declare `auth: { signedIn: true, reason }` instead of a permission.
+
+## Sign-in and sessions (P1.02)
+
+- **Tokens** (Spec P4 §2.2): `POST /api/v1/auth/login` returns a **15-minute access token** in the body. The SPA keeps it **in memory only** and sends it as `Authorization: Bearer …`. The **refresh token is an HttpOnly, SameSite=Strict cookie** scoped to `/api/v1/auth`, and no script can read it. The SPA calls the API on its own origin (Vite proxy locally, one host on staging), so the cookie is first-party.
+- **Identity only:** the access token carries user id, session id, token id, issued-at and expiry, with no permissions. Permissions are resolved per request (P1.01), so a role change applies to the next request.
+- **Revocable:** every request checks its session (`auth_session`): not revoked, not expired, user active. The answer is cached in Redis for ≤ 30 s, with a database fallback. Revocations write a tombstone. **Disabling a user, logout, logout-all, a password change or reset, and refresh-token reuse end access on the next request**, not at token expiry.
+- **Rotation:** each `POST /auth/refresh` uses up the refresh token and issues a new one. **Presenting a used refresh token ends the whole session** (theft) and is logged as `auth.refresh_reuse`. The client must refresh single-flight.
+- **Lockout:** 5 consecutive failures lock the account for 15 minutes (`AUTH_LOCKOUT_*`). On top of that, sign-in is limited to 5 per minute per IP and per username. An unknown username and a wrong password get the same answer. Only the right password learns that an account is locked or disabled (`ACCOUNT_LOCKED`).
+- **Temporary passwords:** while `must_change_password` is set (a new user or the bootstrap admin), every permission route answers `403 PASSWORD_CHANGE_REQUIRED`. Own-account endpoints still work.
+- **Password reset:** `POST /auth/password/forgot` always answers 202. If the address belongs to an active user, a single-use link valid for 30 minutes is emailed: `<APP_PUBLIC_URL>/reset-password#token=…`. Locally the email lands in Mailpit (http://localhost:8025). A reset clears any lockout and ends every session.
+- **Key rotation:** set a new `AUTH_TOKEN_SECRET` and move the old one to `AUTH_TOKEN_PREVIOUS_SECRET`. Nobody is signed out.
+- **Events** (`event: auth.*` in the log): login succeeded/failed, account locked, token refreshed, refresh reuse, logout, logout-all, session revoked, password changed/reset/reset requested. They move to `access_log` with P1.05.
+- **Try it:** `npm run db:seed`, then sign in as `admin` with `BOOTSTRAP_ADMIN_PASSWORD`, then `POST /auth/password/change`. In `/docs`, paste the access token into **Authorize**.
+
 ## Database
 
 MySQL 8.4 with Prisma, used **SQL-first**. Read [`prisma/README.md`](prisma/README.md) before touching the schema. In short: `schema.prisma` mirrors spec Part 3, migrations are generated with `--create-only` and hand-reviewed, and `db push` is blocked. The app connects as a DML-only account whose `UPDATE`/`DELETE` rights are granted per table, so append-only tables are enforced by the database itself.
@@ -110,7 +132,8 @@ MySQL 8.4 with Prisma, used **SQL-first**. Read [`prisma/README.md`](prisma/READ
 
 - **Isolation:** `withRollback(db, fn)` runs a test's writes in a transaction that is always rolled back. Suites needing DDL use `createTempDatabase()` (a `rupai_tmp_*` database, dropped afterwards, with its grants revoked).
 - **Fixture:** `tests/fixtures/minimal-dataset.ts` holds the minimal dataset (P13 §7.1). Each epic adds its rows as an idempotent seeder.
-- **Acting as a user:** until real login lands (P1.02), test routers mount `testActor()`, and `as(request, userId)` sets the actor.
+- **Acting as a user:** API suites sign in for real (`tests/db/auth.test.ts`: `POST /auth/login`, then a bearer token). For speed, `buildTestApp` and the P1.01 suite still mount `testActor()`, where `as(request, userId)` sets the actor without a session. Permissions are real either way: give the user a role holding them. `testModuleDeps()` builds everything `buildModules` needs.
+- **A real schema:** `createMigratedDatabase()` builds a throwaway database from the actual migrations and seeders (app and migrator connections). API suites run against it.
 - **What counts as tested:** each spec worked example, error code, state transition and invariant has a test. Coverage percentage is not a target (P13 §8.2).
 - **CI** (`.github/workflows/ci.yml`) runs `npm run ci`'s steps on every push and pull request. Any failure blocks the merge.
 

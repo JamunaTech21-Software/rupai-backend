@@ -107,6 +107,8 @@ describe('environment header', () => {
         NODE_ENV: 'production',
         CORS_ORIGINS: 'https://erp.example.com',
         REDIS_URL: 'redis://127.0.0.1:6379',
+        SMTP_HOST: 'smtp.example.com',
+        APP_PUBLIC_URL: 'https://erp.example.com',
       }).app,
     ).get('/x');
     expect(res.headers['x-environment']).toBeUndefined();

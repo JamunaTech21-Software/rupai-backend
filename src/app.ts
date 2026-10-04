@@ -1,4 +1,4 @@
-import express, { Router, type Express } from 'express';
+import express, { Router, type Express, type RequestHandler } from 'express';
 import type { Logger } from 'pino';
 import qs from 'qs';
 
@@ -37,6 +37,13 @@ export interface AppDeps {
   readonly modules?: readonly ApiModule[];
   /** Shared stores (idempotency, rate limits) and their readiness checks. Defaults to in-memory. */
   readonly platform?: Platform;
+  /**
+   * Identifies the caller from the bearer token and sets actorId/sessionId on the request context
+   * (core/auth/authenticate.ts). Mounted on /api/v1 before the rate limiter, so limits are per user.
+   * Without it nothing is authenticated and every protected route answers 401. Some tests pass
+   * `testActor()` instead.
+   */
+  readonly authenticate?: RequestHandler;
   /** Extra readiness checks beyond the database and the platform's. */
   readonly readinessChecks?: readonly ReadinessCheck[];
 }
@@ -49,7 +56,8 @@ export interface AppDeps {
  *   request context → logging → environment header → security headers → CORS
  *   → /health (unauthenticated, outside rate limits) → /docs (non-production)
  *   → JSON-only body guard → JSON parser (size-limited)
- *   → /api/v1: rate limit → [P1.02 authenticate → P1.03 scope → per-route authorize] → module routers
+ *   → /api/v1: authenticate (bearer token + live session) → rate limit → module routers (per route: permission → idempotency
+ *     → validation → handler; scope in the data-access layer from P1.03)
  *   → 404 → error handler (single error envelope)
  */
 export function createApp({
@@ -58,6 +66,7 @@ export function createApp({
   db,
   modules = [],
   platform = memoryPlatform(),
+  authenticate,
   readinessChecks = [],
 }: AppDeps): Express {
   const app = express();
@@ -93,6 +102,7 @@ export function createApp({
   app.use(express.json({ limit: config.http.bodyLimit, strict: true, type: 'application/json' }));
 
   const api = Router();
+  if (authenticate) api.use(authenticate);
   api.use(defaultApiRateLimit(config.http.rateLimitEnabled, platform.rateLimitStore));
   for (const m of modules) api.use(m.path, m.router);
   app.use(API_PREFIX, api);

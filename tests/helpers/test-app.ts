@@ -8,6 +8,7 @@ import { loadConfig, type Config } from '../../src/config/env.js';
 import { createDatabase } from '../../src/core/db/prisma.js';
 import { createLogger } from '../../src/core/logging/logger.js';
 import type { Platform } from '../../src/core/platform.js';
+import { testActor } from './actors.js';
 
 export const TEST_ENV = {
   NODE_ENV: 'test',
@@ -15,6 +16,7 @@ export const TEST_ENV = {
   LOG_LEVEL: 'info',
   LOG_FORMAT: 'json',
   DATABASE_URL: 'mysql://test:test@localhost:3306/rupai_test',
+  AUTH_TOKEN_SECRET: 'test-only-token-secret-0123456789abcdef',
 } as const;
 
 /** Collects JSON log lines in memory so tests can assert on what was logged. */
@@ -49,7 +51,15 @@ export function buildTestApp(
   // The Prisma client connects lazily, so tests that never query need no running database.
   const db = createDatabase(config);
   return {
-    app: createApp({ config, logger, db, modules, ...(platform ? { platform } : {}) }),
+    // Requests name their actor with the X-Test-Actor header (helpers/actors.ts) until real login (P1.02).
+    app: createApp({
+      config,
+      logger,
+      db,
+      modules,
+      authenticate: testActor(),
+      ...(platform ? { platform } : {}),
+    }),
     config,
     logger,
     logs,

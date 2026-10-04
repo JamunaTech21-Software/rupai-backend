@@ -7,7 +7,8 @@ import { runSeeders, type Seeder } from '../../src/core/db/seed.js';
  * The MINIMAL dataset (Spec P13 §7.1): small, deterministic, in version control, used by unit and
  * integration tests. Target contents, added by the epic that creates each table:
  *
- *   P1.01  the administrator role and one user per test role
+ *   P1.01  the permission catalogue, the Administrator role and the bootstrap admin (prisma/seed,
+ *          applied by createMigratedDatabase); test users and roles are created per suite through the API
  *   P1.07  one organisation, one estate, one division, two sections, three fields
  *   P1.08  one factory, one warehouse
  *   P1.09  one season and the current fiscal year with its periods

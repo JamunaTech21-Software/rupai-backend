@@ -195,14 +195,17 @@ function operation(route: DeclaredRoute): Json {
     );
   }
   const isPublic = 'public' in route.auth;
+  const permission = 'permission' in route.auth ? route.auth.permission : null;
+  const reason = 'reason' in route.auth ? route.auth.reason : null;
   return {
     tags: [route.tag],
     summary: route.summary,
     ...(route.description ? { description: route.description } : {}),
     operationId: `${route.method}${route.fullPath.replace(/[^A-Za-z0-9]+(.)?/g, (_m, c: string | undefined) => (c ? c.toUpperCase() : ''))}`,
     security: isPublic ? [] : [{ bearerAuth: [] }],
-    'x-permission': isPublic ? null : (route.auth as { permission: string }).permission,
-    ...(isPublic ? { 'x-public-reason': (route.auth as { reason: string }).reason } : {}),
+    'x-permission': permission,
+    ...(isPublic && reason ? { 'x-public-reason': reason } : {}),
+    ...('signedIn' in route.auth && reason ? { 'x-signed-in-only': reason } : {}),
     'x-error-codes': [...new Set([...implicitErrors(route), ...route.errors])],
     ...(parameters.length > 0 ? { parameters } : {}),
     ...(route.body
@@ -223,7 +226,7 @@ const COMPONENTS: Json = {
       type: 'http',
       scheme: 'bearer',
       description:
-        'Short-lived access token in the Authorization header (Spec P4 §2.2). Login arrives in P1.02.',
+        'Access token from POST /api/v1/auth/login or /auth/refresh, in the Authorization header (Spec P4 §2.2). It lives 15 minutes; the refresh token is an HttpOnly cookie scoped to /api/v1/auth.',
     },
   },
   headers: {

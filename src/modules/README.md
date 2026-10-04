@@ -1,6 +1,6 @@
 # Modules
 
-One folder per bounded context (Spec P1 §4.1), for example `identity/`, `organisation/`, `workforce/`, `attendance/`, `payroll/`, `accounting/`.
+One folder per bounded context (Spec P1 §4.1). `identity/` (users, roles, permissions; P1.01) is the reference example of the layout below. Others will follow, for example `organisation/`, `workforce/`, `attendance/`, `payroll/`, `accounting/`.
 
 ## Layout of a module
 

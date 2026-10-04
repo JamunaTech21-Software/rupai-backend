@@ -76,6 +76,8 @@ describe('loadConfig', () => {
       NODE_ENV: 'development',
       CORS_ORIGINS: 'https://erp.example.com',
       REDIS_URL: 'redis://:secret@127.0.0.1:6379',
+      SMTP_HOST: 'smtp.example.com',
+      APP_PUBLIC_URL: 'https://erp.example.com',
       LOG_FORMAT: 'pretty',
     });
     expect(problems).toEqual([
@@ -91,9 +93,59 @@ describe('loadConfig', () => {
       NODE_ENV: 'production',
       CORS_ORIGINS: 'https://erp.example.com',
       REDIS_URL: 'redis://:secret@127.0.0.1:6379',
+      SMTP_HOST: 'smtp.example.com',
+      APP_PUBLIC_URL: 'https://erp.example.com/',
     });
     expect(c.isProduction).toBe(true);
     expect(c.docs.enabled).toBe(false);
+    expect(c.auth.cookieSecure).toBe(true);
+    expect(c.app.publicUrl).toBe('https://erp.example.com');
+  });
+});
+
+describe('authentication configuration (P1.02)', () => {
+  it('requires a token secret of at least 32 characters', () => {
+    expect(problemsOf({ ...TEST_ENV, AUTH_TOKEN_SECRET: undefined })).toContain(
+      'AUTH_TOKEN_SECRET is required',
+    );
+    expect(problemsOf({ ...TEST_ENV, AUTH_TOKEN_SECRET: 'short' })).toContain(
+      'AUTH_TOKEN_SECRET must be at least 32 characters',
+    );
+  });
+
+  it('applies the P4 §2.2.1 defaults', () => {
+    const { auth, mail } = loadConfig({ ...TEST_ENV });
+    expect(auth.accessTokenSeconds).toBe(15 * 60);
+    expect(auth.refreshTokenSeconds).toBe(24 * 3600);
+    expect(auth.sessionMaxSeconds).toBe(7 * 86400);
+    expect(auth.lockoutThreshold).toBe(5);
+    expect(auth.cookieSecure).toBe(false);
+    expect(auth.previousTokenSecret).toBeNull();
+    expect(mail.smtp).toBeNull();
+  });
+
+  it('refuses a previous secret equal to the current one', () => {
+    expect(problemsOf({ ...TEST_ENV, AUTH_TOKEN_PREVIOUS_SECRET: TEST_ENV.AUTH_TOKEN_SECRET })).toContain(
+      'AUTH_TOKEN_PREVIOUS_SECRET must differ from AUTH_TOKEN_SECRET',
+    );
+  });
+
+  it('requires mail, a public URL, a secure cookie and a real secret in production', () => {
+    const problems = problemsOf({
+      ...TEST_ENV,
+      APP_ENV: 'production',
+      NODE_ENV: 'production',
+      CORS_ORIGINS: 'https://erp.example.com',
+      REDIS_URL: 'redis://:secret@127.0.0.1:6379',
+      AUTH_COOKIE_SECURE: 'false',
+      AUTH_TOKEN_SECRET: 'change-me-to-a-long-random-string-of-48-chars',
+    });
+    expect(problems).toEqual([
+      'SMTP_HOST is required in production (password reset emails)',
+      'APP_PUBLIC_URL is required in production (password reset links)',
+      'AUTH_COOKIE_SECURE must be true in production',
+      'AUTH_TOKEN_SECRET is still the example value',
+    ]);
   });
 });
 

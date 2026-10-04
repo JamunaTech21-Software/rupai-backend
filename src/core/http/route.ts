@@ -2,6 +2,7 @@ import { Router, type RequestHandler } from 'express';
 import type { z } from 'zod';
 
 import type { ApiModule } from '../../app.js';
+import { requirePermission, requireSignedIn, type PermissionResolver } from '../auth/authorize.js';
 import type { ErrorCode } from '../errors/codes.js';
 import type { Platform } from '../platform.js';
 import { idempotency } from './idempotency.js';
@@ -23,6 +24,11 @@ export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 export type RouteAuth =
   | { readonly permission: string }
+  /**
+   * Any signed-in user, no permission: the caller's own account (profile, sessions, password). Still
+   * usable while a temporary password must be changed. Must say why no permission applies.
+   */
+  | { readonly signedIn: true; readonly reason: string }
   /** Public endpoints are rare (login, password reset) and must say why. */
   | { readonly public: true; readonly reason: string };
 
@@ -40,6 +46,8 @@ export interface RouteSpec {
   readonly summary: string;
   readonly description?: string;
   readonly auth: RouteAuth;
+  /** Route-specific middleware that runs first, e.g. the stricter auth rate limit classes (P4 §2.9). */
+  readonly before?: readonly RequestHandler[];
   readonly params?: z.ZodObject;
   /** Non-list query parameters. Lists use `list` instead. */
   readonly query?: z.ZodObject;
@@ -73,7 +81,7 @@ export function assertWellDeclared(route: DeclaredRoute): void {
       problems.push(`permission "${route.auth.permission}" must be module.action, e.g. sale.approve`);
     }
   } else if (!route.auth.reason.trim()) {
-    problems.push('a public endpoint must give a reason');
+    problems.push('a public or signed-in endpoint must give a reason');
   }
   if (!Array.isArray(route.errors)) problems.push('errors must be declared (use [] when there are none)');
   if (route.list) {
@@ -91,7 +99,10 @@ export function assertWellDeclared(route: DeclaredRoute): void {
 /** The error codes the generic middleware can produce for a route, in addition to its business errors. */
 export function implicitErrors(route: RouteSpec): ErrorCode[] {
   const codes: ErrorCode[] = ['MALFORMED_REQUEST', 'RATE_LIMITED', 'INTERNAL_ERROR'];
-  if ('permission' in route.auth) codes.push('UNAUTHENTICATED', 'PERMISSION_DENIED');
+  if ('permission' in route.auth) {
+    codes.push('UNAUTHENTICATED', 'SESSION_EXPIRED', 'PERMISSION_DENIED', 'PASSWORD_CHANGE_REQUIRED');
+  }
+  if ('signedIn' in route.auth) codes.push('UNAUTHENTICATED', 'SESSION_EXPIRED');
   if (route.params) codes.push('NOT_FOUND');
   if (route.params || route.query || route.body || route.list) codes.push('VALIDATION_FAILED');
   if (route.body) codes.push('PAYLOAD_TOO_LARGE', 'UNSUPPORTED_MEDIA_TYPE');
@@ -118,14 +129,18 @@ export interface ModuleBuilder {
  *             handler });
  *   export const estatesModule = m.build();
  *
- * Authentication and authorisation (`auth`) are enforced from P1.02/P1.03. The declaration is already
- * the place they hang from.
+ * `auth` is enforced here (P1.01): a permission route answers 401 without an authenticated user and
+ * 403 PERMISSION_DENIED without the permission, BEFORE the request is validated, so an unauthorised
+ * caller learns nothing about the endpoint's input. Scope (which records) is applied in the
+ * data-access layer from P1.03.
  */
 export function defineModule(opts: {
   name: string;
   path: string;
   tag: string;
   platform: Platform;
+  /** Resolves the caller's permissions. Required: a module cannot be built without authorisation. */
+  authz: PermissionResolver;
 }): ModuleBuilder {
   const router = Router();
   const routes: DeclaredRoute[] = [];
@@ -140,7 +155,9 @@ export function defineModule(opts: {
       };
       assertWellDeclared(declared);
 
-      const chain: RequestHandler[] = [];
+      const chain: RequestHandler[] = [...(spec.before ?? [])];
+      if ('permission' in spec.auth) chain.push(requirePermission(opts.authz, spec.auth.permission));
+      if ('signedIn' in spec.auth) chain.push(requireSignedIn());
       if (spec.idempotent) {
         chain.push(
           idempotency({ store: opts.platform.idempotencyStore, required: spec.idempotent === 'required' }),

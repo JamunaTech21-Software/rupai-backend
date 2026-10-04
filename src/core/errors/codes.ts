@@ -26,6 +26,8 @@ export const ERROR_CODES = {
   PERMISSION_DENIED: 403,
   SCOPE_DENIED: 403,
   SELF_APPROVAL_FORBIDDEN: 403,
+  /** A temporary password must be changed before anything else (P3 §32.2, P1.02). */
+  PASSWORD_CHANGE_REQUIRED: 403,
 
   // ---- validation (422) ------------------------------------------------------------------------
   VALIDATION_FAILED: 422,
@@ -75,6 +77,10 @@ export const ERROR_CODES = {
   REFERENCED_RECORD: 422,
   DUPLICATE_KEY: 422,
   INVARIANT_VIOLATED: 422,
+  /** A system row (is_system) may be renamed but not deleted, deactivated or re-permissioned (P3 §31.3). */
+  SYSTEM_RECORD: 422,
+  /** The change would leave no active user holding the Administrator role (P1.01). */
+  LAST_ADMINISTRATOR: 422,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof ERROR_CODES;
