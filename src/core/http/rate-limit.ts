@@ -26,10 +26,15 @@ export const RATE_LIMIT_CLASSES = {
 
 export type RateLimitClass = keyof typeof RATE_LIMIT_CLASSES;
 
+/** The client IP (IPv6 by /56 subnet). */
+export function ipKey(req: Request): string {
+  return `ip:${ipKeyGenerator(req.ip ?? 'unknown')}`;
+}
+
 /** The authenticated user when known (from P1.02), otherwise the client IP (IPv6 by /56 subnet). */
 export function actorOrIpKey(req: Request): string {
   const actor = getRequestContext()?.actorId;
-  return actor ? `user:${actor}` : `ip:${ipKeyGenerator(req.ip ?? 'unknown')}`;
+  return actor ? `user:${actor}` : ipKey(req);
 }
 
 export interface RateLimitOptions {

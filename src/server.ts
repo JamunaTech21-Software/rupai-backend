@@ -4,6 +4,11 @@ import { createApp } from './app.js';
 import { ConfigError, loadConfig, type Config } from './config/env.js';
 import { createDatabase } from './core/db/prisma.js';
 import { createLogger } from './core/logging/logger.js';
+import { authenticate } from './core/auth/authenticate.js';
+import { dbPermissionResolver } from './core/auth/authorize.js';
+import { databaseNameOf, sessionStore } from './core/auth/sessions.js';
+import { tokenSigner } from './core/auth/tokens.js';
+import { createMailer } from './core/mail/mailer.js';
 import { createPlatform } from './core/platform.js';
 import { buildModules } from './modules/index.js';
 
@@ -30,7 +35,24 @@ try {
 const logger = createLogger(config);
 const db = createDatabase(config);
 const platform = await createPlatform(config, logger);
-const app = createApp({ config, logger, db, platform, modules: buildModules({ platform }) });
+const authz = dbPermissionResolver(db);
+const sessions = sessionStore(db, platform.redis, logger, {
+  namespace: databaseNameOf(config.database.url),
+});
+const signer = tokenSigner({
+  secret: config.auth.tokenSecret,
+  previousSecret: config.auth.previousTokenSecret,
+  ttlSeconds: config.auth.accessTokenSeconds,
+});
+const mailer = createMailer(config, logger);
+const app = createApp({
+  config,
+  logger,
+  db,
+  platform,
+  authenticate: authenticate({ signer, sessions }),
+  modules: buildModules({ config, logger, db, platform, authz, sessions, signer, mailer }),
+});
 
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port, timezone: config.timezone }, 'rupai-backend listening');

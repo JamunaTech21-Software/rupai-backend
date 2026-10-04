@@ -33,27 +33,32 @@ type SeedValue = string | number | bigint | boolean | null;
 export async function seedRows(
   tx: Tx,
   table: string,
-  key: string,
+  /** The business key: one column, or several for a composite key such as (module, action). */
+  key: string | readonly string[],
   rows: readonly Record<string, SeedValue>[],
 ): Promise<SeedResult> {
   const tableSql = quoteIdentifier(table, 'table');
-  const keySql = quoteIdentifier(key, 'key column');
+  const keys = typeof key === 'string' ? [key] : key;
   let inserted = 0;
   let updated = 0;
 
   for (const row of rows) {
-    const keyValue = row[key];
-    if (keyValue === undefined || keyValue === null)
-      throw new Error(`seed row for ${table} is missing ${key}`);
+    for (const k of keys) {
+      if (row[k] === undefined || row[k] === null) throw new Error(`seed row for ${table} is missing ${k}`);
+    }
+    const keyMatch = Prisma.join(
+      keys.map((k) => Prisma.sql`${quoteIdentifier(k, 'key column')} = ${row[k]}`),
+      ' AND ',
+    );
     const columns = Object.keys(row);
-    const others = columns.filter((c) => c !== key);
+    const others = columns.filter((c) => !keys.includes(c));
 
     const colList = Prisma.join(columns.map((c) => quoteIdentifier(c, 'column')));
     const valList = Prisma.join(columns.map((c) => Prisma.sql`${row[c]}`));
     const ins = await tx.$executeRaw`
       INSERT INTO ${tableSql} (${colList})
       SELECT ${valList} FROM DUAL
-      WHERE NOT EXISTS (SELECT 1 FROM ${tableSql} WHERE ${keySql} = ${keyValue})`;
+      WHERE NOT EXISTS (SELECT 1 FROM ${tableSql} WHERE ${keyMatch})`;
     inserted += ins;
     if (ins > 0 || others.length === 0) continue;
 
@@ -64,7 +69,7 @@ export async function seedRows(
       ' AND ',
     );
     updated += await tx.$executeRaw`
-      UPDATE ${tableSql} SET ${sets} WHERE ${keySql} = ${keyValue} AND NOT (${same})`;
+      UPDATE ${tableSql} SET ${sets} WHERE ${keyMatch} AND NOT (${same})`;
   }
   return { inserted, updated };
 }

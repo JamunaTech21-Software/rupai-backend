@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs';
 import { createLogger } from '../../src/core/logging/logger.js';
 import { createDatabase } from '../../src/core/db/prisma.js';
 import { runSeeders } from '../../src/core/db/seed.js';
-import { SEEDERS } from './seeders.js';
+import { buildSeeders } from './seeders.js';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 
@@ -33,8 +33,7 @@ const db = createDatabase({
 });
 
 try {
-  if (SEEDERS.length === 0) logger.info('no seeders registered yet; nothing to do');
-  await runSeeders(db, SEEDERS, logger);
+  await runSeeders(db, buildSeeders(process.env), logger);
 } catch (err) {
   logger.error({ err }, 'seeding failed');
   process.exitCode = 1;

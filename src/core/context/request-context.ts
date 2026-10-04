@@ -13,6 +13,17 @@ export interface RequestContext {
   logger?: Logger;
   /** The authenticated user's id, set by `authenticate` from P1.02. Used for per-user keys (idempotency, rate limits). */
   actorId?: string;
+  /** The actor's effective permissions, resolved once per request by the first permission check. */
+  permissions?: ReadonlySet<string>;
+  /** The session the access token belongs to (P1.02). */
+  sessionId?: string;
+  /** The user must change a temporary password before using anything but their own account (P1.02). */
+  mustChangePassword?: boolean;
+  /**
+   * Why a presented bearer token was not accepted. Public endpoints ignore it; anything that needs a
+   * signed-in user answers 401 with this code, so the client knows to refresh (P5 §3.4).
+   */
+  authFailure?: 'UNAUTHENTICATED' | 'SESSION_EXPIRED';
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();

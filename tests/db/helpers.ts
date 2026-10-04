@@ -5,8 +5,11 @@ import { resolve } from 'node:path';
 import { createConnection, type Connection } from 'mariadb';
 import { inject } from 'vitest';
 
-import type { Database } from '../../src/core/db/prisma.js';
+import { buildSeeders } from '../../prisma/seed/seeders.js';
+import { createDatabase, type Database } from '../../src/core/db/prisma.js';
+import { runSeeders } from '../../src/core/db/seed.js';
 import { withTransaction, type Tx } from '../../src/core/db/transaction.js';
+import { createLogger } from '../../src/core/logging/logger.js';
 
 /**
  * Database test helpers. The server is provided by tests/db/global-setup.ts: a Testcontainers MySQL 8.4
@@ -130,4 +133,57 @@ export async function withRollback<T>(db: Database, work: (tx: Tx) => Promise<T>
   }
   if (!result) throw new Error('withRollback: work did not complete');
   return result.value;
+}
+
+/** A throwaway database built from the REAL migrations and seeders, as production would be. */
+export interface MigratedDatabase {
+  readonly name: string;
+  /** App account (DML only), what the running API uses. */
+  readonly db: Database;
+  /** Migration account, for set-up that the app account is not allowed to do. */
+  readonly migrator: Database;
+  drop(): Promise<void>;
+}
+
+export const TEST_BOOTSTRAP_PASSWORD = 'Bootstrap-Test-Password-1';
+
+export async function createMigratedDatabase(): Promise<MigratedDatabase> {
+  const tmp = await createTempDatabase();
+  const run = spawnSync(resolve(BACKEND, 'node_modules/.bin/prisma'), ['migrate', 'deploy'], {
+    cwd: BACKEND,
+    encoding: 'utf8',
+    env: {
+      PATH: process.env.PATH ?? '',
+      PRISMA_HIDE_UPDATE_MESSAGE: '1',
+      MIGRATION_DATABASE_URL: url('migrator', tmp.name),
+      SHADOW_DATABASE_URL: url('migrator', tmp.shadow),
+    },
+    timeout: 120_000,
+  });
+  if (run.status !== 0) {
+    await tmp.drop();
+    throw new Error(`prisma migrate deploy failed:\n${run.stdout}\n${run.stderr}`);
+  }
+  const open = (account: Account) =>
+    createDatabase({ database: { url: url(account, tmp.name), poolSize: 3, allowPublicKeyRetrieval: true } });
+  const migrator = open('migrator');
+  await runSeeders(
+    migrator,
+    buildSeeders({ BOOTSTRAP_ADMIN_PASSWORD: TEST_BOOTSTRAP_PASSWORD }),
+    silentLogger(),
+  );
+  const db = open('app');
+  return {
+    name: tmp.name,
+    db,
+    migrator,
+    async drop() {
+      await Promise.allSettled([db.$disconnect(), migrator.$disconnect()]);
+      await tmp.drop();
+    },
+  };
+}
+
+export function silentLogger() {
+  return createLogger({ appEnv: 'test', log: { level: 'silent', format: 'json' } });
 }

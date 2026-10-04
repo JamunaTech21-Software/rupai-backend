@@ -4,16 +4,12 @@ import type { Test } from 'supertest';
 import { getRequestContext } from '../../src/core/context/request-context.js';
 
 /**
- * Test actors: act as a given user without a real login.
+ * Test actors: act as a given user without a real sign-in.
  *
- * Until authentication exists (P1.02), test routers mount `testActor()` first. A request then names its
- * actor in a test-only header, and features keyed per user (Idempotency-Key, rate limits, audit actor)
- * can be tested now.
- *
- * P1.02/P1.03 replace this with real helpers that create a user holding given roles and scope grants and
- * log in through /auth/login:
- *
- *   const token = await loginAs({ roles: ['ESTATE_MANAGER'], scope: [{ type: 'estate', id: estateA }] });
+ * Since P1.02 the server authenticates with bearer tokens (core/auth/authenticate.ts), and the auth
+ * suite (tests/db/auth.test.ts) signs in for real. Suites that only need "user N did this" may mount
+ * `testActor()` instead: a request names its actor in a test-only header. It sets no session, so
+ * session-dependent behaviour (logout, must-change-password) is not exercised this way.
  *
  * This middleware is NEVER mounted by createApp. It exists only in tests.
  */

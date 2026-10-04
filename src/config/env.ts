@@ -15,6 +15,15 @@ const required = (what: string) => ({
 export const APP_ENVS = ['development', 'test', 'staging', 'production'] as const;
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 
+function positiveInt(min: number, max: number, def: number) {
+  return z.coerce
+    .number(required('must be a number'))
+    .int('must be an integer')
+    .min(min, `must be between ${String(min)} and ${String(max)}`)
+    .max(max, `must be between ${String(min)} and ${String(max)}`)
+    .default(def);
+}
+
 const envSchema = z.object({
   /** Runtime mode for libraries (Express, etc.). */
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -74,7 +83,10 @@ const envSchema = z.object({
    * the request Origin is never reflected. Required in production. Defaults to the local web app elsewhere.
    */
   CORS_ORIGINS: z.string(required('must be a comma-separated list of origins')).optional(),
-  /** Only true if the refresh token travels in a cookie (decided in P1.02). Default false. */
+  /**
+   * Credentialed cross-origin requests. P1.02 keeps the SPA on the API's origin (Vite proxy locally, one
+   * host on staging), so the refresh cookie is same-origin and this stays false.
+   */
   CORS_ALLOW_CREDENTIALS: z.enum(['true', 'false'], required('must be true or false')).default('false'),
   /** How long browsers may cache a preflight response, so chatty screens are not doubled. */
   CORS_MAX_AGE_SECONDS: z.coerce
@@ -117,6 +129,50 @@ const envSchema = z.object({
 
   /** Interactive API docs at /docs. Off in production by default. */
   DOCS_ENABLED: z.enum(['true', 'false'], required('must be true or false')).optional(),
+
+  // ---- Authentication (P1.02, Spec P4 §2.2) ------------------------------------------------------
+
+  /**
+   * Signs access tokens (HMAC-SHA256). At least 32 characters, held outside the repository. To rotate,
+   * move the current value to AUTH_TOKEN_PREVIOUS_SECRET and set a new one: tokens signed with the old
+   * key stay valid until they expire (P4 §2.2.1), so nobody is signed out by a rotation.
+   */
+  AUTH_TOKEN_SECRET: z
+    .string(required('must be at least 32 characters'))
+    .min(32, 'must be at least 32 characters'),
+  AUTH_TOKEN_PREVIOUS_SECRET: z
+    .string(required('must be at least 32 characters'))
+    .min(32, 'must be at least 32 characters')
+    .optional(),
+  /** Access token lifetime (P4 §2.2.1: fifteen minutes by default). */
+  AUTH_ACCESS_TOKEN_MINUTES: positiveInt(1, 60, 15),
+  /** A refresh token unused for this long expires: the idle timeout of a session. */
+  AUTH_REFRESH_TOKEN_HOURS: positiveInt(1, 24 * 30, 24),
+  /** The absolute lifetime of a session, however often it is refreshed. */
+  AUTH_SESSION_MAX_DAYS: positiveInt(1, 90, 7),
+  /** Consecutive failed sign-ins that lock an account, and for how long (P1 §12.4). */
+  AUTH_LOCKOUT_THRESHOLD: positiveInt(1, 100, 5),
+  AUTH_LOCKOUT_MINUTES: positiveInt(1, 24 * 60, 15),
+  /** Secure flag on the refresh cookie. Default: on for staging and production (HTTPS), off locally. */
+  AUTH_COOKIE_SECURE: z.enum(['true', 'false'], required('must be true or false')).optional(),
+  /** How long a password reset link stays valid. */
+  PASSWORD_RESET_MINUTES: positiveInt(5, 24 * 60, 30),
+
+  /** Where users open the web app. Password reset links point here. Required in production. */
+  APP_PUBLIC_URL: z
+    .string(required('must be an http(s) URL'))
+    .refine((v) => /^https?:\/\/[^/]+/.test(v), 'must be an http(s) URL such as https://erp.example.com')
+    .optional(),
+
+  // ---- Mail (P1.02 password reset; P1.16 notifications) -------------------------------------------
+
+  /** SMTP server. Locally Mailpit (127.0.0.1:1025). Required in production. */
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: positiveInt(1, 65535, 1025),
+  SMTP_SECURE: z.enum(['true', 'false'], required('must be true or false')).default('false'),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  MAIL_FROM: z.string().min(3).default('RupAI <no-reply@rupai.local>'),
 
   /** Reported by the health endpoint, so what is running is never a matter of inference (P14 §11.3). */
   APP_VERSION: z.string().min(1).default('0.0.0-dev'),
@@ -180,6 +236,28 @@ export interface Config {
   readonly build: { readonly version: string; readonly commit: string };
   readonly redis: { readonly url: string | null };
   readonly docs: { readonly enabled: boolean };
+  readonly auth: {
+    readonly tokenSecret: string;
+    readonly previousTokenSecret: string | null;
+    readonly accessTokenSeconds: number;
+    readonly refreshTokenSeconds: number;
+    readonly sessionMaxSeconds: number;
+    readonly lockoutThreshold: number;
+    readonly lockoutSeconds: number;
+    readonly cookieSecure: boolean;
+    readonly passwordResetSeconds: number;
+  };
+  readonly app: { readonly publicUrl: string };
+  readonly mail: {
+    readonly smtp: {
+      readonly host: string;
+      readonly port: number;
+      readonly secure: boolean;
+      readonly user: string | null;
+      readonly password: string | null;
+    } | null;
+    readonly from: string;
+  };
 }
 
 export class ConfigError extends Error {
@@ -220,6 +298,16 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   if (e.APP_ENV === 'production' && e.RATE_LIMIT_ENABLED === 'false') {
     problems.push('RATE_LIMIT_ENABLED must be true in production');
   }
+  const smtpHost = e.SMTP_HOST && e.SMTP_HOST !== '' ? e.SMTP_HOST : null;
+  if (e.APP_ENV === 'production') {
+    if (!smtpHost) problems.push('SMTP_HOST is required in production (password reset emails)');
+    if (!e.APP_PUBLIC_URL) problems.push('APP_PUBLIC_URL is required in production (password reset links)');
+    if (e.AUTH_COOKIE_SECURE === 'false') problems.push('AUTH_COOKIE_SECURE must be true in production');
+    if (/change-me/i.test(e.AUTH_TOKEN_SECRET)) problems.push('AUTH_TOKEN_SECRET is still the example value');
+  }
+  if (e.AUTH_TOKEN_PREVIOUS_SECRET !== undefined && e.AUTH_TOKEN_PREVIOUS_SECRET === e.AUTH_TOKEN_SECRET) {
+    problems.push('AUTH_TOKEN_PREVIOUS_SECRET must differ from AUTH_TOKEN_SECRET');
+  }
   if (problems.length > 0) throw new ConfigError(problems);
 
   return Object.freeze({
@@ -247,6 +335,33 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     redis: Object.freeze({ url: redisUrl }),
     docs: Object.freeze({
       enabled: e.DOCS_ENABLED === undefined ? e.APP_ENV !== 'production' : e.DOCS_ENABLED === 'true',
+    }),
+    auth: Object.freeze({
+      tokenSecret: e.AUTH_TOKEN_SECRET,
+      previousTokenSecret: e.AUTH_TOKEN_PREVIOUS_SECRET ?? null,
+      accessTokenSeconds: e.AUTH_ACCESS_TOKEN_MINUTES * 60,
+      refreshTokenSeconds: e.AUTH_REFRESH_TOKEN_HOURS * 3600,
+      sessionMaxSeconds: e.AUTH_SESSION_MAX_DAYS * 86400,
+      lockoutThreshold: e.AUTH_LOCKOUT_THRESHOLD,
+      lockoutSeconds: e.AUTH_LOCKOUT_MINUTES * 60,
+      cookieSecure:
+        e.AUTH_COOKIE_SECURE === undefined
+          ? e.APP_ENV === 'production' || e.APP_ENV === 'staging'
+          : e.AUTH_COOKIE_SECURE === 'true',
+      passwordResetSeconds: e.PASSWORD_RESET_MINUTES * 60,
+    }),
+    app: Object.freeze({ publicUrl: (e.APP_PUBLIC_URL ?? 'http://localhost:5173').replace(/\/+$/, '') }),
+    mail: Object.freeze({
+      smtp: smtpHost
+        ? Object.freeze({
+            host: smtpHost,
+            port: e.SMTP_PORT,
+            secure: e.SMTP_SECURE === 'true',
+            user: e.SMTP_USER === undefined || e.SMTP_USER === '' ? null : e.SMTP_USER,
+            password: e.SMTP_PASSWORD === undefined || e.SMTP_PASSWORD === '' ? null : e.SMTP_PASSWORD,
+          })
+        : null,
+      from: e.MAIL_FROM,
     }),
   });
 }

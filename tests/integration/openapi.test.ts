@@ -5,16 +5,23 @@ import { z } from 'zod';
 import { sendCreated, sendOne, sendPage } from '../../src/core/http/response.js';
 import { getListQuery } from '../../src/core/http/list-query.js';
 import { buildOpenApi } from '../../src/core/http/openapi.js';
+import { staticPermissionResolver } from '../../src/core/auth/authorize.js';
+import { createDatabase } from '../../src/core/db/prisma.js';
 import { defineModule, type RouteSpec } from '../../src/core/http/route.js';
 import { zId } from '../../src/core/ids/ids.js';
 import { zDecimal } from '../../src/core/money/decimal.js';
 import { memoryPlatform } from '../../src/core/platform.js';
 import { buildModules } from '../../src/modules/index.js';
-import { buildTestApp } from '../helpers/test-app.js';
+import { loadConfig } from '../../src/config/env.js';
+import { as } from '../helpers/actors.js';
+import { testModuleDeps } from '../helpers/modules.js';
+import { buildTestApp, TEST_ENV } from '../helpers/test-app.js';
+
+const authz = staticPermissionResolver('all');
 
 /** A representative module declared the way every business module will be. */
 function salesModule() {
-  const m = defineModule({ name: 'sales', path: '/sales', tag: 'Sales', platform: memoryPlatform() });
+  const m = defineModule({ name: 'sales', path: '/sales', tag: 'Sales', platform: memoryPlatform(), authz });
   const Sale = z.object({
     id: z.string(),
     sale_number: z.string(),
@@ -87,7 +94,7 @@ describe('route declarations are checked at start-up (the P0.07 "every endpoint 
     handler: (_req, res) => res.end(),
   };
   const declare = (spec: Partial<RouteSpec>) => () =>
-    defineModule({ name: 't', path: '/t', tag: 'T', platform: memoryPlatform() }).route({
+    defineModule({ name: 't', path: '/t', tag: 'T', platform: memoryPlatform(), authz }).route({
       ...base,
       ...spec,
     });
@@ -101,7 +108,9 @@ describe('route declarations are checked at start-up (the P0.07 "every endpoint 
   });
 
   it('refuses a public endpoint without a reason', () => {
-    expect(declare({ auth: { public: true, reason: ' ' } })).toThrow(/public endpoint must give a reason/);
+    expect(declare({ auth: { public: true, reason: ' ' } })).toThrow(
+      /public or signed-in endpoint must give a reason/,
+    );
   });
 
   it('refuses a route without declared error codes', () => {
@@ -113,7 +122,11 @@ describe('route declarations are checked at start-up (the P0.07 "every endpoint 
   });
 
   it('every module the application mounts is well declared', () => {
-    expect(() => buildModules({ platform: memoryPlatform() })).not.toThrow();
+    const db = createDatabase({
+      database: { url: TEST_ENV.DATABASE_URL, poolSize: 1, allowPublicKeyRetrieval: false },
+    });
+    const config = loadConfig({ ...TEST_ENV });
+    expect(() => buildModules(testModuleDeps({ config, db, authz }))).not.toThrow();
   });
 });
 
@@ -190,15 +203,19 @@ describe('generated OpenAPI 3.1 document', () => {
 
   it('generates routes that actually enforce what the docs say', async () => {
     const { app } = buildTestApp({}, [salesModule()]);
-    const bad = await request(app)
-      .post('/api/v1/sales')
-      .send({ buyer_id: 7, lines: [{ quantity: 37 }] });
+    const anonymous = await request(app).post('/api/v1/sales').send({});
+    expect(anonymous.status).toBe(401);
+    const bad = await as(request(app).post('/api/v1/sales'), '1').send({
+      buyer_id: 7,
+      lines: [{ quantity: 37 }],
+    });
     expect(bad.status).toBe(422);
-    const ok = await request(app)
-      .post('/api/v1/sales')
-      .send({ buyer_id: '7', lines: [{ quantity: '37.000' }] });
+    const ok = await as(request(app).post('/api/v1/sales'), '1').send({
+      buyer_id: '7',
+      lines: [{ quantity: '37.000' }],
+    });
     expect(ok.status).toBe(201);
-    const unknownFilter = await request(app).get('/api/v1/sales?filter[buyer]=1');
+    const unknownFilter = await as(request(app).get('/api/v1/sales?filter[buyer]=1'), '1');
     expect(unknownFilter.body.error.code).toBe('UNKNOWN_FILTER');
   });
 });
@@ -221,6 +238,8 @@ describe('/docs', () => {
       NODE_ENV: 'production',
       CORS_ORIGINS: 'https://erp.example.com',
       REDIS_URL: 'redis://127.0.0.1:6379',
+      SMTP_HOST: 'smtp.example.com',
+      APP_PUBLIC_URL: 'https://erp.example.com',
     };
     expect((await request(buildTestApp(prod).app).get('/docs/openapi.json')).status).toBe(404);
     expect(
