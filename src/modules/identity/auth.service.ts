@@ -7,6 +7,7 @@ import type { Config } from '../../config/env.js';
 import type { PermissionResolver } from '../../core/auth/authorize.js';
 import { hashPassword, needsRehash, verifyPassword } from '../../core/auth/password.js';
 import type { RevokeReason, SessionStore } from '../../core/auth/sessions.js';
+import { scopeView } from '../../core/scope/scope.js';
 import { hashOpaqueToken, newOpaqueToken, type TokenSigner } from '../../core/auth/tokens.js';
 import type { Database } from '../../core/db/prisma.js';
 import { withTransaction, type Tx } from '../../core/db/transaction.js';
@@ -251,11 +252,14 @@ export function authService(deps: AuthServiceDeps) {
     async me(userId: bigint, sessionId: bigint | null): Promise<z.infer<typeof MeOut>> {
       const user = await identityRepo.findUser(db, userId);
       if (!user) throw Errors.notFound('User not found.');
-      const permissions = await deps.authz.permissionsOf(userId);
+      const [permissions, scope] = await Promise.all([
+        deps.authz.permissionsOf(userId),
+        deps.authz.scopeOf(userId),
+      ]);
       return {
         user: toUserOut(user),
         permissions: [...permissions].sort(),
-        scope: null,
+        scope: scopeView(scope),
         session_id: sessionId?.toString() ?? null,
         must_change_password: user.mustChangePassword,
       };

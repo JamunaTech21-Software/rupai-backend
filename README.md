@@ -22,8 +22,12 @@ cp .env.example .env
 npm run stack:up         # MySQL 8.4 + Redis 7.4 + Mailpit in Docker (all on 127.0.0.1)
 npm run db:migrate:deploy
 npm run db:seed          # permission catalogue, Administrator role, bootstrap admin (BOOTSTRAP_ADMIN_*)
+npm run db:seed:demo     # optional: demo accounts `manager` and `viewer` (DEMO_PASSWORD; never in production)
 npm run dev              # http://localhost:4000, API docs at http://localhost:4000/docs
 ```
+
+**Frontend developers:** follow [`docs/FRONTEND_SETUP.md`](docs/FRONTEND_SETUP.md).
+**Staging** (manager verification, frontend on Vercel): [`docs/STAGING.md`](docs/STAGING.md).
 
 | Service  | Address                                    | Notes                                                                     |
 | -------- | ------------------------------------------ | ------------------------------------------------------------------------- |
@@ -106,6 +110,13 @@ Every endpoint follows spec Part 4, through the helpers in `src/core/http`. Don'
 - **Guards:** a new user has no roles; passwords are argon2id and never returned; a system role can only be renamed; a role held by anyone cannot be deleted; at least one active user always holds the Administrator role permanently (`LAST_ADMINISTRATOR`).
 - Own-account endpoints (`/auth/me`, sessions, password change) declare `auth: { signedIn: true, reason }` instead of a permission.
 
+## Data scope (P1.03)
+
+- **Permission says what, scope says which records** (Spec P1 §12, P6 §4). A user's scope is the **union** of their grants in `user_scope` (all_estates, estate, division, section, department, facility), plus implicit **self** (records about their own employment profile). Expired grants and disabled users confer nothing. It is resolved per request, so a change applies on the next request.
+- **Enforced in the data-access layer:** a Prisma client extension filters every query on a registered estate- or facility-tier model. Out-of-scope rows are absent from lists and aggregates, a single one is 404, an out-of-scope create is 403 `SCOPE_DENIED`, and a scoped query without a scope throws. How to register a model: [`src/modules/README.md`](src/modules/README.md#data-scope-for-estate--and-facility-tier-tables-p103).
+- **API:** `GET/POST /users/{id}/scopes`, `PATCH` (expiry, If-Match) and `DELETE /users/{id}/scopes/{grantId}`. `/auth/me` returns the resolved `scope`. The bootstrap admin is seeded with all_estates.
+- No scoped business table exists until P1.07 (estates). The mechanism is tested against a stand-in model (`tests/db/scope.test.ts`), with the reusable leakage suite every later epic plugs into.
+
 ## Sign-in and sessions (P1.02)
 
 - **Tokens** (Spec P4 §2.2): `POST /api/v1/auth/login` returns a **15-minute access token** in the body. The SPA keeps it **in memory only** and sends it as `Authorization: Bearer …`. The **refresh token is an HttpOnly, SameSite=Strict cookie** scoped to `/api/v1/auth`, and no script can read it. The SPA calls the API on its own origin (Vite proxy locally, one host on staging), so the cookie is first-party.
@@ -118,6 +129,12 @@ Every endpoint follows spec Part 4, through the helpers in `src/core/http`. Don'
 - **Key rotation:** set a new `AUTH_TOKEN_SECRET` and move the old one to `AUTH_TOKEN_PREVIOUS_SECRET`. Nobody is signed out.
 - **Events** (`event: auth.*` in the log): login succeeded/failed, account locked, token refreshed, refresh reuse, logout, logout-all, session revoked, password changed/reset/reset requested. They move to `access_log` with P1.05.
 - **Try it:** `npm run db:seed`, then sign in as `admin` with `BOOTSTRAP_ADMIN_PASSWORD`, then `POST /auth/password/change`. In `/docs`, paste the access token into **Authorize**.
+
+## Deployment (P0.08)
+
+- **Image:** `Dockerfile` has two targets. `runtime` is the API (compiled JavaScript and production dependencies, runs as `node`, with a health check). `tools` is the full toolchain for `prisma migrate deploy` and the seeds.
+- **Staging:** `deploy/staging/` has the Compose stack (api, MySQL, Redis, Mailpit, nightly backup, Cloudflare Tunnel; no public port), `.env.example` for its secrets, and `deploy.sh`. The script builds, backs up, migrates, seeds, swaps the API, waits for `/health/ready`, and rolls the API back if it does not become ready. The frontend is on Vercel and reaches the API through rewrites (`deploy/vercel/vercel.json`), so the browser sees one origin. Runbook: [`docs/STAGING.md`](docs/STAGING.md).
+- **`TRUST_PROXY`** accepts a hop count (`2` on staging: Vercel, then Cloudflare), so sign-in lockout and rate limits see the user's IP.
 
 ## Database
 

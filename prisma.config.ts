@@ -22,6 +22,8 @@ export default defineConfig({
     // Optional at load time so that `prisma generate` works without a database.
     // Migration commands fail clearly if it is missing.
     url: process.env.MIGRATION_DATABASE_URL ?? '',
-    shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL ?? '',
+    // Only `migrate dev` and the drift check need a shadow database. Staging and production
+    // (`migrate deploy`) have none, and Prisma refuses an empty string.
+    ...(process.env.SHADOW_DATABASE_URL ? { shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL } : {}),
   },
 });

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://api-staging.example.com/api/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://api-staging.example.com/health"
+    },
+    {
+      "source": "/health/:path*",
+      "destination": "https://api-staging.example.com/health/:path*"
+    },
+    {
+      "source": "/docs",
+      "destination": "https://api-staging.example.com/docs"
+    },
+    {
+      "source": "/docs/:path*",
+      "destination": "https://api-staging.example.com/docs/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

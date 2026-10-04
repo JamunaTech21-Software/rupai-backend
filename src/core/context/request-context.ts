@@ -2,6 +2,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 import type { Logger } from 'pino';
 
+import type { ResolvedScope } from '../scope/scope.js';
+
 /**
  * Per-request context, available anywhere in the call chain without passing `req` around.
  * Services must never touch `req`/`res` (src/modules/README.md), so this is how they reach the
@@ -24,6 +26,13 @@ export interface RequestContext {
    * signed-in user answers 401 with this code, so the client knows to refresh (P5 §3.4).
    */
   authFailure?: 'UNAUTHENTICATED' | 'SESSION_EXPIRED';
+  /**
+   * Resolves the actor's data scope (P1.03), memoised: set by the route guard, called by the scope
+   * extension the first time a scoped model is queried.
+   */
+  loadScope?: () => Promise<ResolvedScope>;
+  /** Set by runUnscoped(reason): system work that legitimately reads across scope. */
+  unscoped?: string;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();

@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 
 import { getRequestContext } from '../context/request-context.js';
 import { etagFor } from './concurrency.js';
+import type { ScopeView } from '../scope/scope.js';
 import type { CursorPage, PagePagination } from './list-query.js';
 
 /**
@@ -11,10 +12,11 @@ import type { CursorPage, PagePagination } from './list-query.js';
  *   collection: { data: [...], meta: { request_id, pagination | cursor, applied_scope? }, links? }
  */
 
-export interface AppliedScope {
-  readonly estates?: readonly (string | number)[];
-  readonly facilities?: readonly (string | number)[];
-}
+/**
+ * `meta.applied_scope` on a list of a scoped resource (P4 §2.4): the scope the rows were filtered by,
+ * so the client can say "showing Estate A and Estate C". Build it with `appliedScope()` (core/scope).
+ */
+export type AppliedScope = Readonly<Partial<ScopeView>>;
 
 function baseMeta(): { request_id: string; server_time: string } {
   return {

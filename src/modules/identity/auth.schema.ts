@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { zPassword } from '../../core/auth/password.js';
-import { UserOut } from './identity.schema.js';
+import { ScopeViewOut, UserOut } from './identity.schema.js';
 
 /** Request and response schemas of /auth (Spec P4 §2.2.3). */
 
@@ -31,8 +31,8 @@ export const MeOut = z.object({
   user: UserOut,
   /** Flattened effective permissions, for permission-aware UI. Every endpoint still enforces its own. */
   permissions: z.array(z.string()),
-  /** Resolved data scope. Arrives with P1.03; null until then. */
-  scope: z.object({}).loose().nullable(),
+  /** The resolved data scope: the union of live grants plus implicit self (P6 §4.2). */
+  scope: ScopeViewOut,
   session_id: z.string().nullable(),
   must_change_password: z.boolean(),
 });

@@ -547,14 +547,14 @@ describe('forgot and reset password', () => {
 // ---- /auth/me, database rights, rate limits ------------------------------------------------------
 
 describe('GET /auth/me', () => {
-  it('returns the user, roles and flattened permissions, never the password', async () => {
+  it('returns the user, roles, flattened permissions and resolved scope, never the password', async () => {
     const s = await admin();
     const res = await get('/auth/me', s);
     expect(res.body.data.user).toMatchObject({ id: '1', username: 'admin' });
     expect((res.body.data.user.roles as { code: string }[]).map((r) => r.code)).toEqual(['ADMINISTRATOR']);
     expect(res.body.data.permissions).toContain('user.create');
     expect(res.body.data.session_id).toBe(s.sessionId);
-    expect(res.body.data.scope).toBeNull();
+    expect(res.body.data.scope).toMatchObject({ all_estates: true, estates: [] });
     expect(JSON.stringify(res.body)).not.toMatch(/password_hash|argon2/);
   });
 });

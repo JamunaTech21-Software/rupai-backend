@@ -20,6 +20,17 @@ function widgetsModule() {
   const store = new MemoryIdempotencyStore();
   let version = 1;
   let approvals = 0;
+  // A slow request (X-Slow) announces it is inside the handler and waits to be released, so a race
+  // test is deterministic rather than dependent on timing.
+  let entered!: () => void;
+  let release!: () => void;
+  const slow = {
+    entered: new Promise<void>((r) => (entered = r)),
+    released: new Promise<void>((r) => (release = r)),
+    release: () => {
+      release();
+    },
+  };
   const router = Router();
 
   const createSchema = {
@@ -62,7 +73,10 @@ function widgetsModule() {
   });
   router.post('/:id/approve', idempotency({ store }), async (req, res) => {
     approvals += 1;
-    if (req.get('X-Slow')) await new Promise((r) => setTimeout(r, 150));
+    if (req.get('X-Slow')) {
+      entered();
+      await Promise.race([slow.released, new Promise((r) => setTimeout(r, 5_000))]);
+    }
     sendOne(res, { id: req.params.id, state: 'approved', approval_count: approvals });
   });
   router.get('/boom', () => {
@@ -73,13 +87,13 @@ function widgetsModule() {
   });
 
   const module: ApiModule = { name: 'widgets', path: '/widgets', router };
-  return { module, approvals: () => approvals };
+  return { module, approvals: () => approvals, slow };
 }
 
 function setup(env: Record<string, string> = {}) {
   const w = widgetsModule();
   const t = buildTestApp(env, [w.module]);
-  return { ...t, approvals: w.approvals };
+  return { ...t, approvals: w.approvals, slow: w.slow };
 }
 
 describe('security headers', () => {
@@ -288,13 +302,17 @@ describe('Idempotency-Key (Spec P4 §5.2)', () => {
   });
 
   it('a duplicate arriving while the first is still running: 409 IDEMPOTENCY_IN_PROGRESS', async () => {
-    const { app, approvals } = setup();
-    const [a, b] = await Promise.all([
-      request(app).post('/api/v1/widgets/6/approve').set('Idempotency-Key', key).set('X-Slow', '1').send({}),
-      new Promise((r) => setTimeout(r, 30)).then(() =>
-        request(app).post('/api/v1/widgets/6/approve').set('Idempotency-Key', key).send({}),
-      ),
-    ]);
+    const { app, approvals, slow } = setup();
+    const first = request(app)
+      .post('/api/v1/widgets/6/approve')
+      .set('Idempotency-Key', key)
+      .set('X-Slow', '1')
+      .send({})
+      .then((r) => r);
+    await slow.entered; // the first request now holds the key
+    const b = await request(app).post('/api/v1/widgets/6/approve').set('Idempotency-Key', key).send({});
+    slow.release();
+    const a = await first;
     expect(a.status).toBe(200);
     expect(b.status).toBe(409);
     expect(b.body.error.code).toBe('IDEMPOTENCY_IN_PROGRESS');
