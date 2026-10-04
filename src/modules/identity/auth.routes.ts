@@ -185,8 +185,8 @@ export function authModule(deps: AuthModuleDeps): ApiModule {
     path: '/me',
     summary: 'The signed-in user',
     description:
-      'User, roles and flattened effective permissions, for permission-aware UI. Hiding a button is not ' +
-      'authorisation: every endpoint enforces its own permission. scope is null until P1.03.',
+      'User, roles, flattened effective permissions and the resolved data scope, for permission-aware UI and ' +
+      'the estate selector. Hiding a button is not authorisation: every endpoint enforces its own permission and scope.',
     auth: { signedIn: true, reason: 'Returns only the caller’s own account.' },
     success: { status: 200, description: 'The signed-in user', schema: MeOut },
     errors: [],

@@ -124,6 +124,10 @@ describe('authentication configuration (P1.02)', () => {
     expect(mail.smtp).toBeNull();
   });
 
+  it('treats an empty previous secret as unset (Docker Compose passes unset variables as "")', () => {
+    expect(loadConfig({ ...TEST_ENV, AUTH_TOKEN_PREVIOUS_SECRET: '' }).auth.previousTokenSecret).toBeNull();
+  });
+
   it('refuses a previous secret equal to the current one', () => {
     expect(problemsOf({ ...TEST_ENV, AUTH_TOKEN_PREVIOUS_SECRET: TEST_ENV.AUTH_TOKEN_SECRET })).toContain(
       'AUTH_TOKEN_PREVIOUS_SECRET must differ from AUTH_TOKEN_SECRET',
@@ -184,5 +188,16 @@ describe('HTTP configuration (P0.04)', () => {
 
   it('validates the body limit format', () => {
     expect(problemsOf({ ...TEST_ENV, BODY_LIMIT: 'lots' })[0]).toMatch(/^BODY_LIMIT must be a size/);
+  });
+});
+
+describe('TRUST_PROXY', () => {
+  it.each([
+    ['loopback', 'loopback'],
+    ['2', 2],
+    ['true', true],
+    ['loopback, 10.0.0.0/8', 'loopback, 10.0.0.0/8'],
+  ])('parses %s', (raw, parsed) => {
+    expect(loadConfig({ ...TEST_ENV, TRUST_PROXY: raw }).http.trustProxy).toEqual(parsed);
   });
 });

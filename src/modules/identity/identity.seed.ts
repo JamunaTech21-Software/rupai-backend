@@ -10,6 +10,8 @@ import { ADMINISTRATOR_PERMISSIONS, ADMINISTRATOR_ROLE_CODE, PERMISSIONS } from 
  *   2. the bootstrap administrator: user id 1, created by itself, must change password at first login
  *   3. the Administrator role (is_system) with exactly the R-01 permission set, granted to the
  *      bootstrap administrator when nobody holds it
+ *   4. all_estates scope for the bootstrap administrator (R-01's typical scope, P6 Table 6.1) while it
+ *      holds no scope grant at all (P1.03)
  *
  * The other seventeen roles of P6 §7 are NOT seeded. They are created once the client confirms them.
  */
@@ -59,7 +61,7 @@ async function ensureBootstrapUser(tx: Tx, admin: BootstrapAdmin): Promise<numbe
 
 export function administratorSeeder(admin: BootstrapAdmin): Seeder {
   return {
-    name: 'identity: bootstrap administrator and Administrator role',
+    name: 'identity: bootstrap administrator, Administrator role and scope',
     async run(tx) {
       let inserted = await ensureBootstrapUser(tx, admin);
       let updated = 0;
@@ -109,6 +111,20 @@ export function administratorSeeder(admin: BootstrapAdmin): Seeder {
       if (holders === 0) {
         await tx.userRole.create({
           data: { userId: BOOTSTRAP_ADMIN_ID, roleId, grantedBy: BOOTSTRAP_ADMIN_ID },
+        });
+        inserted += 1;
+      }
+
+      // Scope only when the bootstrap administrator has none: a re-seed must not undo a decision.
+      const scopes = await tx.userScope.count({ where: { userId: BOOTSTRAP_ADMIN_ID } });
+      if (scopes === 0) {
+        await tx.userScope.create({
+          data: {
+            userId: BOOTSTRAP_ADMIN_ID,
+            scopeType: 'all_estates',
+            grantedBy: BOOTSTRAP_ADMIN_ID,
+            createdBy: BOOTSTRAP_ADMIN_ID,
+          },
         });
         inserted += 1;
       }

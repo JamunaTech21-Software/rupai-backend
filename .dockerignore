@@ -1,0 +1,15 @@
+# Keep the build context small and free of secrets.
+node_modules
+dist
+coverage
+src/generated
+.env
+.env.*
+!.env.example
+deploy/staging/.env
+deploy/staging/backups
+docs/openapi.json
+.git
+.husky
+tests
+*.log

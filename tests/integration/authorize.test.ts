@@ -12,6 +12,7 @@ describe('requirePermission (P4 §4.1)', () => {
     const router = Router();
     let resolved = 0;
     const resolver = {
+      ...staticPermissionResolver(permissions),
       permissionsOf: async (id: bigint) => {
         resolved += 1;
         return await staticPermissionResolver(permissions).permissionsOf(id);

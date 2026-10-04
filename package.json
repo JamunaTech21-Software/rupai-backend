@@ -2,7 +2,7 @@
   "name": "rupai-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "RupAI — Integrated Tea Estate ERP backend (Express + TypeScript + Prisma + MySQL 8)",
+  "description": "RupAI \u2014 Integrated Tea Estate ERP backend (Express + TypeScript + Prisma + MySQL 8)",
   "type": "module",
   "engines": {
     "node": ">=24.0.0 <25"
@@ -29,6 +29,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:status": "prisma migrate status",
     "db:seed": "prisma db seed",
+    "db:seed:demo": "tsx prisma/seed/demo.ts",
     "db:drift": "tsx scripts/check-drift.ts",
     "db:push": "node -e \"console.error(\\\"prisma db push is not allowed in this project. Use db:migrate:new and review the SQL (prisma/README.md).\\\");process.exit(1)\"",
     "test:db": "vitest run --project db",

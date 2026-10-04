@@ -13,16 +13,20 @@ import {
   ALL_ACTIONS,
   AssignRolesBody,
   CreateRoleBody,
+  CreateScopeGrantBody,
   CreateUserBody,
   EffectivePermissionsOut,
   IdParams,
   PatchRoleBody,
+  PatchScopeGrantBody,
   PatchUserBody,
   PermissionOut,
   ReplaceRoleBody,
   ReplaceUserBody,
   ROLE_STATUSES,
   RoleOut,
+  ScopeGrantOut,
+  ScopeGrantParams,
   USER_STATUSES,
   UserOut,
 } from './identity.schema.js';
@@ -30,6 +34,7 @@ import { authModule, type AuthModuleDeps } from './auth.routes.js';
 import { listPermissions } from './identity.repository.js';
 import { PERMISSION_BY_KEY } from './permission-catalogue.js';
 import { rolesService } from './roles.service.js';
+import { userScopesService } from './user-scopes.service.js';
 import { usersService } from './users.service.js';
 
 /** HTTP surface of the identity module (Spec P4 §14.1). */
@@ -198,6 +203,92 @@ function usersModule({ db, platform, authz, sessions }: IdentityDeps): ApiModule
     handler: async (_req, res) => {
       const { params } = getValidated(res, byId);
       sendOne(res, await users.effectivePermissions(params.id));
+    },
+  });
+
+  const scopes = userScopesService(db);
+  const byGrant = { params: ScopeGrantParams };
+
+  m.route({
+    method: 'get',
+    path: '/:id/scopes',
+    summary: 'A user’s data-scope grants',
+    description:
+      'Which estates, divisions, sections, departments or facilities the user may touch. The effective scope is the ' +
+      'union of the active grants, plus implicit self. Expired grants are listed with active=false.',
+    auth: { permission: 'user.view' },
+    ...byId,
+    list: { pagination: 'page', filters: {}, sorts: [] },
+    success: { status: 200, description: 'The user’s grants', schema: ScopeGrantOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const q = getListQuery(res);
+      const page = q.page ?? { page: 1, perPage: 25 };
+      const all = await scopes.list(params.id);
+      const start = (page.page - 1) * page.perPage;
+      sendPage(req, res, all.slice(start, start + page.perPage), { pagination: page, total: all.length });
+    },
+  });
+
+  m.route({
+    method: 'post',
+    path: '/:id/scopes',
+    summary: 'Grant a data scope',
+    description:
+      'scope_type all_estates (no scope_id), or estate | division | section | department | facility with scope_id. ' +
+      'expires_at makes it temporary. self is implicit for everyone and cannot be granted. Applies to the ' +
+      'user’s next request.',
+    auth: { permission: 'user.edit' },
+    ...byId,
+    body: CreateScopeGrantBody,
+    idempotent: true,
+    success: { status: 201, description: 'Granted', schema: ScopeGrantOut },
+    errors: ['DUPLICATE_KEY'],
+    handler: async (_req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: CreateScopeGrantBody });
+      const grant = await scopes.grant(params.id, body, currentActorId());
+      sendCreated(res, grant, `/api/v1/users/${params.id.toString()}/scopes/${grant.id}`, grant.version);
+    },
+  });
+
+  m.route({
+    method: 'patch',
+    path: '/:id/scopes/:grantId',
+    summary: 'Change a scope grant’s expiry',
+    description: 'Set or remove (null) expires_at. The target never changes: revoke and grant again instead.',
+    auth: { permission: 'user.edit' },
+    ...byGrant,
+    body: PatchScopeGrantBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Updated', schema: ScopeGrantOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byGrant, body: PatchScopeGrantBody });
+      const grant = await scopes.setExpiry(
+        params.id,
+        params.grantId,
+        requireIfMatch(req),
+        body.expires_at,
+        currentActorId(),
+      );
+      sendOne(res, grant, { version: grant.version });
+    },
+  });
+
+  m.route({
+    method: 'delete',
+    path: '/:id/scopes/:grantId',
+    summary: 'Revoke a scope grant',
+    description: 'Takes effect on the user’s next request.',
+    auth: { permission: 'user.edit' },
+    ...byGrant,
+    success: { status: 204, description: 'Revoked' },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byGrant);
+      await scopes.revoke(params.id, params.grantId);
+      sendNoContent(res);
     },
   });
 

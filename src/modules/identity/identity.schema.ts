@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { zPassword } from '../../core/auth/password.js';
 import { zId } from '../../core/ids/ids.js';
+import { SCOPE_TYPES } from '../../core/scope/scope.js';
 import { zTimestamp } from '../../core/time/dates.js';
 import { ACTIONS, SPECIAL_ACTIONS } from './permission-catalogue.js';
 
@@ -148,4 +149,63 @@ export const PermissionOut = z.object({
   module_class: z.enum(['reference', 'master', 'operational', 'financial', 'derived', 'policy']),
   description: z.string().nullable(),
   sensitive: z.boolean(),
+});
+
+// ---- data scope (P1.03) ------------------------------------------------------------------------
+
+export const ScopeGrantParams = z.object({ id: zId, grantId: zId });
+
+export const CreateScopeGrantBody = z
+  .strictObject({
+    scope_type: z.enum(SCOPE_TYPES),
+    /** The estate, division, section, department or facility. Omitted for all_estates. */
+    scope_id: zId.nullable().optional(),
+    /** For temporary cover (P6 §11.2): the grant lapses by itself at this time. */
+    expires_at: zTimestamp.nullable().optional(),
+  })
+  .superRefine((b, ctx) => {
+    if (b.scope_type === 'self') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['scope_type'],
+        message: 'Every user already has self scope; it cannot be granted.',
+      });
+    } else if (b.scope_type === 'all_estates') {
+      if (b.scope_id !== null && b.scope_id !== undefined) {
+        ctx.addIssue({ code: 'custom', path: ['scope_id'], message: 'all_estates names no target.' });
+      }
+    } else if (b.scope_id === null || b.scope_id === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['scope_id'], message: `Required for ${b.scope_type}.` });
+    }
+  });
+
+export const PatchScopeGrantBody = z.strictObject({
+  /** Change or remove (null) the expiry. The target of a grant never changes: revoke and grant instead. */
+  expires_at: zTimestamp.nullable(),
+});
+
+export const ScopeGrantOut = z.object({
+  id: z.string(),
+  user_id: z.string(),
+  scope_type: z.enum(SCOPE_TYPES),
+  scope_id: z.string().nullable(),
+  granted_at: z.string(),
+  granted_by: z.string(),
+  expires_at: z.string().nullable(),
+  /** false once expires_at has passed: the grant is kept but confers nothing. */
+  active: z.boolean(),
+  version: z.number(),
+  created_at: z.string(),
+  updated_at: z.string().nullable(),
+});
+
+/** The resolved (effective) scope: the union of live grants plus implicit self. */
+export const ScopeViewOut = z.object({
+  all_estates: z.boolean(),
+  estates: z.array(z.string()),
+  divisions: z.array(z.string()),
+  sections: z.array(z.string()),
+  departments: z.array(z.string()),
+  facilities: z.array(z.string()),
+  self_employment_profile_id: z.string().nullable(),
 });

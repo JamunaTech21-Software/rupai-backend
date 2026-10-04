@@ -29,3 +29,8 @@ tests/fixtures/**/generated/
 
 # generated OpenAPI document (`npm run docs:openapi`; live at /docs/openapi.json)
 docs/openapi.json
+
+# Staging secrets, backups and deploy state (deploy/staging)
+deploy/staging/.env
+deploy/staging/backups/
+deploy/staging/.deployed-tag

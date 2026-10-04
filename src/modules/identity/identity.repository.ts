@@ -198,3 +198,73 @@ export async function listPermissions(
   ]);
   return { rows, total };
 }
+
+// ---- data scope grants (P1.03) -----------------------------------------------------------------
+
+export function listScopeGrants(tx: Tx, userId: bigint) {
+  return tx.userScope.findMany({
+    where: { userId },
+    orderBy: [{ scopeType: 'asc' }, { scopeId: 'asc' }, { id: 'asc' }],
+  });
+}
+
+export type ScopeGrantRow = Awaited<ReturnType<typeof listScopeGrants>>[number];
+
+export function findScopeGrant(tx: Tx, userId: bigint, grantId: bigint) {
+  return tx.userScope.findFirst({ where: { id: grantId, userId } });
+}
+
+export function insertScopeGrant(
+  tx: Tx,
+  data: {
+    userId: bigint;
+    scopeType: string;
+    scopeId: bigint | null;
+    expiresAt: Date | null;
+    actorId: bigint;
+  },
+): Promise<{ id: bigint }> {
+  return tx.userScope.create({
+    data: {
+      userId: data.userId,
+      scopeType: data.scopeType,
+      scopeId: data.scopeId,
+      expiresAt: data.expiresAt,
+      grantedBy: data.actorId,
+      createdBy: data.actorId,
+    },
+    select: { id: true },
+  });
+}
+
+/** Conditional update (P4 §5.1). A changed expiry is a new grant decision: who and when are recorded. */
+export async function updateScopeGrantExpiryAtVersion(
+  tx: Tx,
+  grantId: bigint,
+  version: number,
+  expiresAt: Date | null,
+  actorId: bigint,
+): Promise<boolean> {
+  const now = new Date();
+  const { count } = await tx.userScope.updateMany({
+    where: { id: grantId, version },
+    data: {
+      expiresAt,
+      grantedAt: now,
+      grantedBy: actorId,
+      version: { increment: 1 },
+      updatedAt: now,
+      updatedBy: actorId,
+    },
+  });
+  return count === 1;
+}
+
+export async function deleteScopeGrant(tx: Tx, userId: bigint, grantId: bigint): Promise<number> {
+  const { count } = await tx.userScope.deleteMany({ where: { id: grantId, userId } });
+  return count;
+}
+
+export function userExists(tx: Tx, id: bigint) {
+  return tx.user.findUnique({ where: { id }, select: { id: true } });
+}

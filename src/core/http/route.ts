@@ -157,7 +157,7 @@ export function defineModule(opts: {
 
       const chain: RequestHandler[] = [...(spec.before ?? [])];
       if ('permission' in spec.auth) chain.push(requirePermission(opts.authz, spec.auth.permission));
-      if ('signedIn' in spec.auth) chain.push(requireSignedIn());
+      if ('signedIn' in spec.auth) chain.push(requireSignedIn(opts.authz));
       if (spec.idempotent) {
         chain.push(
           idempotency({ store: opts.platform.idempotencyStore, required: spec.idempotent === 'required' }),

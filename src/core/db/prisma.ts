@@ -3,6 +3,8 @@ import type { PoolConfig } from 'mariadb';
 
 import type { Config } from '../../config/env.js';
 import { PrismaClient } from '../../generated/prisma/client.js';
+import { scopeExtension } from '../scope/extension.js';
+import { SCOPED_MODELS, type ScopeRegistry } from '../scope/scoped-models.js';
 
 export type Database = PrismaClient;
 
@@ -41,17 +43,23 @@ export function poolConfigFromUrl(
 }
 
 /**
- * Creates the application's Prisma client. It connects as the DML-only app account (Spec P14 §5.2) and
- * defaults every interactive transaction to READ COMMITTED (Spec P2 §2.8).
+ * Creates the application's Prisma client. It connects as the DML-only app account (Spec P14 §5.2),
+ * defaults every interactive transaction to READ COMMITTED (Spec P2 §2.8), and filters every query on a
+ * scoped model by the request's data scope (P1.03, core/scope/extension.ts).
  *
  * Create one per process and pass it down. Call `$disconnect()` on shutdown.
  */
-export function createDatabase(config: Pick<Config, 'database'>): Database {
+export function createDatabase(
+  config: Pick<Config, 'database'>,
+  options: { scopedModels?: ScopeRegistry } = {},
+): Database {
   const adapter = new PrismaMariaDb(
     poolConfigFromUrl(config.database.url, {
       poolSize: config.database.poolSize,
       allowPublicKeyRetrieval: config.database.allowPublicKeyRetrieval,
     }),
   );
-  return new PrismaClient({ adapter, transactionOptions: TRANSACTION_DEFAULTS });
+  const client = new PrismaClient({ adapter, transactionOptions: TRANSACTION_DEFAULTS });
+  // A query-only extension leaves every model's type unchanged, so the client keeps the plain type.
+  return client.$extends(scopeExtension(options.scopedModels ?? SCOPED_MODELS)) as unknown as Database;
 }

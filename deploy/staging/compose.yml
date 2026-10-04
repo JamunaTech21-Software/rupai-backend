@@ -1,0 +1,148 @@
+# RupAI STAGING (P0.08): one always-on machine, everything in Docker, NOTHING on a public port.
+# The only way in is the Cloudflare Tunnel (cloudflared, outbound only):
+#
+#   browser → Vercel (frontend, rewrites /api/* /health* /docs*) → api-staging.<domain> → tunnel → api:4000
+#   team    → mail-staging.<domain> (Cloudflare Access) → tunnel → mail:8025 (Mailpit, reset emails)
+#
+# Secrets live in deploy/staging/.env (never committed; copy .env.example). Deploy with ./deploy.sh.
+name: rupai-staging
+
+x-db-urls: &db-urls
+  DATABASE_URL: mysql://rupai_app:${APP_DB_PASSWORD:?}@mysql:3306/rupai
+  MIGRATION_DATABASE_URL: mysql://rupai_migrator:${MIGRATOR_DB_PASSWORD:?}@mysql:3306/rupai
+  DB_ALLOW_PUBLIC_KEY_RETRIEVAL: 'true' # private Docker network only
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?}
+      MIGRATOR_DB_PASSWORD: ${MIGRATOR_DB_PASSWORD:?}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?}
+      TZ: UTC
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ../../docker/mysql/conf.d:/etc/mysql/conf.d:ro
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command:
+      [
+        redis-server,
+        --requirepass,
+        '${REDIS_PASSWORD:?}',
+        --appendonly,
+        'yes',
+        --maxmemory-policy,
+        noeviction,
+      ]
+    volumes:
+      - redis-data:/data
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Catches every email (password resets). Reached through the tunnel behind Cloudflare Access, and on the
+  # machine itself at http://127.0.0.1:8026 (loopback only, never a public interface).
+  mail:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${MAIL_UI_LOCAL_PORT:-8026}:8025'
+
+  # One-off: migrations and seeds (`docker compose run --rm tools …`). Never left running.
+  tools:
+    build: { context: ../.., target: tools }
+    image: rupai-tools:${API_TAG:-latest}
+    profiles: [tools]
+    depends_on: { mysql: { condition: service_healthy } }
+    environment:
+      <<: *db-urls
+      APP_ENV: staging
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+
+  api:
+    build:
+      context: ../..
+      target: runtime
+      args:
+        APP_VERSION: ${API_TAG:-latest}
+        BUILD_COMMIT: ${API_TAG:-unknown}
+    image: rupai-api:${API_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *db-urls
+      NODE_ENV: production
+      APP_ENV: staging
+      PORT: '4000'
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?}
+      AUTH_TOKEN_PREVIOUS_SECRET: ${AUTH_TOKEN_PREVIOUS_SECRET:-}
+      AUTH_COOKIE_SECURE: 'true'
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:?}
+      CORS_ORIGINS: ${APP_PUBLIC_URL:?}
+      # browser → Vercel → Cloudflare → cloudflared: see .env.example before changing.
+      TRUST_PROXY: ${TRUST_PROXY:-2}
+      DOCS_ENABLED: 'true'
+      SMTP_HOST: mail
+      SMTP_PORT: '1025'
+      MAIL_FROM: RupAI Staging <no-reply@rupai.local>
+    # No `ports:`. Only cloudflared (same Docker network) reaches it.
+
+  # Nightly logical backup, kept for BACKUP_KEEP_DAYS days in ./backups (copy them off the machine too).
+  backup:
+    image: mysql:8.4
+    restart: unless-stopped
+    depends_on: { mysql: { condition: service_healthy } }
+    environment:
+      MYSQL_PWD: ${MYSQL_ROOT_PASSWORD:?}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      TZ: UTC
+    volumes:
+      - ./backups:/backups
+      - ./backup.sh:/usr/local/bin/backup.sh:ro
+    entrypoint: [bash, /usr/local/bin/backup.sh]
+
+  # TEMPORARY address without a domain (COMPOSE_PROFILES=quicktunnel): a random
+  # https://<words>.trycloudflare.com that changes whenever this container restarts. ./deploy.sh prints it.
+  quicktunnel:
+    image: cloudflare/cloudflared:2026.9.3
+    restart: unless-stopped
+    profiles: [quicktunnel]
+    command: [tunnel, --no-autoupdate, --url, 'http://api:4000']
+    depends_on: [api]
+
+  # Outbound-only tunnel. Its public hostnames are configured in the Cloudflare dashboard (STAGING.md).
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3
+    restart: unless-stopped
+    profiles: [tunnel]
+    command: [tunnel, --no-autoupdate, run]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-} # checked by deploy.sh (compose checks even disabled profiles)
+    depends_on: [api]
+
+volumes:
+  mysql-data:
+  redis-data:

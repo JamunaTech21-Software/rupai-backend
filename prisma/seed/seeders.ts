@@ -11,7 +11,8 @@ import { identitySeeders, type BootstrapAdmin } from '../../src/modules/identity
 export function buildSeeders(env: Record<string, string | undefined>): readonly Seeder[] {
   const admin: BootstrapAdmin = {
     username: env.BOOTSTRAP_ADMIN_USERNAME ?? 'admin',
-    email: env.BOOTSTRAP_ADMIN_EMAIL ?? null,
+    // Empty means none (Docker Compose passes an unset variable as ""), never an empty email.
+    email: env.BOOTSTRAP_ADMIN_EMAIL?.trim() ? env.BOOTSTRAP_ADMIN_EMAIL.trim() : null,
     password: env.BOOTSTRAP_ADMIN_PASSWORD,
   };
   return [...identitySeeders(admin)];

@@ -140,10 +140,11 @@ const envSchema = z.object({
   AUTH_TOKEN_SECRET: z
     .string(required('must be at least 32 characters'))
     .min(32, 'must be at least 32 characters'),
-  AUTH_TOKEN_PREVIOUS_SECRET: z
-    .string(required('must be at least 32 characters'))
-    .min(32, 'must be at least 32 characters')
-    .optional(),
+  // Empty means unset: Docker Compose passes an unset optional variable as "".
+  AUTH_TOKEN_PREVIOUS_SECRET: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string(required('must be at least 32 characters')).min(32, 'must be at least 32 characters').optional(),
+  ),
   /** Access token lifetime (P4 §2.2.1: fifteen minutes by default). */
   AUTH_ACCESS_TOKEN_MINUTES: positiveInt(1, 60, 15),
   /** A refresh token unused for this long expires: the idle timeout of a session. */
@@ -228,7 +229,8 @@ export interface Config {
     readonly corsOrigins: readonly string[];
     readonly corsAllowCredentials: boolean;
     readonly corsMaxAgeSeconds: number;
-    readonly trustProxy: string;
+    /** Express "trust proxy": a hop count, true/false, or a comma-separated list of addresses/presets. */
+    readonly trustProxy: number | boolean | string;
     readonly hstsEnabled: boolean;
     readonly bodyLimit: string;
     readonly rateLimitEnabled: boolean;
@@ -326,7 +328,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       corsOrigins: Object.freeze([...corsOrigins]),
       corsAllowCredentials: e.CORS_ALLOW_CREDENTIALS === 'true',
       corsMaxAgeSeconds: e.CORS_MAX_AGE_SECONDS,
-      trustProxy: e.TRUST_PROXY,
+      trustProxy: parseTrustProxy(e.TRUST_PROXY),
       hstsEnabled: e.HSTS_ENABLED === 'true',
       bodyLimit: e.BODY_LIMIT.toLowerCase(),
       rateLimitEnabled: e.RATE_LIMIT_ENABLED === 'true',
@@ -364,6 +366,16 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       from: e.MAIL_FROM,
     }),
   });
+}
+
+/**
+ * Express treats a string as a list of proxy addresses, so "2" would be read as an IP address and
+ * rejected. A number means "trust this many hops" (staging: Vercel → Cloudflare, see deploy/staging).
+ */
+function parseTrustProxy(raw: string): number | boolean | string {
+  if (/^\d+$/.test(raw)) return Number.parseInt(raw, 10);
+  if (raw === 'true' || raw === 'false') return raw === 'true';
+  return raw;
 }
 
 function isValidTimezone(tz: string): boolean {
