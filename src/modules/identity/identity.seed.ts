@@ -2,6 +2,7 @@ import { hashPassword } from '../../core/auth/password.js';
 import { seedRows, type Seeder } from '../../core/db/seed.js';
 import type { Tx } from '../../core/db/transaction.js';
 import { ADMINISTRATOR_PERMISSIONS, ADMINISTRATOR_ROLE_CODE, PERMISSIONS } from './permission-catalogue.js';
+import { requirementsFor } from './sod-rules.js';
 
 /**
  * Identity seed data (Spec P3 §31.2, §32.2, P6 §12.1). Mechanism, not policy, so it ships active:
@@ -12,11 +13,37 @@ import { ADMINISTRATOR_PERMISSIONS, ADMINISTRATOR_ROLE_CODE, PERMISSIONS } from 
  *      bootstrap administrator when nobody holds it
  *   4. all_estates scope for the bootstrap administrator (R-01's typical scope, P6 Table 6.1) while it
  *      holds no scope grant at all (P1.03)
+ *   5. the named authorisations the Administrator role's sensitive permissions require (P6 §10), for the
+ *      bootstrap administrator, while it has none at all (P1.04)
  *
  * The other seventeen roles of P6 §7 are NOT seeded. They are created once the client confirms them.
  */
 
 export const BOOTSTRAP_ADMIN_ID = 1n;
+
+/**
+ * Records the authorisations the Administrator role requires (its sensitive permissions, and any
+ * prohibited combination) for a seeded user, only when the user has no authorisation at all, so a
+ * re-seed never restores one an administrator removed. Returns rows inserted.
+ */
+export async function seedAdministratorAuthorisations(
+  tx: Tx,
+  userId: bigint,
+  reason: string,
+): Promise<number> {
+  if ((await tx.accessAuthorisation.count({ where: { userId } })) > 0) return 0;
+  const rows = requirementsFor(new Set(ADMINISTRATOR_PERMISSIONS)).map((r) => ({
+    userId,
+    kind: r.kind,
+    ruleCode: r.rule,
+    authorisationKey: r.key,
+    permissions: r.permissions.join(','),
+    reason,
+    authorisedBy: BOOTSTRAP_ADMIN_ID,
+  }));
+  await tx.accessAuthorisation.createMany({ data: rows });
+  return rows.length;
+}
 
 export const permissionCatalogueSeeder: Seeder = {
   name: 'identity: permission catalogue',
@@ -61,7 +88,7 @@ async function ensureBootstrapUser(tx: Tx, admin: BootstrapAdmin): Promise<numbe
 
 export function administratorSeeder(admin: BootstrapAdmin): Seeder {
   return {
-    name: 'identity: bootstrap administrator, Administrator role and scope',
+    name: 'identity: bootstrap administrator, Administrator role, scope and authorisations',
     async run(tx) {
       let inserted = await ensureBootstrapUser(tx, admin);
       let updated = 0;
@@ -114,6 +141,12 @@ export function administratorSeeder(admin: BootstrapAdmin): Seeder {
         });
         inserted += 1;
       }
+
+      inserted += await seedAdministratorAuthorisations(
+        tx,
+        BOOTSTRAP_ADMIN_ID,
+        'Bootstrap administrator (P3 §32.2): platform administration needs these permissions. Seeded.',
+      );
 
       // Scope only when the bootstrap administrator has none: a re-seed must not undo a decision.
       const scopes = await tx.userScope.count({ where: { userId: BOOTSTRAP_ADMIN_ID } });

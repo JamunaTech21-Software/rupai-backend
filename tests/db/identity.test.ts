@@ -100,9 +100,15 @@ async function createRole(permissions: string[]): Promise<RoleBody> {
 async function setRoles(
   user: { id: string },
   roles: { role_id: string; expires_at?: string | null }[],
+  authorisations?: { key: string; reason: string }[],
 ): Promise<UserBody> {
   const current = (await api.get(`/users/${user.id}`)).body.data as UserBody;
-  const res = await api.post(`/users/${user.id}/roles`, { roles }, ADMIN, current.version);
+  const res = await api.post(
+    `/users/${user.id}/roles`,
+    { roles, ...(authorisations ? { authorisations } : {}) },
+    ADMIN,
+    current.version,
+  );
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return res.body.data as UserBody;
 }
@@ -394,7 +400,16 @@ describe('the Administrator role and the last administrator', () => {
     // A lapsing grant does not count as a second administrator.
     const deputy = await createUser();
     const adminRole = await adminRoleId();
-    await setRoles(deputy, [{ role_id: adminRole, expires_at: '2099-01-01T00:00:00Z' }]);
+    // The Administrator role carries sensitive permissions: each needs a named authorisation (P1.04).
+    const reason = 'Deputy administrator while the main one is away';
+    await setRoles(
+      deputy,
+      [{ role_id: adminRole, expires_at: '2099-01-01T00:00:00Z' }],
+      ['audit.view', 'device.revoke', 'role.edit', 'user.edit'].map((p) => ({
+        key: `SENSITIVE:${p}`,
+        reason,
+      })),
+    );
     expect(
       (await api.post(`/users/${ADMIN}/roles`, { roles: [] }, ADMIN, admin.version)).body.error.code,
     ).toBe('LAST_ADMINISTRATOR');

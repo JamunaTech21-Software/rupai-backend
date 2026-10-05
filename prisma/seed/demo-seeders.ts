@@ -2,7 +2,10 @@ import { hashPassword } from '../../src/core/auth/password.js';
 import type { Seeder } from '../../src/core/db/seed.js';
 import type { Tx } from '../../src/core/db/transaction.js';
 import { ADMINISTRATOR_ROLE_CODE } from '../../src/modules/identity/permission-catalogue.js';
-import { BOOTSTRAP_ADMIN_ID } from '../../src/modules/identity/identity.seed.js';
+import {
+  BOOTSTRAP_ADMIN_ID,
+  seedAdministratorAuthorisations,
+} from '../../src/modules/identity/identity.seed.js';
 
 /**
  * DEMO data for staging and local verification (P0.08). Never for production: the entry point refuses
@@ -88,6 +91,11 @@ export function demoSeeders(password: string): Seeder[] {
           });
           inserted += 3;
         }
+        inserted += await seedAdministratorAuthorisations(
+          tx,
+          manager.id,
+          'Staging demo account for manager verification. Seeded, never in production.',
+        );
         const viewer = await ensureUser(tx, 'viewer', 'viewer@rupai.local', hash);
         if (viewer.created) {
           await tx.userRole.create({

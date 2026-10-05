@@ -47,6 +47,19 @@ export const ReplaceUserBody = z.strictObject(userFields);
 /** PATCH: omitted means unchanged. */
 export const PatchUserBody = z.strictObject(userFields).partial();
 
+// ---- separation of duties (P1.04) ----------------------------------------------------------------
+
+/** A named, written authorisation for one conflict or sensitive permission (P6 §9.1, §10). */
+export const AuthorisationInput = z.strictObject({
+  /** The `key` of a requirement, as returned by AUTHORISATION_REQUIRED or /roles/check. */
+  key: z.string().min(3).max(255),
+  /** Why this concentration of authority is accepted. Shown on the concentration report. */
+  reason: z.string().trim().min(10, 'Give a real reason (at least 10 characters).').max(1000),
+});
+
+/** On a role change, each authorisation names the affected user. */
+export const RoleAuthorisationInput = AuthorisationInput.extend({ user_id: zId });
+
 export const AssignRolesBody = z.strictObject({
   /** The user's complete set of roles after the call. An empty list removes every role. */
   roles: z
@@ -58,6 +71,13 @@ export const AssignRolesBody = z.strictObject({
       }),
     )
     .max(20),
+  /** Authorisations for the conflicts and sensitive permissions this assignment brings (P1.04). */
+  authorisations: z.array(AuthorisationInput).max(100).optional(),
+});
+
+/** Preview: the same roles as AssignRolesBody, without changing anything. */
+export const CheckRolesBody = z.strictObject({
+  roles: z.array(z.strictObject({ role_id: zId, expires_at: zTimestamp.nullable().optional() })).max(20),
 });
 
 const RoleRef = z.object({
@@ -118,8 +138,12 @@ export const CreateRoleBody = z.strictObject({
   sort_order: roleFields.sort_order.optional(),
   permissions: roleFields.permissions.optional(),
 });
-export const ReplaceRoleBody = z.strictObject(roleFields);
-export const PatchRoleBody = z.strictObject(roleFields).partial();
+/** Authorisations for conflicts a broadened role brings to the users who already hold it (P6 §9.1). */
+const roleAuthorisations = { authorisations: z.array(RoleAuthorisationInput).max(200).optional() };
+export const ReplaceRoleBody = z.strictObject({ ...roleFields, ...roleAuthorisations });
+export const PatchRoleBody = z.strictObject(roleFields).partial().extend(roleAuthorisations);
+/** Reactivating a role gives its permissions back to every holder, so it is checked the same way. */
+export const ReactivateRoleBody = z.strictObject(roleAuthorisations);
 
 export const RoleOut = z.object({
   id: z.string(),
@@ -208,4 +232,74 @@ export const ScopeViewOut = z.object({
   departments: z.array(z.string()),
   facilities: z.array(z.string()),
   self_employment_profile_id: z.string().nullable(),
+});
+
+// ---- separation of duties (P1.04): outputs -----------------------------------------------------------
+
+export const AUTHORISATION_KINDS = ['sod_override', 'sensitive_grant'] as const;
+
+export const RequirementOut = z.object({
+  key: z.string(),
+  kind: z.enum(AUTHORISATION_KINDS),
+  rule: z.string(),
+  title: z.string(),
+  why: z.string(),
+  permissions: z.array(z.string()),
+  /** true when an active authorisation already covers it. */
+  authorised: z.boolean(),
+});
+
+export const AccessCheckOut = z.object({
+  user_id: z.string(),
+  /** The effective permissions the user would hold. */
+  permissions: z.array(z.string()),
+  requirements: z.array(RequirementOut),
+  /** How many requirements still need an authorisation (send them as `authorisations`). */
+  missing: z.number(),
+});
+
+export const AuthorisationOut = z.object({
+  id: z.string(),
+  user_id: z.string(),
+  kind: z.enum(AUTHORISATION_KINDS),
+  rule: z.string(),
+  key: z.string(),
+  permissions: z.array(z.string()),
+  reason: z.string(),
+  authorised_by: z.string(),
+  authorised_at: z.string(),
+  removed_at: z.string().nullable(),
+  removed_by: z.string().nullable(),
+  active: z.boolean(),
+});
+
+export const AuthorisationParams = z.object({ id: zId, authorisationId: zId });
+
+export const SodRuleOut = z.object({
+  code: z.string(),
+  title: z.string(),
+  why: z.string(),
+  combinations: z.array(z.array(z.string())),
+});
+
+const UserRef = z.object({ id: z.string(), username: z.string() });
+
+export const ConcentrationReportOut = z.object({
+  generated_at: z.string(),
+  /** Every active override, and whether the user still holds the combination. */
+  active_overrides: z.array(AuthorisationOut.extend({ user: UserRef, still_held: z.boolean() })),
+  /** Each sensitive permission currently held, by whom, and whether it was authorised. */
+  sensitive_holders: z.array(
+    z.object({
+      permission: z.string(),
+      why: z.string(),
+      holders: z.array(UserRef.extend({ authorised: z.boolean() })),
+    }),
+  ),
+  /** Users holding four or more active roles (P6 §5.4). */
+  users_with_many_roles: z.array(UserRef.extend({ roles: z.array(z.string()) })),
+  /** Users holding both approve and post in the same domain. */
+  approve_and_post: z.array(UserRef.extend({ modules: z.array(z.string()) })),
+  /** The review: conflicts and sensitive permissions held WITHOUT an authorisation. */
+  unauthorised: z.array(UserRef.extend({ requirements: z.array(RequirementOut) })),
 });

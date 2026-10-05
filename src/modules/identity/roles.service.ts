@@ -8,6 +8,7 @@ import { AppError, Errors, type ErrorDetail } from '../../core/errors/app-error.
 import type { ListQuery } from '../../core/http/list-query.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { CreateRoleBody, PatchRoleBody, RoleOut, RoleStatus } from './identity.schema.js';
+import { enforceAuthorisations, type ProvidedAuthorisation } from './access.service.js';
 import * as repo from './identity.repository.js';
 import { PERMISSION_KEYS } from './permission-catalogue.js';
 
@@ -50,6 +51,28 @@ export function toRoleOut(r: repo.RoleRow): RoleOutT {
     created_at: r.createdAt.toISOString(),
     updated_at: r.updatedAt?.toISOString() ?? null,
   };
+}
+
+/**
+ * A role's new permission set reaches every active holder at once, so the union of each holder's roles
+ * is re-checked (P6 §9.1: "broadening a role surfaces conflicts in users who already hold it").
+ */
+async function checkHolders(
+  tx: Tx,
+  roleId: bigint,
+  rolePermissions: ReadonlySet<string>,
+  provided: readonly ProvidedAuthorisation[],
+  actorId: bigint,
+): Promise<void> {
+  const holders = await repo.activeHoldersOfRole(tx, roleId);
+  const subjects = [];
+  for (const h of holders) {
+    const others = (await repo.liveRoleIdsOfUser(tx, h.id)).filter((r) => r !== roleId);
+    const permissions = await repo.permissionKeysOfRoles(tx, others);
+    for (const p of rolePermissions) permissions.add(p);
+    subjects.push({ userId: h.id, username: h.username, permissions });
+  }
+  await enforceAuthorisations(tx, subjects, provided, actorId);
 }
 
 function systemRecord(what: string): AppError {
@@ -175,7 +198,18 @@ export function rolesService(db: Database) {
           throw Errors.versionConflict({ version: now.version, resource: toRoleOut(now) });
         }
         if (changes.permissions !== undefined && !role.isSystem) {
+          if (role.status === 'active') {
+            await checkHolders(tx, id, new Set(changes.permissions), changes.authorisations ?? [], actorId);
+          }
           await repo.replaceRolePermissions(tx, id, await resolvePermissions(tx, changes.permissions));
+        } else if ((changes.authorisations ?? []).length > 0) {
+          throw Errors.validation([
+            {
+              field: 'authorisations',
+              code: 'VALIDATION_FAILED',
+              message: 'Only needed when permissions change.',
+            },
+          ]);
         }
         return toRoleOut(await loadOrNotFound(tx, id));
       });
@@ -186,6 +220,7 @@ export function rolesService(db: Database) {
       expectedVersion: number,
       status: RoleStatus,
       actorId: bigint,
+      authorisations: readonly ProvidedAuthorisation[] = [],
     ): Promise<RoleOutT> {
       return withTransaction(db, async (tx) => {
         const role = await loadOrNotFound(tx, id);
@@ -194,6 +229,11 @@ export function rolesService(db: Database) {
         }
         if (role.isSystem && status !== 'active') throw systemRecord('deactivated');
         if (role.status === status) return toRoleOut(role);
+        // Reactivating gives the role's permissions back to every holder at once.
+        if (status === 'active') {
+          const current = new Set(toRoleOut(role).permissions);
+          await checkHolders(tx, id, current, authorisations, actorId);
+        }
         const ok = await repo.updateRoleAtVersion(tx, id, expectedVersion, { status }, actorId);
         if (!ok) {
           const now = await loadOrNotFound(tx, id);

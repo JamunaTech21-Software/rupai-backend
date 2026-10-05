@@ -18,6 +18,7 @@ import type {
   UserOut,
   UserStatus,
 } from './identity.schema.js';
+import { enforceAuthorisations } from './access.service.js';
 import * as repo from './identity.repository.js';
 
 /**
@@ -254,6 +255,20 @@ export function usersService(db: Database, permissions: PermissionResolver, sess
           ];
         });
         if (bad.length > 0) throw Errors.validation(bad);
+
+        // Separation of duties (P6 §9.1): the union of the new roles, checked before anything changes.
+        await enforceAuthorisations(
+          tx,
+          [
+            {
+              userId: id,
+              username: user.username,
+              permissions: await repo.permissionKeysOfRoles(tx, [...seen]),
+            },
+          ],
+          body.authorisations ?? [],
+          actorId,
+        );
 
         await guardLastAdministrator(tx, async () => {
           await repo.replaceUserRoles(
