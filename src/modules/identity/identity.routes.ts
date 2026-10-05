@@ -10,8 +10,13 @@ import { defineModule } from '../../core/http/route.js';
 import { getValidated } from '../../core/http/validate.js';
 import type { Platform } from '../../core/platform.js';
 import {
+  AccessCheckOut,
   ALL_ACTIONS,
   AssignRolesBody,
+  AuthorisationOut,
+  AuthorisationParams,
+  CheckRolesBody,
+  ConcentrationReportOut,
   CreateRoleBody,
   CreateScopeGrantBody,
   CreateUserBody,
@@ -21,15 +26,18 @@ import {
   PatchScopeGrantBody,
   PatchUserBody,
   PermissionOut,
+  ReactivateRoleBody,
   ReplaceRoleBody,
   ReplaceUserBody,
   ROLE_STATUSES,
   RoleOut,
   ScopeGrantOut,
   ScopeGrantParams,
+  SodRuleOut,
   USER_STATUSES,
   UserOut,
 } from './identity.schema.js';
+import { accessService } from './access.service.js';
 import { authModule, type AuthModuleDeps } from './auth.routes.js';
 import { listPermissions } from './identity.repository.js';
 import { PERMISSION_BY_KEY } from './permission-catalogue.js';
@@ -176,14 +184,17 @@ function usersModule({ db, platform, authz, sessions }: IdentityDeps): ApiModule
     path: '/:id/roles',
     summary: 'Set a user’s roles',
     description:
-      'Replaces the user’s complete set of roles. A grant may carry expires_at for temporary cover; it lapses by itself.',
+      'Replaces the user’s complete set of roles. A grant may carry expires_at for temporary cover; it lapses by itself. ' +
+      'If the resulting roles hold a prohibited combination (separation of duties) or a sensitive permission without an ' +
+      'active authorisation, the change is refused with 422 AUTHORISATION_REQUIRED, whose details carry each `key`: ' +
+      'resend with `authorisations: [{key, reason}]` to record a named, written authorisation for each.',
     auth: { permission: 'user.edit' },
     ...byId,
     body: AssignRolesBody,
     ifMatch: true,
     idempotent: true,
     success: { status: 200, description: 'The user with its new roles', schema: UserOut },
-    errors: ['LAST_ADMINISTRATOR'],
+    errors: ['LAST_ADMINISTRATOR', 'AUTHORISATION_REQUIRED'],
     handler: async (req, res) => {
       const { params, body } = getValidated(res, { ...byId, body: AssignRolesBody });
       const user = await users.assignRoles(params.id, requireIfMatch(req), body, currentActorId());
@@ -203,6 +214,66 @@ function usersModule({ db, platform, authz, sessions }: IdentityDeps): ApiModule
     handler: async (_req, res) => {
       const { params } = getValidated(res, byId);
       sendOne(res, await users.effectivePermissions(params.id));
+    },
+  });
+
+  const access = accessService(db);
+  const byAuthorisation = { params: AuthorisationParams };
+
+  m.route({
+    method: 'post',
+    path: '/:id/roles/check',
+    summary: 'Preview the separation-of-duties check for a role set',
+    description:
+      'Changes nothing. Lists every prohibited combination and sensitive permission the roles would give the user, ' +
+      'and whether an active authorisation already covers it. Use it to show the conflict dialog (P6 Fig 9.1).',
+    auth: { permission: 'user.edit' },
+    ...byId,
+    body: CheckRolesBody,
+    success: { status: 200, description: 'What the roles would require', schema: AccessCheckOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: CheckRolesBody });
+      sendOne(res, await access.check(params.id, body.roles));
+    },
+  });
+
+  m.route({
+    method: 'get',
+    path: '/:id/authorisations',
+    summary: 'A user’s recorded authorisations',
+    description:
+      'Overrides of prohibited combinations and sensitive-permission grants, active and removed, newest first.',
+    auth: { permission: 'user.view' },
+    ...byId,
+    list: { pagination: 'page', filters: {}, sorts: [] },
+    success: { status: 200, description: 'The user’s authorisations', schema: AuthorisationOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const q = getListQuery(res);
+      const page = q.page ?? { page: 1, perPage: 25 };
+      const all = await access.listForUser(params.id);
+      const start = (page.page - 1) * page.perPage;
+      sendPage(req, res, all.slice(start, start + page.perPage), { pagination: page, total: all.length });
+    },
+  });
+
+  m.route({
+    method: 'delete',
+    path: '/:id/authorisations/:authorisationId',
+    summary: 'Remove an authorisation',
+    description:
+      'Recorded as removed (who and when), never deleted. If the user still holds the combination, it reappears on ' +
+      'the concentration report as unauthorised, and the next role change needs a new authorisation.',
+    auth: { permission: 'user.edit' },
+    ...byAuthorisation,
+    success: { status: 204, description: 'Removed' },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byAuthorisation);
+      await access.remove(params.id, params.authorisationId, currentActorId());
+      sendNoContent(res);
     },
   });
 
@@ -363,13 +434,15 @@ function rolesModule({ db, platform, authz }: IdentityDeps): ApiModule {
       method,
       path: '/:id',
       summary,
-      description: 'A system role may only be renamed or re-described.',
+      description:
+        'A system role may only be renamed or re-described. Changing permissions re-checks every holder (separation of ' +
+        'duties): send `authorisations: [{user_id, key, reason}]` for each item AUTHORISATION_REQUIRED lists.',
       auth: { permission: 'role.edit' },
       ...byId,
       body,
       ifMatch: true,
       success: { status: 200, description: 'Updated', schema: RoleOut },
-      errors: ['DUPLICATE_KEY', 'SYSTEM_RECORD'],
+      errors: ['DUPLICATE_KEY', 'SYSTEM_RECORD', 'AUTHORISATION_REQUIRED'],
       handler: async (req, res) => {
         const { params, body: changes } = getValidated(res, { ...byId, body: PatchRoleBody });
         const role = await roles.update(params.id, requireIfMatch(req), changes, currentActorId());
@@ -403,13 +476,20 @@ function rolesModule({ db, platform, authz }: IdentityDeps): ApiModule {
       summary,
       auth: { permission: 'role.edit' },
       ...byId,
+      ...(status === 'active' ? { body: ReactivateRoleBody } : {}),
       ifMatch: true,
       idempotent: true,
       success: { status: 200, description: 'The role in its new status', schema: RoleOut },
-      errors: status === 'inactive' ? ['SYSTEM_RECORD'] : [],
+      errors: status === 'inactive' ? ['SYSTEM_RECORD'] : ['AUTHORISATION_REQUIRED'],
       handler: async (req, res) => {
-        const { params } = getValidated(res, byId);
-        const role = await roles.setStatus(params.id, requireIfMatch(req), status, currentActorId());
+        const { params, body } = getValidated(res, { ...byId, body: ReactivateRoleBody });
+        const role = await roles.setStatus(
+          params.id,
+          requireIfMatch(req),
+          status,
+          currentActorId(),
+          status === 'active' ? (body.authorisations ?? []) : [],
+        );
         sendOne(res, role, { version: role.version });
       },
     });
@@ -470,6 +550,55 @@ function permissionsModule({ db, platform, authz }: IdentityDeps): ApiModule {
   return m.build();
 }
 
+function accessModule({ db, platform, authz }: IdentityDeps): ApiModule {
+  const access = accessService(db);
+  const m = defineModule({ name: 'access', path: '/access', tag: 'Access control', platform, authz });
+
+  m.route({
+    method: 'get',
+    path: '/sod-rules',
+    summary: 'The separation-of-duties rules',
+    description:
+      'P6 Table 5.1, expanded into concrete permission combinations. Holding every permission of one combination is a ' +
+      'conflict that needs a recorded override.',
+    auth: { permission: 'role.view' },
+    list: { pagination: 'page', filters: {}, sorts: [], maxPageSize: 50 },
+    success: { status: 200, description: 'The rules', schema: SodRuleOut },
+    errors: [],
+    handler: (req, res) => {
+      const q = getListQuery(res);
+      const page = q.page ?? { page: 1, perPage: 25 };
+      const all = access.rules();
+      const start = (page.page - 1) * page.perPage;
+      sendPage(req, res, all.slice(start, start + page.perPage), { pagination: page, total: all.length });
+    },
+  });
+
+  m.route({
+    method: 'get',
+    path: '/concentration-report',
+    summary: 'The concentration report',
+    description:
+      'P6 §9.2: every active override, every sensitive permission held, users with four or more roles, users holding ' +
+      'approve and post in the same domain, and — the review — every conflict or sensitive permission held without an ' +
+      'authorisation. Active users only.',
+    auth: { permission: 'user.view' },
+    success: { status: 200, description: 'The report', schema: ConcentrationReportOut },
+    errors: [],
+    handler: async (_req, res) => {
+      sendOne(res, await access.concentrationReport());
+    },
+  });
+
+  return m.build();
+}
+
 export function identityModules(deps: AuthModuleDeps): ApiModule[] {
-  return [authModule(deps), usersModule(deps), rolesModule(deps), permissionsModule(deps)];
+  return [
+    authModule(deps),
+    usersModule(deps),
+    rolesModule(deps),
+    permissionsModule(deps),
+    accessModule(deps),
+  ];
 }

@@ -110,6 +110,14 @@ Every endpoint follows spec Part 4, through the helpers in `src/core/http`. Don'
 - **Guards:** a new user has no roles; passwords are argon2id and never returned; a system role can only be renamed; a role held by anyone cannot be deleted; at least one active user always holds the Administrator role permanently (`LAST_ADMINISTRATOR`).
 - Own-account endpoints (`/auth/me`, sessions, password change) declare `auth: { signedIn: true, reason }` instead of a permission.
 
+## Separation of duties (P1.04)
+
+- **The rules** (`src/modules/identity/sod-rules.ts`, P6 Table 5.1) are expanded into concrete permission combinations, for example `payroll.create + payroll.approve`, or `user.edit` with any financial approve or post. `GET /access/sod-rules` lists them. The 15 **sensitive permissions** of P6 Table 10.1 are listed in the permission catalogue.
+- **Checked on the union of a user's roles** whenever it changes: role assignment, a role's permissions changing (every holder is re-checked), and role reactivation. A conflict or sensitive permission does not forbid the change. It needs a **named, written authorisation**: without one the change is `422 AUTHORISATION_REQUIRED`, whose details carry each `key`. Resend with `authorisations: [{ key, reason }]` (on a role change, with `user_id`). `POST /users/{id}/roles/check` previews it without changing anything.
+- **Recorded** in `access_authorisation`: the user, rule, permissions, reason, who authorised and when. Removal is recorded too (`DELETE /users/{id}/authorisations/{id}`), never deleted.
+- **`GET /access/concentration-report`** (P6 §9.2) lists active overrides (and whether they are still held), sensitive-permission holders, users with 4+ roles, and approve+post holders. It also works as the review: every conflict held **without** an authorisation, however it arose.
+- The bootstrap administrator's (and the demo `manager`'s) sensitive permissions are seeded as authorised.
+
 ## Data scope (P1.03)
 
 - **Permission says what, scope says which records** (Spec P1 §12, P6 §4). A user's scope is the **union** of their grants in `user_scope` (all_estates, estate, division, section, department, facility), plus implicit **self** (records about their own employment profile). Expired grants and disabled users confer nothing. It is resolved per request, so a change applies on the next request.

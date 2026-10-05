@@ -81,6 +81,11 @@ export const ERROR_CODES = {
   SYSTEM_RECORD: 422,
   /** The change would leave no active user holding the Administrator role (P1.01). */
   LAST_ADMINISTRATOR: 422,
+  /**
+   * The change brings a prohibited combination (P6 Table 5.1) or a sensitive permission (P6 Table 10.1)
+   * without a named authorisation. Details list each one with its `key`; resend with `authorisations`.
+   */
+  AUTHORISATION_REQUIRED: 422,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

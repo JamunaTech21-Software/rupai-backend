@@ -125,6 +125,10 @@ model User {
   sessions            AuthSession[]
   passwordResetTokens PasswordResetToken[]
 
+  authorisations           AccessAuthorisation[] @relation("AccessAuthorisationUser")
+  authorisationsGiven      AccessAuthorisation[] @relation("AccessAuthorisationBy")
+  authorisationsRemoved    AccessAuthorisation[] @relation("AccessAuthorisationRemovedBy")
+
   scopes              UserScope[] @relation("UserScopeUser")
   grantedScopes       UserScope[] @relation("UserScopeGrantedBy")
   createdScopes       UserScope[] @relation("UserScopeCreatedBy")
@@ -262,4 +266,43 @@ model UserScope {
   @@index([createdBy], map: "ix_user_scope_created_by")
   @@index([updatedBy], map: "ix_user_scope_updated_by")
   @@map("user_scope")
+}
+
+// ---------------------------------------------------------------------------------------------
+// P1.04 — Separation of duties and sensitive permissions (P6 §5.3, §9, §10). Not in P3: the record
+// P6 requires of each override ("the user, the conflicting permissions, the rule, the reason, who
+// authorised it, and when") and of each sensitive grant ("named written authorisation ... recorded").
+// ---------------------------------------------------------------------------------------------
+
+/// One recorded, named authorisation for one user: an override of a prohibited combination
+/// (sod_override) or the grant of a sensitive permission (sensitive_grant). It stays on the
+/// concentration report until it is removed. Never deleted by the application.
+model AccessAuthorisation {
+  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  userId           BigInt    @map("user_id") @db.UnsignedBigInt
+  /// sod_override | sensitive_grant
+  kind             String    @db.VarChar(30)
+  /// The P6 Table 5.1 rule (SOD-1 … SOD-7), or SENSITIVE.
+  ruleCode         String    @map("rule_code") @db.VarChar(20)
+  /// Stable identity of what was authorised, e.g. "SOD-2:payroll.approve+payroll.post".
+  authorisationKey String    @map("authorisation_key") @db.VarChar(255)
+  /// The permissions involved, comma-separated and sorted.
+  permissions      String    @db.VarChar(500)
+  reason           String    @db.VarChar(1000)
+  authorisedBy     BigInt    @map("authorised_by") @db.UnsignedBigInt
+  authorisedAt     DateTime  @default(now()) @map("authorised_at") @db.DateTime(0)
+  removedAt        DateTime? @map("removed_at") @db.DateTime(0)
+  removedBy        BigInt?   @map("removed_by") @db.UnsignedBigInt
+  /// GENERATED column (see migration SQL): the key while active, NULL once removed. Read-only.
+  activeKey        String?   @map("active_key") @db.VarChar(255)
+
+  user       User  @relation("AccessAuthorisationUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_access_authorisation_user")
+  authoriser User  @relation("AccessAuthorisationBy", fields: [authorisedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_access_authorisation_by")
+  remover    User? @relation("AccessAuthorisationRemovedBy", fields: [removedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_access_authorisation_removed_by")
+
+  @@unique([userId, activeKey], map: "ux_access_authorisation_active")
+  @@index([kind, removedAt], map: "ix_access_authorisation_kind")
+  @@index([authorisedBy], map: "ix_access_authorisation_by")
+  @@index([removedBy], map: "ix_access_authorisation_removed_by")
+  @@map("access_authorisation")
 }

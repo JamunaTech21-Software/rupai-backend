@@ -268,3 +268,107 @@ export async function deleteScopeGrant(tx: Tx, userId: bigint, grantId: bigint):
 export function userExists(tx: Tx, id: bigint) {
   return tx.user.findUnique({ where: { id }, select: { id: true } });
 }
+
+// ---- separation of duties (P1.04) --------------------------------------------------------------
+
+/** The permission keys an ACTIVE role set confers (inactive roles confer nothing). */
+export async function permissionKeysOfRoles(tx: Tx, roleIds: readonly bigint[]): Promise<Set<string>> {
+  if (roleIds.length === 0) return new Set();
+  const rows = await tx.rolePermission.findMany({
+    where: { roleId: { in: [...roleIds] }, role: { status: 'active' } },
+    select: { permission: { select: { module: true, action: true } } },
+  });
+  return new Set(rows.map((r) => `${r.permission.module}.${r.permission.action}`));
+}
+
+/** The user's live role grants (unexpired), as role ids. */
+export async function liveRoleIdsOfUser(tx: Tx, userId: bigint): Promise<bigint[]> {
+  const rows = await tx.userRole.findMany({
+    where: { userId, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+    select: { roleId: true },
+  });
+  return rows.map((r) => r.roleId);
+}
+
+/** Active users holding the role through a live grant. */
+export function activeHoldersOfRole(tx: Tx, roleId: bigint) {
+  return tx.user.findMany({
+    where: {
+      status: 'active',
+      roles: { some: { roleId, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } },
+    },
+    select: { id: true, username: true },
+    orderBy: { id: 'asc' },
+  });
+}
+
+export async function activeAuthorisationKeys(tx: Tx, userId: bigint): Promise<Set<string>> {
+  const rows = await tx.accessAuthorisation.findMany({
+    where: { userId, removedAt: null },
+    select: { authorisationKey: true },
+  });
+  return new Set(rows.map((r) => r.authorisationKey));
+}
+
+export async function insertAuthorisations(
+  tx: Tx,
+  rows: readonly {
+    userId: bigint;
+    kind: string;
+    ruleCode: string;
+    authorisationKey: string;
+    permissions: string;
+    reason: string;
+    authorisedBy: bigint;
+  }[],
+): Promise<void> {
+  if (rows.length > 0) await tx.accessAuthorisation.createMany({ data: [...rows] });
+}
+
+export function listAuthorisations(tx: Tx, where: Prisma.AccessAuthorisationWhereInput) {
+  return tx.accessAuthorisation.findMany({
+    where,
+    orderBy: [{ authorisedAt: 'desc' }, { id: 'desc' }],
+    include: { user: { select: { id: true, username: true } } },
+  });
+}
+
+export type AuthorisationRow = Awaited<ReturnType<typeof listAuthorisations>>[number];
+
+/** Marks an active authorisation removed. Returns rows changed (0: none such, or already removed). */
+export async function removeAuthorisation(
+  tx: Tx,
+  userId: bigint,
+  id: bigint,
+  actorId: bigint,
+): Promise<number> {
+  const { count } = await tx.accessAuthorisation.updateMany({
+    where: { id, userId, removedAt: null },
+    data: { removedAt: new Date(), removedBy: actorId },
+  });
+  return count;
+}
+
+/** Every ACTIVE user with their live roles' (active roles only) permissions and role codes. */
+export async function effectiveAccessOfActiveUsers(tx: Tx) {
+  const now = new Date();
+  return tx.user.findMany({
+    where: { status: 'active' },
+    select: {
+      id: true,
+      username: true,
+      roles: {
+        where: { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }], role: { status: 'active' } },
+        select: {
+          role: {
+            select: {
+              code: true,
+              permissions: { select: { permission: { select: { module: true, action: true } } } },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { id: 'asc' },
+  });
+}
