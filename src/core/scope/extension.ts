@@ -64,6 +64,7 @@ function withFilter(where: unknown, filter: Where): Where {
 }
 
 function assertCreatable(scope: ResolvedScope, mapping: ScopeMapping, data: unknown): void {
+  if (mapping.createsCheckedBy === 'service') return; // the module's service checks the parent
   const rows = Array.isArray(data) ? data : [data];
   for (const row of rows) {
     if (!row || typeof row !== 'object' || !canCreate(scope, mapping, row as Record<string, unknown>)) {

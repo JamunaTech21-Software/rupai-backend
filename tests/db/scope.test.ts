@@ -22,7 +22,14 @@ import { as, testActor } from '../helpers/actors.js';
 import { testModuleDeps } from '../helpers/modules.js';
 import { describeScopeLeakage } from '../helpers/scope-leakage.js';
 import { TEST_ENV } from '../helpers/test-app.js';
-import { createMigratedDatabase, silentLogger, url, withRollback, type MigratedDatabase } from './helpers.js';
+import {
+  createMigratedDatabase,
+  silentLogger,
+  url,
+  withRollback,
+  type MigratedDatabase,
+  ensureEstates,
+} from './helpers.js';
 
 /**
  * P1.03 — data scope: the user_scope table and its API, scope resolution, and enforcement in the
@@ -160,6 +167,7 @@ function probeModule(db: Database, authz: ReturnType<typeof dbPermissionResolver
 
 beforeAll(async () => {
   mdb = await createMigratedDatabase();
+  await ensureEstates(mdb.migrator, [ESTATE_A, ESTATE_B, 4n, 7n, 8n, 9n]);
   const config = loadConfig({ ...TEST_ENV, DATABASE_URL: url('app', mdb.name), RATE_LIMIT_ENABLED: 'false' });
   const authz = dbPermissionResolver(mdb.db);
   standIn = createDatabase(

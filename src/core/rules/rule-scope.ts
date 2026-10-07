@@ -1,8 +1,7 @@
 import { Prisma } from '../../generated/prisma/client.js';
 import type { AccessLog } from '../audit/access-log.js';
-import { getRequestContext } from '../context/request-context.js';
 import { AppError } from '../errors/app-error.js';
-import type { ResolvedScope } from '../scope/scope.js';
+import { scopeToCheck, type ResolvedScope } from '../scope/scope.js';
 import { scopeSql } from '../scope/sql.js';
 
 /**
@@ -21,16 +20,7 @@ import { scopeSql } from '../scope/sql.js';
  */
 
 /** The caller's scope, or null inside runUnscoped. Throws where no scope was set up, like the extension. */
-export async function ruleScope(): Promise<ResolvedScope | null> {
-  const ctx = getRequestContext();
-  if (ctx?.unscoped) return null;
-  if (!ctx?.loadScope) {
-    throw new Error(
-      'rule tables are scoped but no data scope is set: declare auth on the route, or wrap system work in runUnscoped(reason)',
-    );
-  }
-  return ctx.loadScope();
-}
+export const ruleScope = scopeToCheck;
 
 export function canSeeEstate(scope: ResolvedScope | null, estateId: bigint | null): boolean {
   if (scope === null || scope.allEstates || estateId === null) return true;

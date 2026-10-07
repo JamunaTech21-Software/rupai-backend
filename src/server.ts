@@ -12,6 +12,7 @@ import { tokenSigner } from './core/auth/tokens.js';
 import { createMailer } from './core/mail/mailer.js';
 import { createPlatform } from './core/platform.js';
 import { buildModules } from './modules/index.js';
+import { organisationStartupProblem } from './modules/organisation/organisation.service.js';
 
 /**
  * Process entry point: loads and validates configuration, binds the HTTP port, and shuts down cleanly.
@@ -35,6 +36,16 @@ try {
 
 const logger = createLogger(config);
 const db = createDatabase(config);
+// P3 §4.1: exactly one organisation row, or the API does not start.
+const organisationProblem = await organisationStartupProblem(db).catch((err: unknown) => {
+  logger.fatal({ err }, 'cannot check the organisation row');
+  process.exit(1);
+});
+if (organisationProblem) {
+  logger.fatal(organisationProblem);
+  process.stderr.write(`${organisationProblem}\n`);
+  process.exit(1);
+}
 const platform = await createPlatform(config, logger);
 const authz = dbPermissionResolver(db);
 const sessions = sessionStore(db, platform.redis, logger, {

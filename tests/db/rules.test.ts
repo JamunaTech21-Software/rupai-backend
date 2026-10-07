@@ -729,7 +729,7 @@ describe('data scope on rule tables (P1 §12.3, P4 §4.3)', () => {
       runWithRequestContext({ requestId: 'x', actorId: '1' }, () =>
         withRollback(mdb.db, (tx) => svc.list(tx)),
       ),
-    ).rejects.toThrow(/no data scope is set/);
+    ).rejects.toThrow(/no data scope/i);
   });
 });
 

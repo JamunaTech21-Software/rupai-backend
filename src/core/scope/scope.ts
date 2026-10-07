@@ -123,6 +123,16 @@ export async function currentScope(): Promise<ResolvedScope> {
   return ctx.loadScope();
 }
 
+/**
+ * The scope a SERVICE checks a write against: the request's scope, or null inside runUnscoped (system
+ * work: no restriction). Throws where no scope was set up, exactly like the extension.
+ */
+export async function scopeToCheck(): Promise<ResolvedScope | null> {
+  const ctx = getRequestContext();
+  if (ctx?.unscoped) return null;
+  return currentScope();
+}
+
 /** The current scope as `meta.applied_scope` shows it. For list endpoints of scoped resources. */
 export async function appliedScope(): Promise<ScopeView> {
   return scopeView(await currentScope());

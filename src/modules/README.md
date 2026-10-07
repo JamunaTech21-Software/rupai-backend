@@ -1,6 +1,6 @@
 # Modules
 
-One folder per bounded context (Spec P1 §4.1). `identity/` (users, roles, permissions; P1.01) is the reference example of the layout below. Others will follow, for example `organisation/`, `workforce/`, `attendance/`, `payroll/`, `accounting/`.
+One folder per bounded context (Spec P1 §4.1). `identity/` (users, roles, permissions; P1.01) is the reference example of the layout below. `organisation/` (P1.07: organisation, estate, division, section, field) is the reference for an **estate-tier** module: scope registration, write-level scope checks, delete-only-when-unreferenced. Others will follow, for example `workforce/`, `attendance/`, `payroll/`, `accounting/`.
 
 ## Layout of a module
 
@@ -38,6 +38,8 @@ SCOPED_MODELS.register('PluckingWorkRecord', {
   self: byColumn('employmentProfileId'),
 });
 ```
+
+When a create cannot be judged from the row's own columns (a section reaches its estate through its division), declare `createsCheckedBy: 'service'` and check the parent in the service (see `organisation/hierarchy.service.ts`). Reads, updates and deletes stay filtered. A grant that reaches a record only through a child (a division grant reading its estate) does not authorise changing it: check the write level in the service with `scopeToCheck()`.
 
 - **Reads and aggregates** (`findMany`, `findUnique`, `count`, `aggregate`, `groupBy`): out-of-scope rows are absent. A single record outside scope comes back `null`, so it is **404**, never 403 (P4 §4.3).
 - **Updates and deletes** never match an out-of-scope row (404). **Creates** outside scope are `403 SCOPE_DENIED`. Creates can only be checked automatically for `byColumn` dimensions; a model scoped through relations checks its creates in the service.

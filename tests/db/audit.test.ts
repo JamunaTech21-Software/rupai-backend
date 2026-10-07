@@ -20,6 +20,7 @@ import { testModuleDeps } from '../helpers/modules.js';
 import { TEST_ENV } from '../helpers/test-app.js';
 import {
   createMigratedDatabase,
+  ensureEstates,
   silentLogger,
   TEST_BOOTSTRAP_PASSWORD,
   url,
@@ -43,6 +44,7 @@ const unique = (p: string) => `${p}${String(Date.now() % 100000)}${String((seq +
 
 beforeAll(async () => {
   mdb = await createMigratedDatabase();
+  await ensureEstates(mdb.migrator, [42n]);
   const config = loadConfig({ ...TEST_ENV, DATABASE_URL: url('app', mdb.name), RATE_LIMIT_ENABLED: 'false' });
   const deps = testModuleDeps({
     config,
