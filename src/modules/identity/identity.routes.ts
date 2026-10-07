@@ -1,5 +1,6 @@
 import type { ApiModule } from '../../app.js';
 import { currentActorId, type PermissionResolver } from '../../core/auth/authorize.js';
+import type { AccessLog } from '../../core/audit/access-log.js';
 import type { SessionStore } from '../../core/auth/sessions.js';
 import { toOrderBy, toPaging, toWhere, type ListFieldMap } from '../../core/db/list.js';
 import type { Database } from '../../core/db/prisma.js';
@@ -52,13 +53,14 @@ export interface IdentityDeps {
   readonly platform: Platform;
   readonly authz: PermissionResolver;
   readonly sessions: SessionStore;
+  readonly accessLog: AccessLog;
 }
 
 const PAGE = { pagination: 'page' } as const;
 
-function usersModule({ db, platform, authz, sessions }: IdentityDeps): ApiModule {
+function usersModule({ db, platform, authz, sessions, accessLog }: IdentityDeps): ApiModule {
   const users = usersService(db, authz, sessions);
-  const m = defineModule({ name: 'users', path: '/users', tag: 'Users', platform, authz });
+  const m = defineModule({ name: 'users', path: '/users', tag: 'Users', platform, authz, accessLog });
   const byId = { params: IdParams };
 
   m.route({
@@ -358,7 +360,7 @@ function usersModule({ db, platform, authz, sessions }: IdentityDeps): ApiModule
     errors: [],
     handler: async (_req, res) => {
       const { params } = getValidated(res, byGrant);
-      await scopes.revoke(params.id, params.grantId);
+      await scopes.revoke(params.id, params.grantId, currentActorId());
       sendNoContent(res);
     },
   });
@@ -366,9 +368,9 @@ function usersModule({ db, platform, authz, sessions }: IdentityDeps): ApiModule
   return m.build();
 }
 
-function rolesModule({ db, platform, authz }: IdentityDeps): ApiModule {
+function rolesModule({ db, platform, authz, accessLog }: IdentityDeps): ApiModule {
   const roles = rolesService(db);
-  const m = defineModule({ name: 'roles', path: '/roles', tag: 'Roles', platform, authz });
+  const m = defineModule({ name: 'roles', path: '/roles', tag: 'Roles', platform, authz, accessLog });
   const byId = { params: IdParams };
 
   m.route({
@@ -461,7 +463,7 @@ function rolesModule({ db, platform, authz }: IdentityDeps): ApiModule {
     errors: ['REFERENCED_RECORD', 'SYSTEM_RECORD'],
     handler: async (_req, res) => {
       const { params } = getValidated(res, byId);
-      await roles.remove(params.id);
+      await roles.remove(params.id, currentActorId());
       sendNoContent(res);
     },
   });
@@ -503,8 +505,15 @@ const PERMISSION_LIST_FIELDS: ListFieldMap = {
   action: { field: 'action' },
 };
 
-function permissionsModule({ db, platform, authz }: IdentityDeps): ApiModule {
-  const m = defineModule({ name: 'permissions', path: '/permissions', tag: 'Roles', platform, authz });
+function permissionsModule({ db, platform, authz, accessLog }: IdentityDeps): ApiModule {
+  const m = defineModule({
+    name: 'permissions',
+    path: '/permissions',
+    tag: 'Roles',
+    platform,
+    authz,
+    accessLog,
+  });
   m.route({
     method: 'get',
     path: '/',
@@ -550,9 +559,16 @@ function permissionsModule({ db, platform, authz }: IdentityDeps): ApiModule {
   return m.build();
 }
 
-function accessModule({ db, platform, authz }: IdentityDeps): ApiModule {
+function accessModule({ db, platform, authz, accessLog }: IdentityDeps): ApiModule {
   const access = accessService(db);
-  const m = defineModule({ name: 'access', path: '/access', tag: 'Access control', platform, authz });
+  const m = defineModule({
+    name: 'access',
+    path: '/access',
+    tag: 'Access control',
+    platform,
+    authz,
+    accessLog,
+  });
 
   m.route({
     method: 'get',

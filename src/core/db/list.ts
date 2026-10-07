@@ -55,3 +55,33 @@ export function toPaging(query: ListQuery): { skip: number; take: number } {
   const page = query.page ?? { page: 1, perPage: 25 };
   return { skip: (page.page - 1) * page.perPage, take: page.perPage };
 }
+
+/**
+ * Keyset (cursor) paging, newest first, on a monotonically increasing BIGINT id: the very-high-growth
+ * and audit tables (Spec P4 §2.5), where deep OFFSETs are unaffordable. The cursor is the last id seen,
+ * opaque to the client (base64url).
+ */
+export function encodeIdCursor(id: bigint): string {
+  return Buffer.from(`id:${id.toString()}`, 'utf8').toString('base64url');
+}
+
+/** The id a cursor points after, or null for the first page. Throws on a cursor this API did not issue. */
+export function decodeIdCursor(cursor: string | null): bigint | null {
+  if (cursor === null) return null;
+  const m = /^id:(\d{1,20})$/.exec(Buffer.from(cursor, 'base64url').toString('utf8'));
+  if (!m?.[1]) throw new Error('invalid cursor');
+  return BigInt(m[1]);
+}
+
+/** Runs one keyset page: fetches limit+1 rows to know whether another page exists. */
+export async function idCursorPage<T extends { id: bigint }>(
+  query: ListQuery,
+  fetch: (args: { where: Record<string, unknown>; take: number }) => Promise<T[]>,
+): Promise<{ rows: T[]; nextCursor: string | null; limit: number }> {
+  const limit = query.cursor?.limit ?? 50;
+  const after = decodeIdCursor(query.cursor?.cursor ?? null);
+  const rows = await fetch({ where: after === null ? {} : { id: { lt: after } }, take: limit + 1 });
+  const page = rows.slice(0, limit);
+  const last = page.at(-1);
+  return { rows: page, nextCursor: rows.length > limit && last ? encodeIdCursor(last.id) : null, limit };
+}

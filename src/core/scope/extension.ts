@@ -1,5 +1,6 @@
 import { Prisma } from '../../generated/prisma/client.js';
 import { getRequestContext } from '../context/request-context.js';
+import { AppError } from '../errors/app-error.js';
 import {
   canCreate,
   NOTHING,
@@ -95,7 +96,28 @@ export function applyScope(
   throw new Error(`scope: operation ${operation} on scoped model ${model} is not supported`);
 }
 
-export function scopeExtension(registry: ScopeRegistry) {
+/** A request reached for a record outside its scope (P4 §4.3: logged as a scope denial). */
+export interface ScopeDenial {
+  readonly model: string;
+  readonly operation: string;
+  /** The unique selector or the data of a refused create, for the access log's record reference. */
+  readonly target: unknown;
+}
+
+/** Single-record operations whose "not found" may really be "outside your scope". */
+const SINGLE_RECORD = new Set(['findUnique', 'findUniqueOrThrow', 'update', 'delete']);
+
+const isNotFound = (err: unknown) =>
+  typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2025';
+
+/** How the extension records scope denials. Both run on a client OUTSIDE the scope extension. */
+export interface ScopeDenialHooks {
+  /** Whether a record matching this unique selector exists at all (ignoring scope). */
+  exists(model: string, where: unknown): Promise<boolean>;
+  denied(d: ScopeDenial): Promise<void>;
+}
+
+export function scopeExtension(registry: ScopeRegistry, hooks?: ScopeDenialHooks) {
   return Prisma.defineExtension({
     name: 'rupai-data-scope',
     query: {
@@ -111,7 +133,31 @@ export function scopeExtension(registry: ScopeRegistry) {
             );
           }
           const scope = await ctx.loadScope();
-          return query(applyScope(model, operation, args, scope, mapping));
+          let scoped: Record<string, unknown>;
+          try {
+            scoped = applyScope(model, operation, args, scope, mapping);
+          } catch (err) {
+            if (err instanceof AppError && err.code === 'SCOPE_DENIED') {
+              await hooks?.denied({ model, operation, target: (args as { data?: unknown }).data ?? null });
+            }
+            throw err;
+          }
+          if (!hooks || scoped === args || !SINGLE_RECORD.has(operation)) return query(scoped);
+
+          // The answer is 404 either way (P4 §4.3); the access log must still know when the record
+          // EXISTS outside the scope. Only on the not-found path, so the normal path costs nothing.
+          const where = (args as { where?: unknown }).where;
+          const existsOutside = () => hooks.exists(model, where);
+          try {
+            const result: unknown = await query(scoped);
+            if (result === null && (await existsOutside()))
+              await hooks.denied({ model, operation, target: where });
+            return result;
+          } catch (err) {
+            if (isNotFound(err) && (await existsOutside()))
+              await hooks.denied({ model, operation, target: where });
+            throw err;
+          }
         },
       },
     },

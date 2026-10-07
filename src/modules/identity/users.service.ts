@@ -18,7 +18,9 @@ import type {
   UserOut,
   UserStatus,
 } from './identity.schema.js';
+import { auditCreate, auditDelete, auditUpdate, recordStatusChange } from '../../core/audit/audit.js';
 import { enforceAuthorisations } from './access.service.js';
+import { USER_AUDIT, userAuditValues } from './identity.audit.js';
 import * as repo from './identity.repository.js';
 
 /**
@@ -162,7 +164,10 @@ export function usersService(db: Database, permissions: PermissionResolver, sess
             createdBy: actorId,
           })
           .catch(duplicateUser);
-        return toUserOut(await loadOrNotFound(tx, id));
+        const out = toUserOut(await loadOrNotFound(tx, id));
+        await auditCreate(tx, USER_AUDIT, id, userAuditValues(out), { actorId });
+        await recordStatusChange(tx, USER_AUDIT.type, id, null, out.status, { actorId });
+        return out;
       });
     },
 
@@ -179,11 +184,14 @@ export function usersService(db: Database, permissions: PermissionResolver, sess
           ...(changes.email !== undefined ? { email: changes.email } : {}),
           ...(changes.phone !== undefined ? { phone: changes.phone } : {}),
         };
+        const before = toUserOut(await loadOrNotFound(tx, id));
         const ok = await repo
           .updateUserAtVersion(tx, id, expectedVersion, data, actorId)
           .catch(duplicateUser);
         if (!ok) await versionConflict(tx, id);
-        return toUserOut(await loadOrNotFound(tx, id));
+        const after = toUserOut(await loadOrNotFound(tx, id));
+        await auditUpdate(tx, USER_AUDIT, id, userAuditValues(before), userAuditValues(after), { actorId });
+        return after;
       });
     },
 
@@ -204,7 +212,12 @@ export function usersService(db: Database, permissions: PermissionResolver, sess
         // Disabling ends every session in the same transaction, so access ends on the next request
         // rather than at token expiry.
         const ended = status === 'disabled' ? await sessions.revokeForUser(tx, id, 'user_disabled') : [];
-        return { out: toUserOut(await loadOrNotFound(tx, id)), revoked: ended };
+        const after = toUserOut(await loadOrNotFound(tx, id));
+        await auditUpdate(tx, USER_AUDIT, id, userAuditValues(toUserOut(user)), userAuditValues(after), {
+          actorId,
+        });
+        await recordStatusChange(tx, USER_AUDIT.type, id, user.status, status, { actorId });
+        return { out: after, revoked: ended };
       });
       await sessions.markRevoked(revoked);
       return out;
@@ -281,7 +294,11 @@ export function usersService(db: Database, permissions: PermissionResolver, sess
           const ok = await repo.updateUserAtVersion(tx, id, expectedVersion, {}, actorId);
           if (!ok) await versionConflict(tx, id);
         });
-        return toUserOut(await loadOrNotFound(tx, id));
+        const after = toUserOut(await loadOrNotFound(tx, id));
+        await auditUpdate(tx, USER_AUDIT, id, userAuditValues(toUserOut(user)), userAuditValues(after), {
+          actorId,
+        });
+        return after;
       });
     },
 
@@ -308,6 +325,7 @@ export function usersService(db: Database, permissions: PermissionResolver, sess
             throw err;
           });
         });
+        await auditDelete(tx, USER_AUDIT, id, userAuditValues(toUserOut(user)), { actorId });
       });
     },
 

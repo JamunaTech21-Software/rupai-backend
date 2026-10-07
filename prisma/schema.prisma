@@ -125,6 +125,11 @@ model User {
   sessions            AuthSession[]
   passwordResetTokens PasswordResetToken[]
 
+  auditChanges             AuditChange[]         @relation("AuditChangeBy")
+  auditChangesActingFor    AuditChange[]         @relation("AuditChangeActingFor")
+  statusChanges            StatusHistory[]
+  accessEvents             AccessLog[]
+
   authorisations           AccessAuthorisation[] @relation("AccessAuthorisationUser")
   authorisationsGiven      AccessAuthorisation[] @relation("AccessAuthorisationBy")
   authorisationsRemoved    AccessAuthorisation[] @relation("AccessAuthorisationRemovedBy")
@@ -305,4 +310,109 @@ model AccessAuthorisation {
   @@index([authorisedBy], map: "ix_access_authorisation_by")
   @@index([removedBy], map: "ix_access_authorisation_removed_by")
   @@map("access_authorisation")
+}
+
+// ---------------------------------------------------------------------------------------------
+// P1.05 — Audit (P3 §29, P1 §13, P2 §6.3). Four APPEND-ONLY tables: the application account holds no
+// UPDATE or DELETE grant on any of them, at any permission level, including administrator.
+// ---------------------------------------------------------------------------------------------
+
+/// P3 §29.1. Field-level before/after values. Depth per record class (P1 Table 13.1).
+model AuditChange {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  /// Short entity key (user, role, user_scope, …), never a class or model name.
+  recordType      String   @map("record_type") @db.VarChar(40)
+  /// Wide enough for both BIGINT (as a decimal string) and ULID keys.
+  recordId        String   @map("record_id") @db.VarChar(26)
+  /// create | update | delete | approve | reject | post | reverse | cancel
+  action          String   @db.VarChar(20)
+  /// NULL for whole-record actions (create and delete carry a snapshot instead).
+  field           String?  @db.VarChar(64)
+  oldValue        String?  @map("old_value") @db.LongText
+  newValue        String?  @map("new_value") @db.LongText
+  changedBy       BigInt   @map("changed_by") @db.UnsignedBigInt
+  actingForUserId BigInt?  @map("acting_for_user_id") @db.UnsignedBigInt
+  changedAt       DateTime @default(now()) @map("changed_at") @db.DateTime(0)
+  /// Financial and policy records only.
+  ipAddress       String?  @map("ip_address") @db.VarChar(45)
+  userAgent       String?  @map("user_agent") @db.VarChar(255)
+  reason          String?  @db.VarChar(500)
+
+  changer   User  @relation("AuditChangeBy", fields: [changedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_audit_change_changed_by")
+  actingFor User? @relation("AuditChangeActingFor", fields: [actingForUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_audit_change_acting_for")
+
+  @@index([recordType, recordId, changedAt], map: "ix_audit_record")
+  @@index([changedBy, changedAt], map: "ix_audit_user")
+  @@index([changedAt], map: "ix_audit_changed_at")
+  @@index([actingForUserId], map: "ix_audit_acting_for")
+  @@map("audit_change")
+}
+
+/// P3 §29.2. Lifecycle transitions. A record's current state must be reproducible from it.
+model StatusHistory {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  recordType     String   @map("record_type") @db.VarChar(40)
+  recordId       String   @map("record_id") @db.VarChar(26)
+  /// NULL for the first state (creation).
+  fromState      String?  @map("from_state") @db.VarChar(30)
+  toState        String   @map("to_state") @db.VarChar(30)
+  changedBy      BigInt   @map("changed_by") @db.UnsignedBigInt
+  changedAt      DateTime @default(now()) @map("changed_at") @db.DateTime(0)
+  /// FK to workflow_step when the workflow engine arrives (P1.13).
+  workflowStepId BigInt?  @map("workflow_step_id") @db.UnsignedBigInt
+  comment        String?  @db.VarChar(1000)
+
+  changer User @relation(fields: [changedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_status_history_changed_by")
+
+  @@index([recordType, recordId, changedAt], map: "ix_status_history_record")
+  @@index([changedAt], map: "ix_status_history_changed_at")
+  @@index([changedBy], map: "ix_status_history_changed_by")
+  @@index([workflowStepId], map: "ix_status_history_workflow_step")
+  @@map("status_history")
+}
+
+/// P3 §29.2 + P1 §12.4: authentication events, permission and scope denials, exports and prints.
+model AccessLog {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  /// NULL when no user is known (a sign-in attempt for an unknown username).
+  userId          BigInt?  @map("user_id") @db.UnsignedBigInt
+  eventType       String   @map("event_type") @db.VarChar(30)
+  module          String?  @db.VarChar(40)
+  recordReference String?  @map("record_reference") @db.VarChar(100)
+  ipAddress       String?  @map("ip_address") @db.VarChar(45)
+  userAgent       String?  @map("user_agent") @db.VarChar(255)
+  occurredAt      DateTime @default(now()) @map("occurred_at") @db.DateTime(0)
+  /// Structured context (reason, session, filters of an export). Never a password or token.
+  detail          Json?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_access_log_user")
+
+  @@index([userId, occurredAt], map: "ix_access_log_user")
+  @@index([occurredAt], map: "ix_access_log_occurred_at")
+  @@index([eventType, occurredAt], map: "ix_access_log_event")
+  @@map("access_log")
+}
+
+/// P3 §29.2. Calls to and from external systems. Never stores a biometric payload (P3 §9.4).
+model IntegrationLog {
+  id               BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  /// face_recognition | broker_import | other
+  integrationKey   String   @map("integration_key") @db.VarChar(40)
+  /// inbound | outbound
+  direction        String   @db.VarChar(10)
+  requestReference String?  @map("request_reference") @db.VarChar(100)
+  endpoint         String?  @db.VarChar(255)
+  statusCode       Int?     @map("status_code")
+  /// success | failure
+  outcome          String   @db.VarChar(20)
+  durationMs       Int?     @map("duration_ms")
+  errorMessage     String?  @map("error_message") @db.VarChar(1000)
+  occurredAt       DateTime @default(now()) @map("occurred_at") @db.DateTime(0)
+  relatedType      String?  @map("related_type") @db.VarChar(40)
+  relatedId        String?  @map("related_id") @db.VarChar(26)
+
+  @@index([occurredAt], map: "ix_integration_log_occurred_at")
+  @@index([integrationKey, occurredAt], map: "ix_integration_log_key")
+  @@index([relatedType, relatedId], map: "ix_integration_log_related")
+  @@map("integration_log")
 }

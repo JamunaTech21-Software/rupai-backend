@@ -24,8 +24,13 @@ export function requestContext(): RequestHandler {
     res.setHeader(REQUEST_ID_HEADER, requestId);
     res.locals.requestId = requestId;
 
-    runWithRequestContext({ requestId }, () => {
-      next();
-    });
+    // req.ip honours TRUST_PROXY (set on the app before this runs), so it is the client's address.
+    const userAgent = req.get('user-agent')?.slice(0, 255);
+    runWithRequestContext(
+      { requestId, clientIp: req.ip ?? null, ...(userAgent ? { userAgent } : {}) },
+      () => {
+        next();
+      },
+    );
   };
 }

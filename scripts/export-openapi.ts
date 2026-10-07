@@ -5,6 +5,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 import { loadConfig } from '../src/config/env.js';
+import { noAccessLog } from '../src/core/audit/access-log.js';
 import { staticPermissionResolver } from '../src/core/auth/authorize.js';
 import { sessionStore } from '../src/core/auth/sessions.js';
 import { tokenSigner } from '../src/core/auth/tokens.js';
@@ -34,6 +35,7 @@ const modules = buildModules({
   sessions: sessionStore(db, null, logger),
   signer: tokenSigner({ secret: config.auth.tokenSecret, ttlSeconds: config.auth.accessTokenSeconds }),
   mailer: memoryMailer(),
+  accessLog: noAccessLog,
 });
 const doc = buildOpenApi(modules, { version });
 mkdirSync('docs', { recursive: true });

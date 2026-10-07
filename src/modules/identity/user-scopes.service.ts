@@ -7,6 +7,8 @@ import { AppError, Errors } from '../../core/errors/app-error.js';
 import type { TargetedScopeType } from '../../core/scope/scope.js';
 import { SCOPE_TARGETS } from '../../core/scope/targets.js';
 import type { CreateScopeGrantBody, ScopeGrantOut } from './identity.schema.js';
+import { auditCreate, auditDelete, auditUpdate } from '../../core/audit/audit.js';
+import { SCOPE_AUDIT, scopeAuditValues } from './identity.audit.js';
 import * as repo from './identity.repository.js';
 
 /**
@@ -101,7 +103,9 @@ export function userScopesService(db: Database) {
             }
             throw err;
           });
-        return toScopeGrantOut(await grantOrNotFound(tx, userId, id));
+        const out = toScopeGrantOut(await grantOrNotFound(tx, userId, id));
+        await auditCreate(tx, SCOPE_AUDIT, id, scopeAuditValues(out), { actorId });
+        return out;
       });
     },
 
@@ -123,16 +127,27 @@ export function userScopesService(db: Database) {
         if (!(await repo.updateScopeGrantExpiryAtVersion(tx, grantId, expectedVersion, expiresAt, actorId))) {
           throw await conflict();
         }
-        return toScopeGrantOut(await grantOrNotFound(tx, userId, grantId));
+        const after = toScopeGrantOut(await grantOrNotFound(tx, userId, grantId));
+        await auditUpdate(
+          tx,
+          SCOPE_AUDIT,
+          grantId,
+          scopeAuditValues(toScopeGrantOut(g)),
+          scopeAuditValues(after),
+          {
+            actorId,
+          },
+        );
+        return after;
       });
     },
 
-    async revoke(userId: bigint, grantId: bigint): Promise<void> {
+    async revoke(userId: bigint, grantId: bigint, actorId: bigint): Promise<void> {
       await withTransaction(db, async (tx) => {
         await userOrNotFound(tx, userId);
-        if ((await repo.deleteScopeGrant(tx, userId, grantId)) === 0) {
-          throw Errors.notFound('Scope grant not found.');
-        }
+        const g = await grantOrNotFound(tx, userId, grantId);
+        await repo.deleteScopeGrant(tx, userId, grantId);
+        await auditDelete(tx, SCOPE_AUDIT, grantId, scopeAuditValues(toScopeGrantOut(g)), { actorId });
       });
     },
   };

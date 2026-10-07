@@ -134,7 +134,10 @@ export function listLiveSessions(db: Database, userId: bigint, idleSince: Date) 
 }
 
 export function findPasswordHash(db: Database, userId: bigint) {
-  return db.user.findUnique({ where: { id: userId }, select: { passwordHash: true, status: true } });
+  return db.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true, status: true, mustChangePassword: true },
+  });
 }
 
 /**

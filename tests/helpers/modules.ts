@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 
 import type { Config } from '../../src/config/env.js';
+import { dbAccessLog } from '../../src/core/audit/access-log.js';
 import { staticPermissionResolver, type PermissionResolver } from '../../src/core/auth/authorize.js';
 import { databaseNameOf, sessionStore } from '../../src/core/auth/sessions.js';
 import { tokenSigner } from '../../src/core/auth/tokens.js';
@@ -38,5 +39,6 @@ export function testModuleDeps(opts: {
       ttlSeconds: opts.config.auth.accessTokenSeconds,
     }),
     mailer: memoryMailer(),
+    accessLog: dbAccessLog(opts.db, logger),
   };
 }

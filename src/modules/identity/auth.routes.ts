@@ -85,7 +85,14 @@ export function authModule(deps: AuthModuleDeps): ApiModule {
   const { platform, config } = deps;
   const auth = authService(deps);
   const secure = config.auth.cookieSecure;
-  const m = defineModule({ name: 'auth', path: '/auth', tag: 'Authentication', platform, authz: deps.authz });
+  const m = defineModule({
+    name: 'auth',
+    path: '/auth',
+    tag: 'Authentication',
+    platform,
+    authz: deps.authz,
+    accessLog: deps.accessLog,
+  });
 
   const limit = (cls: 'authPerIp' | 'authPerUsername' | 'passwordReset', key = ipKey) => {
     const store = platform.rateLimitStore(cls);

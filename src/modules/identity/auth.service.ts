@@ -13,10 +13,13 @@ import type { Database } from '../../core/db/prisma.js';
 import { withTransaction, type Tx } from '../../core/db/transaction.js';
 import { AppError, Errors } from '../../core/errors/app-error.js';
 import { getLogger } from '../../core/logging/logger.js';
+import type { AccessEventType, AccessLog } from '../../core/audit/access-log.js';
 import type { Mailer } from '../../core/mail/mailer.js';
 import type { MeOut, SessionOut, TokenOut } from './auth.schema.js';
 import * as authRepo from './auth.repository.js';
 import * as identityRepo from './identity.repository.js';
+import { auditUpdate } from '../../core/audit/audit.js';
+import { USER_AUDIT } from './identity.audit.js';
 import { toUserOut } from './users.service.js';
 
 /**
@@ -52,12 +55,41 @@ export interface AuthServiceDeps {
   readonly signer: TokenSigner;
   readonly authz: PermissionResolver;
   readonly mailer: Mailer;
+  readonly accessLog: AccessLog;
   readonly config: Pick<Config, 'auth' | 'app'>;
   readonly logger: Logger;
 }
 
+/** How each authentication event appears in the access log (P1.05). */
+const ACCESS_EVENT_OF: Readonly<Record<string, AccessEventType>> = {
+  'auth.login_succeeded': 'login',
+  'auth.login_failed': 'failed_login',
+  'auth.account_locked': 'lockout',
+  'auth.token_refreshed': 'token_refresh',
+  'auth.refresh_reuse': 'refresh_reuse',
+  'auth.logout': 'logout',
+  'auth.logout_all': 'logout',
+  'auth.session_revoked': 'session_revoked',
+  'auth.password_changed': 'password_changed',
+  'auth.password_change_failed': 'password_change_failed',
+  'auth.password_reset_requested': 'password_reset_requested',
+  'auth.password_reset': 'password_reset',
+};
+
 const invalidCredentials = () =>
   new AppError('INVALID_CREDENTIALS', 'The username or password is incorrect.');
+
+/** The user's history shows THAT the password changed, never a value (P1.05). */
+async function auditPasswordSet(tx: Tx, userId: bigint, mustChangeBefore: boolean, actorId: bigint) {
+  await auditUpdate(
+    tx,
+    USER_AUDIT,
+    userId,
+    { password: null, must_change_password: mustChangeBefore },
+    { password: '(changed)', must_change_password: false },
+    { actorId },
+  );
+}
 
 const sessionExpired = () => new AppError('SESSION_EXPIRED', 'Your session has ended. Sign in again.');
 
@@ -66,8 +98,18 @@ const iso = (d: Date | null) => (d ? d.toISOString() : null);
 export function authService(deps: AuthServiceDeps) {
   const { db, sessions, signer, config } = deps;
 
-  const event = (level: 'info' | 'warn', name: string, fields: Record<string, unknown> = {}) => {
+  /** Logs the event and writes it to the access log (P1 §12.4: every authentication event). */
+  const event = async (level: 'info' | 'warn', name: string, fields: Record<string, unknown> = {}) => {
     getLogger(deps.logger)[level]({ event: name, ...fields }, name);
+    const eventType = ACCESS_EVENT_OF[name];
+    if (!eventType) return;
+    const { user_id: userId, ip: _ip, ...detail } = fields;
+    await deps.accessLog.record({
+      eventType,
+      ...(userId === undefined ? {} : { userId: userId as bigint | null }),
+      module: 'auth',
+      detail,
+    });
   };
 
   // Verifying against a throwaway hash when the username does not exist keeps the response time of an
@@ -115,7 +157,12 @@ export function authService(deps: AuthServiceDeps) {
       const user = await authRepo.findUserForLogin(db, username);
       if (!user) {
         await burnTime(password);
-        event('info', 'auth.login_failed', { username, ip: client.ip, reason: 'unknown_user' });
+        await event('info', 'auth.login_failed', {
+          user_id: null,
+          username,
+          ip: client.ip,
+          reason: 'unknown_user',
+        });
         throw invalidCredentials();
       }
       const ok = await verifyPassword(user.passwordHash, password);
@@ -133,21 +180,21 @@ export function authService(deps: AuthServiceDeps) {
             ),
           );
           if (lockedUntil) {
-            event('warn', 'auth.account_locked', {
+            await event('warn', 'auth.account_locked', {
               user_id: user.id,
               ip: client.ip,
               locked_until: lockedUntil,
             });
           }
         }
-        event('info', 'auth.login_failed', { user_id: user.id, ip: client.ip, reason: 'bad_password' });
+        await event('info', 'auth.login_failed', { user_id: user.id, ip: client.ip, reason: 'bad_password' });
         throw invalidCredentials();
       }
 
       // Only someone who knows the password learns that the account is locked or disabled.
       if (locked) {
         const retryAfter = Math.max(1, Math.ceil(((user.lockedUntil?.getTime() ?? 0) - Date.now()) / 1000));
-        event('info', 'auth.login_failed', { user_id: user.id, ip: client.ip, reason: 'locked' });
+        await event('info', 'auth.login_failed', { user_id: user.id, ip: client.ip, reason: 'locked' });
         throw new AppError('ACCOUNT_LOCKED', 'Too many failed sign-ins. The account is locked for now.', [
           {
             code: 'ACCOUNT_LOCKED',
@@ -157,7 +204,7 @@ export function authService(deps: AuthServiceDeps) {
         ]);
       }
       if (user.status !== 'active') {
-        event('info', 'auth.login_failed', { user_id: user.id, ip: client.ip, reason: 'disabled' });
+        await event('info', 'auth.login_failed', { user_id: user.id, ip: client.ip, reason: 'disabled' });
         throw new AppError('ACCOUNT_LOCKED', 'This account is disabled.', [
           { code: 'ACCOUNT_DISABLED', message: 'Ask an administrator to re-enable it.' },
         ]);
@@ -177,7 +224,7 @@ export function authService(deps: AuthServiceDeps) {
         });
         return { sessionId: session.id, refresh: await issueRefreshToken(tx, session.id, sessionExpiresAt) };
       });
-      event('info', 'auth.login_succeeded', { user_id: user.id, session_id: sessionId, ip: client.ip });
+      await event('info', 'auth.login_succeeded', { user_id: user.id, session_id: sessionId, ip: client.ip });
       return {
         body: tokenBody(user, sessionId, user.mustChangePassword),
         refreshToken: refresh.token,
@@ -214,7 +261,7 @@ export function authService(deps: AuthServiceDeps) {
 
       if (outcome.kind === 'reuse') {
         await sessions.markRevoked(outcome.revoked);
-        event('warn', 'auth.refresh_reuse', {
+        await event('warn', 'auth.refresh_reuse', {
           user_id: outcome.userId,
           session_id: outcome.sessionId,
           ip: client.ip,
@@ -223,7 +270,10 @@ export function authService(deps: AuthServiceDeps) {
         throw sessionExpired();
       }
       if (outcome.kind === 'invalid') throw sessionExpired();
-      event('info', 'auth.token_refreshed', { user_id: outcome.user.id, session_id: outcome.sessionId });
+      await event('info', 'auth.token_refreshed', {
+        user_id: outcome.user.id,
+        session_id: outcome.sessionId,
+      });
       return {
         body: tokenBody(outcome.user, outcome.sessionId, outcome.mustChangePassword),
         refreshToken: outcome.next.token,
@@ -240,12 +290,15 @@ export function authService(deps: AuthServiceDeps) {
           : null);
       if (sessionId === null) return;
       const revoked = await revokeAndPublish((tx) => sessions.revoke(tx, sessionId, 'logout'));
-      if (revoked.length > 0) event('info', 'auth.logout', { session_id: sessionId });
+      if (revoked.length > 0) {
+        const session = await authRepo.findSession(db, sessionId);
+        await event('info', 'auth.logout', { user_id: session?.userId ?? null, session_id: sessionId });
+      }
     },
 
     async logoutAll(userId: bigint): Promise<number> {
       const revoked = await revokeAndPublish((tx) => sessions.revokeForUser(tx, userId, 'logout_all'));
-      event('info', 'auth.logout_all', { user_id: userId, sessions: revoked.length });
+      await event('info', 'auth.logout_all', { user_id: userId, sessions: revoked.length, all: true });
       return revoked.length;
     },
 
@@ -290,7 +343,7 @@ export function authService(deps: AuthServiceDeps) {
         return sessions.revoke(tx, sessionId, 'session_revoked');
       });
       if (revoked.length > 0)
-        event('info', 'auth.session_revoked', { user_id: userId, session_id: sessionId });
+        await event('info', 'auth.session_revoked', { user_id: userId, session_id: sessionId });
     },
 
     /**
@@ -306,7 +359,7 @@ export function authService(deps: AuthServiceDeps) {
       const user = await authRepo.findPasswordHash(db, userId);
       if (!user) throw Errors.notFound('User not found.');
       if (!(await verifyPassword(user.passwordHash, currentPassword))) {
-        event('info', 'auth.password_change_failed', { user_id: userId });
+        await event('info', 'auth.password_change_failed', { user_id: userId });
         // 422, not 401: a wrong current password must not look like an expired session to the client.
         throw Errors.validation([
           {
@@ -328,6 +381,7 @@ export function authService(deps: AuthServiceDeps) {
       const passwordHash = await hashPassword(newPassword);
       const revoked = await withTransaction(db, async (tx) => {
         await authRepo.setPassword(tx, userId, passwordHash);
+        await auditPasswordSet(tx, userId, user.mustChangePassword, userId);
         return sessions.revokeForUser(
           tx,
           userId,
@@ -337,14 +391,14 @@ export function authService(deps: AuthServiceDeps) {
       });
       await sessions.markRevoked(revoked);
       if (currentSessionId !== null) await sessions.forget([currentSessionId]);
-      event('info', 'auth.password_changed', { user_id: userId, other_sessions_ended: revoked.length });
+      await event('info', 'auth.password_changed', { user_id: userId, other_sessions_ended: revoked.length });
     },
 
     /** Always resolves the same way, so the endpoint cannot tell anyone which addresses exist. */
     async forgotPassword(email: string, client: ClientInfo): Promise<void> {
       const user = await authRepo.findActiveUserByEmail(db, email);
       if (!user?.email) {
-        event('info', 'auth.password_reset_requested', { ip: client.ip, matched: false });
+        await event('info', 'auth.password_reset_requested', { ip: client.ip, matched: false });
         return;
       }
       const token = newOpaqueToken();
@@ -357,7 +411,11 @@ export function authService(deps: AuthServiceDeps) {
           requestedIp: client.ip,
         }),
       );
-      event('info', 'auth.password_reset_requested', { user_id: user.id, ip: client.ip, matched: true });
+      await event('info', 'auth.password_reset_requested', {
+        user_id: user.id,
+        ip: client.ip,
+        matched: true,
+      });
 
       // The token travels in the URL fragment: browsers never send a fragment to a server, so it stays
       // out of access logs and Referer headers.
@@ -392,7 +450,12 @@ export function authService(deps: AuthServiceDeps) {
         if (!row || Number(row.usable) !== 1) return null;
         const userId = row.user_id;
         await authRepo.markResetTokenUsed(tx, row.id);
+        const previous = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { mustChangePassword: true },
+        });
         await authRepo.setPassword(tx, userId, passwordHash);
+        await auditPasswordSet(tx, userId, previous.mustChangePassword, userId);
         const revoked = await sessions.revokeForUser(tx, userId, 'password_reset' satisfies RevokeReason);
         return { userId, revoked };
       });
@@ -406,7 +469,7 @@ export function authService(deps: AuthServiceDeps) {
         ]);
       }
       await sessions.markRevoked(outcome.revoked);
-      event('info', 'auth.password_reset', {
+      await event('info', 'auth.password_reset', {
         user_id: outcome.userId,
         sessions_ended: outcome.revoked.length,
       });
