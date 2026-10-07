@@ -26,6 +26,8 @@ export const ERROR_CODES = {
   PERMISSION_DENIED: 403,
   SCOPE_DENIED: 403,
   SELF_APPROVAL_FORBIDDEN: 403,
+  /** A rule version taking effect in the past needs elevated approval (P1 §3.2, §10.7, P1.06). */
+  RETROSPECTIVE_APPROVAL_REQUIRED: 403,
   /** A temporary password must be changed before anything else (P3 §32.2, P1.02). */
   PASSWORD_CHANGE_REQUIRED: 403,
 
@@ -71,6 +73,8 @@ export const ERROR_CODES = {
   RULE_AMBIGUOUS: 422,
   RULE_NOT_FOUND: 422,
   STATUTORY_RULE_UNVERIFIED: 422,
+  /** A rule version would overlap another active version at the same scope (P2 §2.10, P1.06). */
+  RULE_OVERLAP: 422,
   BUDGET_EXCEEDED: 422,
   BUDGET_NOT_ACTIVE: 422,
   ALLOCATION_MISMATCH: 422,
