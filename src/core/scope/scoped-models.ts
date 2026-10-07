@@ -37,6 +37,12 @@ export interface ScopeMapping {
   readonly facility?: DimensionMapping;
   /** The employment profile the record is about (implicit self scope). */
   readonly self?: DimensionMapping;
+  /**
+   * 'service': creates cannot be judged from the row's own columns (a section reaches its estate
+   * through its division), so the extension does not check them and the module's service MUST, from the
+   * parent it has already read in scope. Reads, updates and deletes are filtered as usual.
+   */
+  readonly createsCheckedBy?: 'service';
 }
 
 /** A plain column comparison: `{ [field]: { in: ids } }`. Also lets creates be checked. */
@@ -49,7 +55,8 @@ export class ScopeRegistry {
 
   register(model: string, mapping: ScopeMapping): this {
     if (this.#models.has(model)) throw new Error(`scope mapping for ${model} is already registered`);
-    if (Object.keys(mapping).length === 0) throw new Error(`scope mapping for ${model} maps no dimension`);
+    const dimensions = Object.keys(mapping).filter((k) => k !== 'createsCheckedBy');
+    if (dimensions.length === 0) throw new Error(`scope mapping for ${model} maps no dimension`);
     this.#models.set(model, mapping);
     return this;
   }

@@ -139,6 +139,18 @@ describe('applyScope: rewriting each Prisma operation', () => {
     expect(applyScope('M', 'findMany', {}, s, ESTATE_TIER)).toEqual({ where: { AND: [filter] } });
   });
 
+  it('leaves creates to the service only where the mapping says so, and still filters its reads', () => {
+    const viaParent: ScopeMapping = {
+      estate: (ids) => ({ division: { estateId: { in: [...ids] } } }),
+      createsCheckedBy: 'service',
+    };
+    expect(() => applyScope('Section', 'create', { data: { divisionId: 9n } }, s, viaParent)).not.toThrow();
+    expect(() => applyScope('M', 'create', { data: { divisionId: 9n } }, s, ESTATE_TIER)).toThrow(AppError);
+    expect(applyScope('Section', 'findMany', {}, s, viaParent)).toEqual({
+      where: { AND: [{ OR: [{ division: { estateId: { in: [1n] } } }] }] },
+    });
+  });
+
   it('keeps a unique selector at the top level and merges an existing AND', () => {
     expect(applyScope('M', 'findUnique', { where: { id: 5n, AND: { a: 1 } } }, s, ESTATE_TIER)).toEqual({
       where: { id: 5n, AND: [{ a: 1 }, filter] },

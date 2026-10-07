@@ -187,3 +187,16 @@ export async function createMigratedDatabase(): Promise<MigratedDatabase> {
 export function silentLogger() {
   return createLogger({ appEnv: 'test', log: { level: 'silent', format: 'json' } });
 }
+
+/**
+ * Estates with the given ids, for suites that grant scope on fixed ids. Scope grants must name an
+ * existing estate since P1.07 (SCOPE_TARGETS), so those ids need real rows. Idempotent.
+ */
+export async function ensureEstates(migrator: Database, ids: readonly bigint[]): Promise<void> {
+  const org = await migrator.organisation.findFirstOrThrow({ select: { id: true } });
+  for (const id of ids) {
+    await migrator.$executeRaw`
+      INSERT IGNORE INTO estate (id, organisation_id, code, name, created_by)
+      VALUES (${id}, ${org.id}, ${`T-${id.toString()}`}, ${`Test estate ${id.toString()}`}, 1)`;
+  }
+}

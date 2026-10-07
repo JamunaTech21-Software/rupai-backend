@@ -125,19 +125,30 @@ model User {
   sessions            AuthSession[]
   passwordResetTokens PasswordResetToken[]
 
-  auditChanges             AuditChange[]         @relation("AuditChangeBy")
-  auditChangesActingFor    AuditChange[]         @relation("AuditChangeActingFor")
-  statusChanges            StatusHistory[]
-  accessEvents             AccessLog[]
+  auditChanges          AuditChange[]   @relation("AuditChangeBy")
+  auditChangesActingFor AuditChange[]   @relation("AuditChangeActingFor")
+  statusChanges         StatusHistory[]
+  accessEvents          AccessLog[]
 
-  authorisations           AccessAuthorisation[] @relation("AccessAuthorisationUser")
-  authorisationsGiven      AccessAuthorisation[] @relation("AccessAuthorisationBy")
-  authorisationsRemoved    AccessAuthorisation[] @relation("AccessAuthorisationRemovedBy")
+  authorisations        AccessAuthorisation[] @relation("AccessAuthorisationUser")
+  authorisationsGiven   AccessAuthorisation[] @relation("AccessAuthorisationBy")
+  authorisationsRemoved AccessAuthorisation[] @relation("AccessAuthorisationRemovedBy")
 
-  scopes              UserScope[] @relation("UserScopeUser")
-  grantedScopes       UserScope[] @relation("UserScopeGrantedBy")
-  createdScopes       UserScope[] @relation("UserScopeCreatedBy")
-  updatedScopes       UserScope[] @relation("UserScopeUpdatedBy")
+  createdOrganisations Organisation[] @relation("OrganisationCreatedBy")
+  updatedOrganisations Organisation[] @relation("OrganisationUpdatedBy")
+  createdEstates       Estate[]       @relation("EstateCreatedBy")
+  updatedEstates       Estate[]       @relation("EstateUpdatedBy")
+  createdDivisions     Division[]     @relation("DivisionCreatedBy")
+  updatedDivisions     Division[]     @relation("DivisionUpdatedBy")
+  createdSections      Section[]      @relation("SectionCreatedBy")
+  updatedSections      Section[]      @relation("SectionUpdatedBy")
+  createdFields        Field[]        @relation("FieldCreatedBy")
+  updatedFields        Field[]        @relation("FieldUpdatedBy")
+
+  scopes        UserScope[] @relation("UserScopeUser")
+  grantedScopes UserScope[] @relation("UserScopeGrantedBy")
+  createdScopes UserScope[] @relation("UserScopeCreatedBy")
+  updatedScopes UserScope[] @relation("UserScopeUpdatedBy")
 
   @@unique([username], map: "ux_user_username")
   @@unique([email], map: "ux_user_email")
@@ -415,4 +426,190 @@ model IntegrationLog {
   @@index([integrationKey, occurredAt], map: "ix_integration_log_key")
   @@index([relatedType, relatedId], map: "ix_integration_log_related")
   @@map("integration_log")
+}
+
+// ---- P1.07 organisation and estate hierarchy (Spec P3 §4.1–§4.5) ---------------------------------
+
+/// One row per deployment (P3 §4.1): the GENERATED singleton key makes a second row impossible, and the
+/// API refuses to start without one. country_id and base_currency_id gain their foreign keys and NOT NULL
+/// in P1.10, which creates country and currency (BACKLOG D-1.07-1).
+model Organisation {
+  id                   BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  name                 String    @db.VarChar(150)
+  shortName            String    @map("short_name") @db.VarChar(50)
+  registrationNumber   String?   @map("registration_number") @db.VarChar(50)
+  tin                  String?   @db.VarChar(30)
+  vatRegistration      String?   @map("vat_registration") @db.VarChar(30)
+  addressLine1         String?   @map("address_line1") @db.VarChar(200)
+  addressLine2         String?   @map("address_line2") @db.VarChar(200)
+  city                 String?   @db.VarChar(100)
+  postalCode           String?   @map("postal_code") @db.VarChar(20)
+  countryId            BigInt?   @map("country_id") @db.UnsignedBigInt
+  phone                String?   @db.VarChar(30)
+  email                String?   @db.VarChar(150)
+  website              String?   @db.VarChar(150)
+  logoPath             String?   @map("logo_path") @db.VarChar(255)
+  baseCurrencyId       BigInt?   @map("base_currency_id") @db.UnsignedBigInt
+  /// 1 to 12. Governs every estate (O-17).
+  fiscalYearStartMonth Int       @map("fiscal_year_start_month") @db.SmallInt
+  /// active | inactive
+  status               String    @default("active") @db.VarChar(30)
+  /// GENERATED column (see migration SQL): always 1, under a unique index, so there is one row at most.
+  singleton            Int?      @db.TinyInt
+  version              Int       @default(1)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy            BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt            DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy            BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User     @relation("OrganisationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_created_by")
+  updater User?    @relation("OrganisationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_updated_by")
+  estates Estate[]
+
+  @@unique([singleton], map: "ux_organisation_singleton")
+  @@index([createdBy], map: "ix_organisation_created_by")
+  @@index([updatedBy], map: "ix_organisation_updated_by")
+  @@map("organisation")
+}
+
+/// Estate tier root (P3 §4.2). Deactivated, never deleted once referenced. manager_profile_id gains its
+/// foreign key to employment_profile in Phase 2 (BACKLOG D-1.07-2).
+model Estate {
+  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  organisationId   BigInt    @map("organisation_id") @db.UnsignedBigInt
+  /// Unique within the organisation; appears in document numbers.
+  code             String    @db.VarChar(20)
+  name             String    @db.VarChar(150)
+  location         String?   @db.VarChar(200)
+  addressLine1     String?   @map("address_line1") @db.VarChar(200)
+  district         String?   @db.VarChar(100)
+  /// Hectares. Informational; the authoritative figure is the sum of land_parcel.
+  totalArea        Decimal?  @map("total_area") @db.Decimal(14, 3)
+  managerProfileId BigInt?   @map("manager_profile_id") @db.UnsignedBigInt
+  phone            String?   @db.VarChar(30)
+  email            String?   @db.VarChar(150)
+  establishedOn    DateTime? @map("established_on") @db.Date
+  /// owned | leased | government_lease | other
+  ownershipType    String?   @map("ownership_type") @db.VarChar(30)
+  /// active | inactive
+  status           String    @default("active") @db.VarChar(30)
+  remarks          String?   @db.VarChar(500)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy        BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_organisation")
+  creator      User         @relation("EstateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_created_by")
+  updater      User?        @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
+  divisions    Division[]
+  fields       Field[]
+
+  @@unique([organisationId, code], map: "ux_estate_code")
+  @@index([status], map: "ix_estate_status")
+  @@index([managerProfileId], map: "ix_estate_manager")
+  @@index([createdBy], map: "ix_estate_created_by")
+  @@index([updatedBy], map: "ix_estate_updated_by")
+  @@map("estate")
+}
+
+/// P3 §4.3.
+model Division {
+  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  estateId         BigInt    @map("estate_id") @db.UnsignedBigInt
+  /// Unique within the estate.
+  code             String    @db.VarChar(20)
+  name             String    @db.VarChar(150)
+  managerProfileId BigInt?   @map("manager_profile_id") @db.UnsignedBigInt
+  /// Hectares.
+  area             Decimal?  @db.Decimal(14, 3)
+  /// active | inactive
+  status           String    @default("active") @db.VarChar(30)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy        BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  estate   Estate    @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_estate")
+  creator  User      @relation("DivisionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_created_by")
+  updater  User?     @relation("DivisionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_updated_by")
+  sections Section[]
+
+  @@unique([estateId, code], map: "ux_division_code")
+  @@index([status], map: "ix_division_status")
+  @@index([managerProfileId], map: "ix_division_manager")
+  @@index([createdBy], map: "ix_division_created_by")
+  @@index([updatedBy], map: "ix_division_updated_by")
+  @@map("division")
+}
+
+/// P3 §4.4. estate_id is deliberately absent: it is reached through division.
+model Section {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  divisionId          BigInt    @map("division_id") @db.UnsignedBigInt
+  /// Unique within the division.
+  code                String    @db.VarChar(20)
+  name                String    @db.VarChar(150)
+  supervisorProfileId BigInt?   @map("supervisor_profile_id") @db.UnsignedBigInt
+  area                Decimal?  @db.Decimal(14, 3)
+  /// active | inactive
+  status              String    @default("active") @db.VarChar(30)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy           BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_division")
+  creator  User     @relation("SectionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_created_by")
+  updater  User?    @relation("SectionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_updated_by")
+  fields   Field[]
+
+  @@unique([divisionId, code], map: "ux_section_code")
+  @@index([status], map: "ix_section_status")
+  @@index([supervisorProfileId], map: "ix_section_supervisor")
+  @@index([createdBy], map: "ix_section_created_by")
+  @@index([updatedBy], map: "ix_section_updated_by")
+  @@map("section")
+}
+
+/// P3 §4.5. The field is permanent; what is planted on it is plantation_record (Phase 5). estate_id is
+/// denormalised on purpose (query volume) and kept equal to the section's estate by the application.
+model Field {
+  id                   BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  sectionId            BigInt    @map("section_id") @db.UnsignedBigInt
+  estateId             BigInt    @map("estate_id") @db.UnsignedBigInt
+  /// Unique within the estate.
+  fieldNumber          String    @map("field_number") @db.VarChar(20)
+  name                 String?   @db.VarChar(150)
+  /// Hectares.
+  grossArea            Decimal   @map("gross_area") @db.Decimal(14, 3)
+  /// Hectares. Set here until plantation_record derives it (BACKLOG D-1.07-6).
+  plantedArea          Decimal?  @map("planted_area") @db.Decimal(14, 3)
+  /// producing | young | nursery | uprooted | fallow | abandoned
+  fieldStatus          String    @map("field_status") @db.VarChar(30)
+  /// When the field joined its current section.
+  sectionEffectiveFrom DateTime? @map("section_effective_from") @db.Date
+  /// active | inactive
+  status               String    @default("active") @db.VarChar(30)
+  remarks              String?   @db.VarChar(500)
+  version              Int       @default(1)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy            BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt            DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy            BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_section")
+  estate  Estate  @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_estate")
+  creator User    @relation("FieldCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_created_by")
+  updater User?   @relation("FieldUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_updated_by")
+
+  @@unique([estateId, fieldNumber], map: "ux_field_number")
+  @@index([sectionId], map: "ix_field_section")
+  @@index([fieldStatus], map: "ix_field_status")
+  @@index([createdBy], map: "ix_field_created_by")
+  @@index([updatedBy], map: "ix_field_updated_by")
+  @@map("field")
 }
