@@ -9,6 +9,8 @@ import type {
   ConcentrationReportOut,
   RequirementOut,
 } from './identity.schema.js';
+import { auditAction, auditCreate } from '../../core/audit/audit.js';
+import { AUTHORISATION_AUDIT } from './identity.audit.js';
 import * as repo from './identity.repository.js';
 import { requirementsFor, SENSITIVE_WHY, SOD_RULES, type Requirement } from './sod-rules.js';
 
@@ -151,7 +153,24 @@ export async function enforceAuthorisations(
       missing,
     );
   }
-  await repo.insertAuthorisations(tx, toInsert);
+  // One by one, so each authorisation is audited with its own id (P6 §11.1).
+  for (const row of toInsert) {
+    const { id } = await tx.accessAuthorisation.create({ data: row, select: { id: true } });
+    await auditCreate(
+      tx,
+      AUTHORISATION_AUDIT,
+      id,
+      {
+        user_id: row.userId.toString(),
+        kind: row.kind,
+        rule: row.ruleCode,
+        key: row.authorisationKey,
+        permissions: row.permissions.split(','),
+        reason: row.reason,
+      },
+      { actorId, reason: row.reason },
+    );
+  }
 }
 
 const roleCodesOf = (u: Awaited<ReturnType<typeof repo.effectiveAccessOfActiveUsers>>[number]) =>
@@ -201,6 +220,11 @@ export function accessService(db: Database) {
         if ((await repo.removeAuthorisation(tx, userId, authorisationId, actorId)) === 0) {
           throw Errors.notFound('No active authorisation with this id for this user.');
         }
+        await auditAction(tx, AUTHORISATION_AUDIT, authorisationId, 'cancel', {
+          actorId,
+          field: 'removed_at',
+          newValue: new Date(),
+        });
       });
     },
 

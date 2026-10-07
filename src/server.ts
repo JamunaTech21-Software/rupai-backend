@@ -4,6 +4,7 @@ import { createApp } from './app.js';
 import { ConfigError, loadConfig, type Config } from './config/env.js';
 import { createDatabase } from './core/db/prisma.js';
 import { createLogger } from './core/logging/logger.js';
+import { dbAccessLog } from './core/audit/access-log.js';
 import { authenticate } from './core/auth/authenticate.js';
 import { dbPermissionResolver } from './core/auth/authorize.js';
 import { databaseNameOf, sessionStore } from './core/auth/sessions.js';
@@ -45,13 +46,14 @@ const signer = tokenSigner({
   ttlSeconds: config.auth.accessTokenSeconds,
 });
 const mailer = createMailer(config, logger);
+const accessLog = dbAccessLog(db, logger);
 const app = createApp({
   config,
   logger,
   db,
   platform,
   authenticate: authenticate({ signer, sessions }),
-  modules: buildModules({ config, logger, db, platform, authz, sessions, signer, mailer }),
+  modules: buildModules({ config, logger, db, platform, authz, sessions, signer, mailer, accessLog }),
 });
 
 const server = app.listen(config.port, () => {

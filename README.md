@@ -110,6 +110,14 @@ Every endpoint follows spec Part 4, through the helpers in `src/core/http`. Don'
 - **Guards:** a new user has no roles; passwords are argon2id and never returned; a system role can only be renamed; a role held by anyone cannot be deleted; at least one active user always holds the Administrator role permanently (`LAST_ADMINISTRATOR`).
 - Own-account endpoints (`/auth/me`, sessions, password change) declare `auth: { signedIn: true, reason }` instead of a permission.
 
+## Audit, status history and access log (P1.05)
+
+- **Four append-only tables** (P3 §29): `audit_change` (field-level before/after), `status_history` (every state change), `access_log` (sign-ins, failures, lockouts, logouts, refreshes, password events, permission and scope denials, exports, prints), `integration_log` (external calls, by reference only). The app account has **no UPDATE or DELETE** on them, so the database itself makes them immutable.
+- **The audit writer** (`src/core/audit/audit.ts`) runs in the **same transaction** as the change. If the audit write fails, the change fails. Depth follows P1 Table 13.1: each module declares a record type, its class and the fields it tracks (`identity.audit.ts`). Masters record their significant fields. Policy and financial records also keep the client address and user agent. Passwords and secrets are never written: a password change shows as `(changed)`.
+- **Wired in:** every user, role, scope grant and authorisation change is audited. Users and roles get status history. Every sign-in event (P1.02) and every permission denial is in the access log. Scope denials are logged even though the caller only sees 404: the scope extension checks whether the record exists outside the scope.
+- **The access log is written outside the caller's transaction**, because a refused sign-in or a denied request never commits. A failed write is logged and never changes the answer.
+- **API** (`audit.view`): `GET /audit/changes`, `/audit/status-history`, `/audit/access-log`. These are cursor-paginated, newest first, and need a time range (at most 366 days unless one record is named).
+
 ## Separation of duties (P1.04)
 
 - **The rules** (`src/modules/identity/sod-rules.ts`, P6 Table 5.1) are expanded into concrete permission combinations, for example `payroll.create + payroll.approve`, or `user.edit` with any financial approve or post. `GET /access/sod-rules` lists them. The 15 **sensitive permissions** of P6 Table 10.1 are listed in the permission catalogue.

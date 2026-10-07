@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 
 import { getRequestContext } from '../context/request-context.js';
 import type { Database } from '../db/prisma.js';
+import type { AccessLog } from '../audit/access-log.js';
 import { AppError } from '../errors/app-error.js';
 import { ALL_ESTATES_SCOPE, EMPTY_SCOPE, scopeFromGrants, type ResolvedScope } from '../scope/scope.js';
 
@@ -113,11 +114,15 @@ function passwordChangeRequired(): AppError {
 
 /**
  * Route guard: 401 without an authenticated user, 403 PERMISSION_DENIED without the permission.
- * The resolved permission set is kept on the request context for the rest of the request.
- * (Denials are written to access_log from P1.05.)
+ * The resolved permission set is kept on the request context for the rest of the request. Every denial
+ * is written to the access log (P4 §4.1: "403 PERMISSION_DENIED, logged to access_log").
  */
-export function requirePermission(resolver: PermissionResolver, permission: string): RequestHandler {
-  return (_req, _res, next) => {
+export function requirePermission(
+  resolver: PermissionResolver,
+  permission: string,
+  accessLog?: AccessLog,
+): RequestHandler {
+  return (req, _res, next) => {
     const ctx = getRequestContext();
     const actorId = currentActorId();
     // A temporary password unlocks nothing but the user's own account (P3 §32.2).
@@ -127,6 +132,12 @@ export function requirePermission(resolver: PermissionResolver, permission: stri
       const permissions = ctx?.permissions ?? (await resolver.permissionsOf(actorId));
       if (ctx) ctx.permissions = permissions;
       if (!permissions.has(permission)) {
+        await accessLog?.record({
+          userId: actorId,
+          eventType: 'permission_denied',
+          module: permission.split('.')[0] ?? null,
+          detail: { permission, method: req.method, path: req.originalUrl.split('?')[0] },
+        });
         throw new AppError('PERMISSION_DENIED', 'You do not have permission to do this.', [
           { code: 'PERMISSION_DENIED', message: `Requires ${permission}.`, context: { permission } },
         ]);

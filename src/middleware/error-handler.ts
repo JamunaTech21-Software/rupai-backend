@@ -109,10 +109,16 @@ export const notFoundHandler: RequestHandler = () => {
 /**
  * Bodies must be JSON (Spec P4 §2.3). File upload routes (P1.12) mount their own multipart parser BEFORE
  * this guard.
+ *
+ * A chunked request with no Content-Type counts as bodiless: proxies re-encode an empty POST that way (the
+ * Cloudflare tunnel turns a browser's `Content-Length: 0` into `Transfer-Encoding: chunked`), and a JSON
+ * client always declares its type. Such a request reaches the route with no body; a route that needs one
+ * answers 400 from its own validation.
  */
 export const requireJsonBody: RequestHandler = (req, _res, next) => {
   const hasBody =
-    Number(req.headers['content-length'] ?? 0) > 0 || req.headers['transfer-encoding'] !== undefined;
+    Number(req.headers['content-length'] ?? 0) > 0 ||
+    (req.headers['transfer-encoding'] !== undefined && req.headers['content-type'] !== undefined);
   if (hasBody && !req.is('application/json')) {
     throw new AppError('UNSUPPORTED_MEDIA_TYPE', 'Request bodies must be application/json.', [
       {

@@ -22,7 +22,9 @@ function startServer(env: Record<string, string>) {
   });
 }
 
-describe('server start-up', () => {
+// Each test starts a real Node process through tsx; a cold start under a busy CI runner can take several
+// seconds, so the test timeout matches the process timeout rather than Vitest's 5 s default.
+describe('server start-up', { timeout: 25_000 }, () => {
   it('refuses to start without a database URL', () => {
     const run = startServer({ DATABASE_URL: '' });
     expect(run.status).toBe(1);

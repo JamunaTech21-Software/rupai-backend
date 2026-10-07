@@ -8,7 +8,9 @@ import { AppError, Errors, type ErrorDetail } from '../../core/errors/app-error.
 import type { ListQuery } from '../../core/http/list-query.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { CreateRoleBody, PatchRoleBody, RoleOut, RoleStatus } from './identity.schema.js';
+import { auditCreate, auditDelete, auditUpdate, recordStatusChange } from '../../core/audit/audit.js';
 import { enforceAuthorisations, type ProvidedAuthorisation } from './access.service.js';
+import { ROLE_AUDIT, roleAuditValues } from './identity.audit.js';
 import * as repo from './identity.repository.js';
 import { PERMISSION_KEYS } from './permission-catalogue.js';
 
@@ -158,7 +160,10 @@ export function rolesService(db: Database) {
           })
           .catch(duplicateRole);
         await repo.replaceRolePermissions(tx, id, permissionIds);
-        return toRoleOut(await loadOrNotFound(tx, id));
+        const out = toRoleOut(await loadOrNotFound(tx, id));
+        await auditCreate(tx, ROLE_AUDIT, id, roleAuditValues(out), { actorId });
+        await recordStatusChange(tx, ROLE_AUDIT.type, id, null, out.status, { actorId });
+        return out;
       });
     },
 
@@ -211,7 +216,9 @@ export function rolesService(db: Database) {
             },
           ]);
         }
-        return toRoleOut(await loadOrNotFound(tx, id));
+        const after = toRoleOut(await loadOrNotFound(tx, id));
+        await auditUpdate(tx, ROLE_AUDIT, id, roleAuditValues(current), roleAuditValues(after), { actorId });
+        return after;
       });
     },
 
@@ -239,14 +246,20 @@ export function rolesService(db: Database) {
           const now = await loadOrNotFound(tx, id);
           throw Errors.versionConflict({ version: now.version, resource: toRoleOut(now) });
         }
-        return toRoleOut(await loadOrNotFound(tx, id));
+        const after = toRoleOut(await loadOrNotFound(tx, id));
+        await auditUpdate(tx, ROLE_AUDIT, id, roleAuditValues(toRoleOut(role)), roleAuditValues(after), {
+          actorId,
+        });
+        await recordStatusChange(tx, ROLE_AUDIT.type, id, role.status, status, { actorId });
+        return after;
       });
     },
 
-    async remove(id: bigint): Promise<void> {
+    async remove(id: bigint, actorId: bigint): Promise<void> {
       await withTransaction(db, async (tx) => {
         const role = await loadOrNotFound(tx, id);
         if (role.isSystem) throw systemRecord('deleted');
+        const before = roleAuditValues(toRoleOut(role));
         await repo.deleteRole(tx, id).catch((err: unknown) => {
           if (constraintViolation(err)?.kind === 'referenced') {
             throw new AppError('REFERENCED_RECORD', 'This role is held by users, so it cannot be deleted.', [
@@ -255,6 +268,7 @@ export function rolesService(db: Database) {
           }
           throw err;
         });
+        await auditDelete(tx, ROLE_AUDIT, id, before, { actorId });
       });
     },
   };

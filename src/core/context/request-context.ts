@@ -11,6 +11,9 @@ import type { ResolvedScope } from '../scope/scope.js';
  */
 export interface RequestContext {
   readonly requestId: string;
+  /** The client's address (after TRUST_PROXY) and user agent, for the audit and access logs (P1.05). */
+  readonly clientIp?: string | null;
+  readonly userAgent?: string;
   /** Child logger bound with `request_id`. Set by the HTTP logging middleware. */
   logger?: Logger;
   /** The authenticated user's id, set by `authenticate` from P1.02. Used for per-user keys (idempotency, rate limits). */

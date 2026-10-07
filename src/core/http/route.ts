@@ -2,6 +2,7 @@ import { Router, type RequestHandler } from 'express';
 import type { z } from 'zod';
 
 import type { ApiModule } from '../../app.js';
+import type { AccessLog } from '../audit/access-log.js';
 import { requirePermission, requireSignedIn, type PermissionResolver } from '../auth/authorize.js';
 import type { ErrorCode } from '../errors/codes.js';
 import type { Platform } from '../platform.js';
@@ -141,6 +142,8 @@ export function defineModule(opts: {
   platform: Platform;
   /** Resolves the caller's permissions. Required: a module cannot be built without authorisation. */
   authz: PermissionResolver;
+  /** Where permission denials are recorded (P1.05). */
+  accessLog?: AccessLog;
 }): ModuleBuilder {
   const router = Router();
   const routes: DeclaredRoute[] = [];
@@ -156,7 +159,9 @@ export function defineModule(opts: {
       assertWellDeclared(declared);
 
       const chain: RequestHandler[] = [...(spec.before ?? [])];
-      if ('permission' in spec.auth) chain.push(requirePermission(opts.authz, spec.auth.permission));
+      if ('permission' in spec.auth) {
+        chain.push(requirePermission(opts.authz, spec.auth.permission, opts.accessLog));
+      }
       if ('signedIn' in spec.auth) chain.push(requireSignedIn(opts.authz));
       if (spec.idempotent) {
         chain.push(

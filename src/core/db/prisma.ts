@@ -3,7 +3,8 @@ import type { PoolConfig } from 'mariadb';
 
 import type { Config } from '../../config/env.js';
 import { PrismaClient } from '../../generated/prisma/client.js';
-import { scopeExtension } from '../scope/extension.js';
+import { getRequestContext } from '../context/request-context.js';
+import { scopeExtension, type ScopeDenialHooks } from '../scope/extension.js';
 import { SCOPED_MODELS, type ScopeRegistry } from '../scope/scoped-models.js';
 
 export type Database = PrismaClient;
@@ -61,5 +62,47 @@ export function createDatabase(
   );
   const client = new PrismaClient({ adapter, transactionOptions: TRANSACTION_DEFAULTS });
   // A query-only extension leaves every model's type unchanged, so the client keeps the plain type.
-  return client.$extends(scopeExtension(options.scopedModels ?? SCOPED_MODELS)) as unknown as Database;
+  return client.$extends(
+    scopeExtension(options.scopedModels ?? SCOPED_MODELS, scopeDenialHooks(client)),
+  ) as unknown as Database;
+}
+
+interface Delegate {
+  findUnique(args: { where: unknown }): Promise<unknown>;
+}
+const stringify = (v: unknown) =>
+  JSON.stringify(v, (_k, x: unknown) => (typeof x === 'bigint' ? x.toString() : x)).slice(0, 100);
+
+/**
+ * Scope denials go to the access log (P4 §4.3: "the access_log records it as a scope denial regardless
+ * of what the caller was told"). Both hooks use the PLAIN client: outside the scope filter, and outside
+ * the caller's transaction, so the denial is recorded even though the request fails.
+ */
+function scopeDenialHooks(client: PrismaClient): ScopeDenialHooks {
+  return {
+    async exists(model, where) {
+      const delegate = (client as unknown as Record<string, Delegate | undefined>)[
+        model.charAt(0).toLowerCase() + model.slice(1)
+      ];
+      if (!delegate) return false;
+      const row = await delegate.findUnique({ where }).catch(() => null);
+      return row !== null && row !== undefined;
+    },
+    async denied({ model, operation, target }) {
+      const ctx = getRequestContext();
+      await client.accessLog
+        .create({
+          data: {
+            userId: ctx?.actorId && /^\d+$/.test(ctx.actorId) ? BigInt(ctx.actorId) : null,
+            eventType: 'scope_denied',
+            module: model.slice(0, 40),
+            recordReference: stringify(target),
+            ipAddress: ctx?.clientIp ?? null,
+            userAgent: ctx?.userAgent ?? null,
+            detail: { operation },
+          },
+        })
+        .catch(() => undefined); // never turn a 404 into a 500
+    },
+  };
 }

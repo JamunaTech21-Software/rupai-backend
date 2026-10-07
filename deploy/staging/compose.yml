@@ -101,7 +101,8 @@ services:
       AUTH_TOKEN_PREVIOUS_SECRET: ${AUTH_TOKEN_PREVIOUS_SECRET:-}
       AUTH_COOKIE_SECURE: 'true'
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:?}
-      CORS_ORIGINS: ${APP_PUBLIC_URL:?}
+      # Exact origins, comma-separated; defaults to APP_PUBLIC_URL alone.
+      CORS_ORIGINS: ${CORS_ORIGINS:-${APP_PUBLIC_URL:?}}
       # browser → Vercel → Cloudflare → cloudflared: see .env.example before changing.
       TRUST_PROXY: ${TRUST_PROXY:-2}
       DOCS_ENABLED: 'true'
@@ -130,7 +131,9 @@ services:
     image: cloudflare/cloudflared:2026.9.3
     restart: unless-stopped
     profiles: [quicktunnel]
-    command: [tunnel, --no-autoupdate, --url, 'http://api:4000']
+    # HTTP/2 over TCP 443 instead of the default QUIC (UDP): QUIC kept timing out on this network and the
+    # quick tunnel lost its address. TCP 443 works wherever HTTPS does.
+    command: [tunnel, --no-autoupdate, --protocol, http2, --url, 'http://api:4000']
     depends_on: [api]
 
   # Outbound-only tunnel. Its public hostnames are configured in the Cloudflare dashboard (STAGING.md).
@@ -138,7 +141,7 @@ services:
     image: cloudflare/cloudflared:2026.9.3
     restart: unless-stopped
     profiles: [tunnel]
-    command: [tunnel, --no-autoupdate, run]
+    command: [tunnel, --no-autoupdate, --protocol, http2, run]
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-} # checked by deploy.sh (compose checks even disabled profiles)
     depends_on: [api]

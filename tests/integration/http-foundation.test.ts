@@ -238,6 +238,16 @@ describe('error envelope (Spec P4 §3)', () => {
     expect(res.body.error.code).toBe('UNSUPPORTED_MEDIA_TYPE');
   });
 
+  it('an empty POST re-encoded as chunked by a proxy (no Content-Type) is not refused', async () => {
+    // The Cloudflare tunnel delivers a browser's bodiless POST (refresh, logout, approve) this way.
+    const res = await request(setup().app)
+      .post('/api/v1/widgets/5/approve')
+      .set('Idempotency-Key', crypto.randomUUID())
+      .set('Transfer-Encoding', 'chunked')
+      .send();
+    expect(res.status).toBe(200);
+  });
+
   it('oversized body: 413 PAYLOAD_TOO_LARGE', async () => {
     const res = await request(setup({ BODY_LIMIT: '1kb' }).app)
       .post('/api/v1/widgets')
