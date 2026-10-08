@@ -15,7 +15,7 @@ import type { ResolvedScope } from './scope.js';
  *     self: byColumn('employmentProfileId'),
  *   });
  *
- * A dimension the model does not map is simply not a way in: a user whose only grant is a facility sees
+ * A dimension the model does not map is simply not a way in: a user whose only grant is a factory sees
  * no plucking records. Facility-tier models map `estate` through the origin of the material they handle
  * (P6 §4.2), which is the one place where scope is not a plain column comparison.
  */
@@ -34,7 +34,9 @@ export interface ScopeMapping {
   readonly section?: DimensionMapping;
   /** Department grants apply within the user's estates (P1 §12.2: "across scoped estates"). */
   readonly department?: DimensionMapping;
-  readonly facility?: DimensionMapping;
+  /** Facility tier (P1 §4.4): a factory grant or a warehouse grant. */
+  readonly factory?: DimensionMapping;
+  readonly warehouse?: DimensionMapping;
   /** The employment profile the record is about (implicit self scope). */
   readonly self?: DimensionMapping;
   /**
@@ -94,7 +96,8 @@ export function scopeWhere(scope: ResolvedScope, mapping: ScopeMapping): Where |
     if (!mapping.estate) any.push(dept);
     else if (scope.estates.length > 0) any.push({ AND: [dept, mapping.estate(scope.estates)] });
   }
-  if (scope.facilities.length > 0 && mapping.facility) any.push(mapping.facility(scope.facilities));
+  if (scope.factories.length > 0 && mapping.factory) any.push(mapping.factory(scope.factories));
+  if (scope.warehouses.length > 0 && mapping.warehouse) any.push(mapping.warehouse(scope.warehouses));
   if (scope.selfEmploymentProfileId !== null && mapping.self)
     any.push(mapping.self([scope.selfEmploymentProfileId]));
   return any.length === 0 ? NOTHING : { OR: any };
@@ -128,7 +131,8 @@ export function canCreate(
     has(mapping.division, scope.divisions) ||
     has(mapping.section, scope.sections) ||
     (has(mapping.department, scope.departments) && (!mapping.estate || has(mapping.estate, scope.estates))) ||
-    has(mapping.facility, scope.facilities) ||
+    has(mapping.factory, scope.factories) ||
+    has(mapping.warehouse, scope.warehouses) ||
     has(mapping.self, self)
   );
 }

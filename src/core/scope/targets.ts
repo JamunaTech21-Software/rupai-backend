@@ -6,7 +6,7 @@ import type { TargetedScopeType } from './scope.js';
  * enforce it with a foreign key. The epic that creates each target table registers its check:
  *
  *   P1.07  estate, division, section (registered in modules/organisation/organisation.scope.ts)
- *   P1.08  facility (factory and warehouse)
+ *   P1.08  factory, warehouse (registered in modules/facilities/facilities.scope.ts)
  *   P2     department
  *
  * Until then a grant's target is not checked (decision D-1.03-4).

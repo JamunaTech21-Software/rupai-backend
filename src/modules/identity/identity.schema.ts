@@ -182,7 +182,7 @@ export const ScopeGrantParams = z.object({ id: zId, grantId: zId });
 export const CreateScopeGrantBody = z
   .strictObject({
     scope_type: z.enum(SCOPE_TYPES),
-    /** The estate, division, section, department or facility. Omitted for all_estates. */
+    /** The estate, division, section, department, factory or warehouse. Omitted for all_estates. */
     scope_id: zId.nullable().optional(),
     /** For temporary cover (P6 §11.2): the grant lapses by itself at this time. */
     expires_at: zTimestamp.nullable().optional(),
@@ -230,7 +230,8 @@ export const ScopeViewOut = z.object({
   divisions: z.array(z.string()),
   sections: z.array(z.string()),
   departments: z.array(z.string()),
-  facilities: z.array(z.string()),
+  factories: z.array(z.string()),
+  warehouses: z.array(z.string()),
   self_employment_profile_id: z.string().nullable(),
 });
 

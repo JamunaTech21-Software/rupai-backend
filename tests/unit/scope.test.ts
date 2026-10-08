@@ -31,7 +31,7 @@ const ESTATE_TIER: ScopeMapping = {
   self: byColumn('employmentProfileId'),
 };
 const FACILITY_TIER: ScopeMapping = {
-  facility: byColumn('factoryId'),
+  factory: byColumn('factoryId'),
   // Estate users see the part of a factory's work that came from their estates (P6 §4.2).
   estate: (ids) => ({ consumption: { some: { originEstateId: { in: [...ids] } } } }),
 };
@@ -43,12 +43,19 @@ describe('scope resolution (P6 §4.2)', () => {
         { scopeType: 'estate', scopeId: 3n },
         { scopeType: 'estate', scopeId: 1n },
         { scopeType: 'estate', scopeId: 3n },
-        { scopeType: 'facility', scopeId: 9n },
+        { scopeType: 'factory', scopeId: 9n },
+        { scopeType: 'warehouse', scopeId: 9n },
         { scopeType: 'division', scopeId: 4n },
       ],
       77n,
     );
-    expect(s).toMatchObject({ allEstates: false, estates: [1n, 3n], divisions: [4n], facilities: [9n] });
+    expect(s).toMatchObject({
+      allEstates: false,
+      estates: [1n, 3n],
+      divisions: [4n],
+      factories: [9n],
+      warehouses: [9n],
+    });
     expect(s.selfEmploymentProfileId).toBe(77n);
     expect(scopeView(s)).toEqual({
       all_estates: false,
@@ -56,7 +63,8 @@ describe('scope resolution (P6 §4.2)', () => {
       divisions: ['4'],
       sections: [],
       departments: [],
-      facilities: ['9'],
+      factories: ['9'],
+      warehouses: ['9'],
       self_employment_profile_id: '77',
     });
   });
@@ -77,8 +85,8 @@ describe('scope resolution (P6 §4.2)', () => {
 describe('scopeWhere: the filter a scope imposes on a model', () => {
   it('matches nothing without a grant that reaches the model', () => {
     expect(scopeWhere(EMPTY_SCOPE, ESTATE_TIER)).toEqual(NOTHING);
-    // A facility grant is no way into estate-tier records that do not map facilities.
-    expect(scopeWhere(scope({ facilities: [1n] }), ESTATE_TIER)).toEqual(NOTHING);
+    // A factory grant is no way into estate-tier records that do not map factories.
+    expect(scopeWhere(scope({ factories: [1n] }), ESTATE_TIER)).toEqual(NOTHING);
   });
 
   it('ORs every granted dimension the model maps', () => {
@@ -100,11 +108,11 @@ describe('scopeWhere: the filter a scope imposes on a model', () => {
     });
   });
 
-  it('scopes facility-tier records by facility grant, or by the origin of the material', () => {
+  it('scopes facility-tier records by factory grant, or by the origin of the material', () => {
     expect(scopeWhere(scope({ estates: [1n] }), FACILITY_TIER)).toEqual({
       OR: [{ consumption: { some: { originEstateId: { in: [1n] } } } }],
     });
-    expect(scopeWhere(scope({ facilities: [8n] }), FACILITY_TIER)).toEqual({
+    expect(scopeWhere(scope({ factories: [8n] }), FACILITY_TIER)).toEqual({
       OR: [{ factoryId: { in: [8n] } }],
     });
   });

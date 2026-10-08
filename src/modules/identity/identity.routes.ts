@@ -287,7 +287,7 @@ function usersModule({ db, platform, authz, sessions, accessLog }: IdentityDeps)
     path: '/:id/scopes',
     summary: 'A user’s data-scope grants',
     description:
-      'Which estates, divisions, sections, departments or facilities the user may touch. The effective scope is the ' +
+      'Which estates, divisions, sections, departments, factories or warehouses the user may touch. The effective scope is the ' +
       'union of the active grants, plus implicit self. Expired grants are listed with active=false.',
     auth: { permission: 'user.view' },
     ...byId,
@@ -309,7 +309,7 @@ function usersModule({ db, platform, authz, sessions, accessLog }: IdentityDeps)
     path: '/:id/scopes',
     summary: 'Grant a data scope',
     description:
-      'scope_type all_estates (no scope_id), or estate | division | section | department | facility with scope_id. ' +
+      'scope_type all_estates (no scope_id), or estate | division | section | department | factory | warehouse with scope_id. ' +
       'expires_at makes it temporary. self is implicit for everyone and cannot be granted. Applies to the ' +
       'user’s next request.',
     auth: { permission: 'user.edit' },

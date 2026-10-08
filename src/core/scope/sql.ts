@@ -17,7 +17,8 @@ export interface ScopeColumns {
   readonly division?: string;
   readonly section?: string;
   readonly department?: string;
-  readonly facility?: string;
+  readonly factory?: string;
+  readonly warehouse?: string;
   readonly self?: string;
 }
 
@@ -48,7 +49,8 @@ export function scopeSql(scope: ResolvedScope, columns: ScopeColumns): Prisma.Sq
     else if (scope.estates.length > 0)
       any.push(Prisma.sql`(${dept} AND ${inList(columns.estate, scope.estates)})`);
   }
-  if (columns.facility && scope.facilities.length > 0) any.push(inList(columns.facility, scope.facilities));
+  if (columns.factory && scope.factories.length > 0) any.push(inList(columns.factory, scope.factories));
+  if (columns.warehouse && scope.warehouses.length > 0) any.push(inList(columns.warehouse, scope.warehouses));
   if (columns.self && scope.selfEmploymentProfileId !== null) {
     any.push(Prisma.sql`${col(columns.self)} = ${scope.selfEmploymentProfileId}`);
   }

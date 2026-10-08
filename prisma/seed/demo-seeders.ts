@@ -18,6 +18,8 @@ import {
  *            (P1.07 check: the other estate is invisible)
  *
  * P1.07 adds two demo estates (DEMO-A, DEMO-B), each with divisions, sections and fields.
+ * P1.08 adds two factories and two warehouses (the viewer is granted DEMO-F1 and DEMO-W1 only), warehouse
+ * contacts and a party. "Demo estate administration" covers facilities and parties too.
  *
  * Idempotent: existing users and roles are left exactly as they are (a password changed through the
  * app is never reset by a re-seed).
@@ -32,13 +34,16 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['division', 'view'],
   ['section', 'view'],
   ['field', 'view'],
+  ['factory', 'view'],
+  ['warehouse', 'view'],
+  ['land', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
 const DEMO_ESTATE_ADMIN_PERMISSIONS = [
   ['organisation', 'view'],
   ['organisation', 'edit'],
-  ...['estate', 'division', 'section', 'field'].flatMap((m) =>
+  ...['estate', 'division', 'section', 'field', 'factory', 'warehouse', 'land'].flatMap((m) =>
     ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const),
   ),
 ] as const;
@@ -152,6 +157,7 @@ export function demoSeeders(password: string): Seeder[] {
       },
     },
     demoHierarchySeeder,
+    demoFacilitiesSeeder,
   ];
 }
 
@@ -249,6 +255,120 @@ const demoHierarchySeeder: Seeder = {
         if (!grant) {
           await tx.userScope.create({
             data: { userId: viewer.id, scopeType: 'estate', scopeId: demoA, grantedBy: by, createdBy: by },
+          });
+          inserted += 1;
+        }
+      }
+      return { inserted, updated: 0 };
+    }),
+};
+
+/** P1.08: facilities, contacts and a party. The viewer may see DEMO-F1 and DEMO-W1, nothing else. */
+const demoFacilitiesSeeder: Seeder = {
+  name: 'demo: factories, warehouses, contacts and a party; the viewer sees DEMO-F1 and DEMO-W1 only',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const org = await tx.organisation.findFirstOrThrow({ select: { id: true } });
+      const demoA = await tx.estate.findFirst({ where: { code: 'DEMO-A' }, select: { id: true } });
+
+      const factory = async (
+        code: string,
+        data: { name: string; factoryType: string; primaryEstateId?: bigint | null },
+      ) => {
+        const found = await tx.factory.findFirst({ where: { code }, select: { id: true } });
+        if (found) return found.id;
+        inserted += 1;
+        return (
+          await tx.factory.create({
+            data: { organisationId: org.id, code, dailyCapacityKg: '45000.000', createdBy: by, ...data },
+            select: { id: true },
+          })
+        ).id;
+      };
+      const warehouse = async (
+        code: string,
+        data: { name: string; warehouseType: string; location: string },
+      ) => {
+        const found = await tx.warehouse.findFirst({ where: { code }, select: { id: true } });
+        if (found) return found.id;
+        inserted += 1;
+        return (
+          await tx.warehouse.create({
+            data: { organisationId: org.id, code, capacityKg: '250000.000', createdBy: by, ...data },
+            select: { id: true },
+          })
+        ).id;
+      };
+      const f1 = await factory('DEMO-F1', {
+        name: 'Rupai Central Factory',
+        factoryType: 'own',
+        primaryEstateId: demoA?.id ?? null,
+      });
+      await factory('DEMO-F2', { name: 'Jamuna Bought-leaf Factory', factoryType: 'external' });
+      const w1 = await warehouse('DEMO-W1', {
+        name: 'Chattogram Auction Warehouse',
+        warehouseType: 'rented',
+        location: 'Chattogram',
+      });
+      await warehouse('DEMO-W2', {
+        name: 'Srimangal Estate Store',
+        warehouseType: 'own',
+        location: 'Srimangal',
+      });
+
+      if ((await tx.partyContact.count({ where: { ownerType: 'warehouse', ownerId: w1 } })) === 0) {
+        await tx.partyContact.createMany({
+          data: [
+            {
+              ownerType: 'warehouse',
+              ownerId: w1,
+              contactName: 'Karim Uddin',
+              designation: 'Warehouse in-charge',
+              contactType: 'primary',
+              phone: '+8801711000001',
+              isPrimary: true,
+              createdBy: by,
+            },
+            {
+              ownerType: 'warehouse',
+              ownerId: w1,
+              contactName: 'Accounts desk',
+              contactType: 'accounts',
+              phone: '+8801711000002',
+              email: 'accounts@example.com',
+              createdBy: by,
+            },
+          ],
+        });
+        // warehouse.phone is the primary contact's (P3 §8 note).
+        await tx.warehouse.update({ where: { id: w1 }, data: { phone: '+8801711000001' } });
+        inserted += 2;
+      }
+      if (!(await tx.party.findFirst({ where: { code: 'DEMO-P1' }, select: { id: true } }))) {
+        await tx.party.create({
+          data: {
+            partyType: 'individual',
+            code: 'DEMO-P1',
+            name: 'Abdul Haque (lessee)',
+            district: 'Moulvibazar',
+            createdBy: by,
+          },
+        });
+        inserted += 1;
+      }
+
+      const viewer = await tx.user.findUnique({ where: { username: 'viewer' }, select: { id: true } });
+      if (viewer) {
+        for (const [scopeType, scopeId] of [
+          ['factory', f1],
+          ['warehouse', w1],
+        ] as const) {
+          const has = await tx.userScope.findFirst({ where: { userId: viewer.id, scopeType, scopeId } });
+          if (has) continue;
+          await tx.userScope.create({
+            data: { userId: viewer.id, scopeType, scopeId, grantedBy: by, createdBy: by },
           });
           inserted += 1;
         }
