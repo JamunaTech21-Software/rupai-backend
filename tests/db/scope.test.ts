@@ -252,12 +252,12 @@ describe('/users/{id}/scopes', () => {
       granted_by: '1',
       active: true,
     });
-    await api.post(`/users/${id}/scopes`, { scope_type: 'facility', scope_id: '3' });
+    await api.post(`/users/${id}/scopes`, { scope_type: 'department', scope_id: '3' });
 
     const list = await api.get(`/users/${id}/scopes`);
     expect((list.body.data as { scope_type: string }[]).map((g) => g.scope_type)).toEqual([
+      'department',
       'estate',
-      'facility',
     ]);
     const me = await api.get('/auth/me', id);
     expect(me.body.data.scope).toEqual({
@@ -265,8 +265,9 @@ describe('/users/{id}/scopes', () => {
       estates: ['7'],
       divisions: [],
       sections: [],
-      departments: [],
-      facilities: ['3'],
+      departments: ['3'],
+      factories: [],
+      warehouses: [],
       self_employment_profile_id: null,
     });
   });
@@ -293,17 +294,18 @@ describe('/users/{id}/scopes', () => {
   });
 
   it('checks the target exists once its table registers a check (P1.07)', async () => {
-    SCOPE_TARGETS.set('facility', (_tx, id) => Promise.resolve(id === 1n));
+    // department has no table until Phase 2, so a stand-in check shows the mechanism.
+    SCOPE_TARGETS.set('department', (_tx, id) => Promise.resolve(id === 1n));
     try {
       const id = await actorWith([], []);
-      expect((await api.post(`/users/${id}/scopes`, { scope_type: 'facility', scope_id: '1' })).status).toBe(
-        201,
-      );
-      const res = await api.post(`/users/${id}/scopes`, { scope_type: 'facility', scope_id: '2' });
+      expect(
+        (await api.post(`/users/${id}/scopes`, { scope_type: 'department', scope_id: '1' })).status,
+      ).toBe(201);
+      const res = await api.post(`/users/${id}/scopes`, { scope_type: 'department', scope_id: '2' });
       expect(res.status).toBe(422);
-      expect(res.body.error.details[0]).toMatchObject({ field: 'scope_id', message: 'No such facility.' });
+      expect(res.body.error.details[0]).toMatchObject({ field: 'scope_id', message: 'No such department.' });
     } finally {
-      SCOPE_TARGETS.delete('facility');
+      SCOPE_TARGETS.delete('department');
     }
   });
 

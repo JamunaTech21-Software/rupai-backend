@@ -144,6 +144,14 @@ model User {
   updatedSections      Section[]      @relation("SectionUpdatedBy")
   createdFields        Field[]        @relation("FieldCreatedBy")
   updatedFields        Field[]        @relation("FieldUpdatedBy")
+  createdFactories     Factory[]      @relation("FactoryCreatedBy")
+  updatedFactories     Factory[]      @relation("FactoryUpdatedBy")
+  createdWarehouses    Warehouse[]    @relation("WarehouseCreatedBy")
+  updatedWarehouses    Warehouse[]    @relation("WarehouseUpdatedBy")
+  createdParties       Party[]        @relation("PartyCreatedBy")
+  updatedParties       Party[]        @relation("PartyUpdatedBy")
+  createdContacts      PartyContact[] @relation("PartyContactCreatedBy")
+  updatedContacts      PartyContact[] @relation("PartyContactUpdatedBy")
 
   scopes        UserScope[] @relation("UserScopeUser")
   grantedScopes UserScope[] @relation("UserScopeGrantedBy")
@@ -248,12 +256,12 @@ model PasswordResetToken {
 // ---------------------------------------------------------------------------------------------
 
 /// P3 §28.2 + audit block + `version` (P4 §5.1). scope_id is polymorphic (estate, division, section,
-/// department or facility id), so it has no foreign key; the API checks the target exists once its
+/// department, factory or warehouse id), so it has no foreign key; the API checks the target exists once its
 /// table does (P1.07 estate hierarchy, P2 departments).
 model UserScope {
   id        BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
   userId    BigInt    @map("user_id") @db.UnsignedBigInt
-  /// all_estates | estate | division | section | department | facility | self
+  /// all_estates | estate | division | section | department | factory | warehouse | self
   scopeType String    @map("scope_type") @db.VarChar(30)
   /// NULL for all_estates and self.
   scopeId   BigInt?   @map("scope_id") @db.UnsignedBigInt
@@ -462,9 +470,11 @@ model Organisation {
   updatedAt            DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy            BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  creator User     @relation("OrganisationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_created_by")
-  updater User?    @relation("OrganisationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_updated_by")
-  estates Estate[]
+  creator    User        @relation("OrganisationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_created_by")
+  updater    User?       @relation("OrganisationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_updated_by")
+  estates    Estate[]
+  factories  Factory[]
+  warehouses Warehouse[]
 
   @@unique([singleton], map: "ux_organisation_singleton")
   @@index([createdBy], map: "ix_organisation_created_by")
@@ -505,6 +515,7 @@ model Estate {
   updater      User?        @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
   divisions    Division[]
   fields       Field[]
+  factories    Factory[]
 
   @@unique([organisationId, code], map: "ux_estate_code")
   @@index([status], map: "ix_estate_status")
@@ -612,4 +623,154 @@ model Field {
   @@index([createdBy], map: "ix_field_created_by")
   @@index([updatedBy], map: "ix_field_updated_by")
   @@map("field")
+}
+
+// ---- P1.08 facilities, parties and contacts (Spec P3 §4.6–§4.7, §6.1–§6.2) -----------------------
+
+/// Facility tier (P1 §4.4): belongs to the organisation, not to an estate, because a central factory
+/// serves several. Scoped by factory grant. primary_estate_id is informational and never used for
+/// scoping or production reporting (estate-wise production derives from leaf origin, P3 §11.2).
+model Factory {
+  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  organisationId   BigInt    @map("organisation_id") @db.UnsignedBigInt
+  code             String    @db.VarChar(20)
+  name             String    @db.VarChar(150)
+  /// own | external
+  factoryType      String    @map("factory_type") @db.VarChar(30)
+  primaryEstateId  BigInt?   @map("primary_estate_id") @db.UnsignedBigInt
+  location         String?   @db.VarChar(200)
+  /// Green leaf intake capacity, kg.
+  dailyCapacityKg  Decimal?  @map("daily_capacity_kg") @db.Decimal(14, 3)
+  managerProfileId BigInt?   @map("manager_profile_id") @db.UnsignedBigInt
+  licenceNumber    String?   @map("licence_number") @db.VarChar(50)
+  /// Drives the licence-expiry alert.
+  licenceExpiry    DateTime? @map("licence_expiry") @db.Date
+  /// active | inactive
+  status           String    @default("active") @db.VarChar(30)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy        BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  organisation  Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_factory_organisation")
+  primaryEstate Estate?      @relation(fields: [primaryEstateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_factory_primary_estate")
+  creator       User         @relation("FactoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_factory_created_by")
+  updater       User?        @relation("FactoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_factory_updated_by")
+
+  @@unique([organisationId, code], map: "ux_factory_code")
+  @@index([primaryEstateId], map: "ix_factory_primary_estate")
+  @@index([licenceExpiry], map: "ix_factory_licence_expiry")
+  @@index([status], map: "ix_factory_status")
+  @@index([createdBy], map: "ix_factory_created_by")
+  @@index([updatedBy], map: "ix_factory_updated_by")
+  @@map("factory")
+}
+
+/// Facility tier, scoped by warehouse grant (P3 §4.7). phone is a CACHE of the primary contact's phone,
+/// maintained by the contacts service; party_contact is authoritative (P3 §8 note).
+model Warehouse {
+  id              BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  organisationId  BigInt    @map("organisation_id") @db.UnsignedBigInt
+  code            String    @db.VarChar(20)
+  name            String    @db.VarChar(150)
+  /// own | rented | third_party
+  warehouseType   String    @map("warehouse_type") @db.VarChar(30)
+  location        String?   @db.VarChar(200)
+  capacityKg      Decimal?  @map("capacity_kg") @db.Decimal(14, 3)
+  keeperProfileId BigInt?   @map("keeper_profile_id") @db.UnsignedBigInt
+  phone           String?   @db.VarChar(30)
+  licenceNumber   String?   @map("licence_number") @db.VarChar(50)
+  licenceExpiry   DateTime? @map("licence_expiry") @db.Date
+  tin             String?   @db.VarChar(30)
+  vatRegistration String?   @map("vat_registration") @db.VarChar(30)
+  /// active | inactive
+  status          String    @default("active") @db.VarChar(30)
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy       BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt       DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy       BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_warehouse_organisation")
+  creator      User         @relation("WarehouseCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_warehouse_created_by")
+  updater      User?        @relation("WarehouseUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_warehouse_updated_by")
+
+  @@unique([organisationId, code], map: "ux_warehouse_code")
+  @@index([licenceExpiry], map: "ix_warehouse_licence_expiry")
+  @@index([status], map: "ix_warehouse_status")
+  @@index([createdBy], map: "ix_warehouse_created_by")
+  @@index([updatedBy], map: "ix_warehouse_updated_by")
+  @@map("warehouse")
+}
+
+/// The shared counterparty for lessees and external land-allocation recipients (P3 §6.1).
+/// Organisation tier: no estate.
+model Party {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// individual | organisation | government
+  partyType          String    @map("party_type") @db.VarChar(30)
+  code               String    @db.VarChar(20)
+  name               String    @db.VarChar(150)
+  /// For individuals. Personal data: redacted from logs (P0.02).
+  nationalId         String?   @map("national_id") @db.VarChar(30)
+  /// For organisations.
+  registrationNumber String?   @map("registration_number") @db.VarChar(50)
+  addressLine1       String?   @map("address_line1") @db.VarChar(200)
+  district           String?   @db.VarChar(100)
+  phone              String?   @db.VarChar(30)
+  email              String?   @db.VarChar(150)
+  /// active | inactive
+  status             String    @default("active") @db.VarChar(30)
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("PartyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_party_created_by")
+  updater User? @relation("PartyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_party_updated_by")
+
+  @@unique([code], map: "ux_party_code")
+  @@index([partyType], map: "ix_party_type")
+  @@index([name], map: "ix_party_name")
+  @@index([createdBy], map: "ix_party_created_by")
+  @@index([updatedBy], map: "ix_party_updated_by")
+  @@map("party")
+}
+
+/// Contacts of any owner (P3 §6.2), so phone numbers are never comma-separated text. Polymorphic:
+/// owner_id has no foreign key (P2 §7.2); the service checks the owner exists and is in scope.
+model PartyContact {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// buyer | broker | supplier | leaf_supplier | contractor | warehouse | party | auction_centre
+  ownerType   String    @map("owner_type") @db.VarChar(30)
+  ownerId     BigInt    @map("owner_id") @db.UnsignedBigInt
+  contactName String    @map("contact_name") @db.VarChar(150)
+  designation String?   @db.VarChar(100)
+  /// primary | accounts | operations | emergency | other
+  contactType String    @map("contact_type") @db.VarChar(30)
+  phone       String?   @db.VarChar(30)
+  phoneAlt    String?   @map("phone_alt") @db.VarChar(30)
+  email       String?   @db.VarChar(150)
+  isPrimary   Boolean   @default(false) @map("is_primary")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  /// GENERATED column (see migration SQL): the owner while this is its active primary contact, else
+  /// NULL. Its unique index makes "at most one primary per owner" a database guarantee.
+  primaryKey  String?   @map("primary_key") @db.VarChar(60)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("PartyContactCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_party_contact_created_by")
+  updater User? @relation("PartyContactUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_party_contact_updated_by")
+
+  @@unique([primaryKey], map: "ux_party_contact_primary")
+  @@index([ownerType, ownerId], map: "ix_party_contact_owner")
+  @@index([createdBy], map: "ix_party_contact_created_by")
+  @@index([updatedBy], map: "ix_party_contact_updated_by")
+  @@map("party_contact")
 }

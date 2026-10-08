@@ -19,13 +19,26 @@ export const SCOPE_TYPES = [
   'division',
   'section',
   'department',
-  'facility',
+  'factory',
+  'warehouse',
   'self',
 ] as const;
 export type ScopeType = (typeof SCOPE_TYPES)[number];
 
 /** Types that name a target record (scope_id). all_estates and self name none. */
-export const TARGETED_SCOPE_TYPES = ['estate', 'division', 'section', 'department', 'facility'] as const;
+/**
+ * Facility grants name a factory or a warehouse (P6: "facility — one or more factories / warehouses").
+ * They are two types, not P3's single `facility`, because factory and warehouse ids are separate
+ * sequences: `facility 5` would not say which (BACKLOG D-1.08-1).
+ */
+export const TARGETED_SCOPE_TYPES = [
+  'estate',
+  'division',
+  'section',
+  'department',
+  'factory',
+  'warehouse',
+] as const;
 export type TargetedScopeType = (typeof TARGETED_SCOPE_TYPES)[number];
 
 /** self is held by every user implicitly, so it is never granted (P6 §6.1). */
@@ -37,7 +50,8 @@ export interface ResolvedScope {
   readonly divisions: readonly bigint[];
   readonly sections: readonly bigint[];
   readonly departments: readonly bigint[];
-  readonly facilities: readonly bigint[];
+  readonly factories: readonly bigint[];
+  readonly warehouses: readonly bigint[];
   /** The user's own employment profile (implicit self scope), if they are an employee. */
   readonly selfEmploymentProfileId: bigint | null;
 }
@@ -48,7 +62,8 @@ export const EMPTY_SCOPE: ResolvedScope = Object.freeze({
   divisions: [],
   sections: [],
   departments: [],
-  facilities: [],
+  factories: [],
+  warehouses: [],
   selfEmploymentProfileId: null,
 });
 
@@ -65,7 +80,8 @@ export function scopeFromGrants(
     division: new Set(),
     section: new Set(),
     department: new Set(),
-    facility: new Set(),
+    factory: new Set(),
+    warehouse: new Set(),
   };
   let allEstates = false;
   for (const g of grants) {
@@ -80,7 +96,8 @@ export function scopeFromGrants(
     divisions: sorted(lists.division),
     sections: sorted(lists.section),
     departments: sorted(lists.department),
-    facilities: sorted(lists.facility),
+    factories: sorted(lists.factory),
+    warehouses: sorted(lists.warehouse),
     selfEmploymentProfileId,
   });
 }
@@ -92,7 +109,8 @@ export interface ScopeView {
   divisions: string[];
   sections: string[];
   departments: string[];
-  facilities: string[];
+  factories: string[];
+  warehouses: string[];
   self_employment_profile_id: string | null;
 }
 
@@ -104,7 +122,8 @@ export function scopeView(scope: ResolvedScope): ScopeView {
     divisions: s(scope.divisions),
     sections: s(scope.sections),
     departments: s(scope.departments),
-    facilities: s(scope.facilities),
+    factories: s(scope.factories),
+    warehouses: s(scope.warehouses),
     self_employment_profile_id: scope.selfEmploymentProfileId?.toString() ?? null,
   };
 }

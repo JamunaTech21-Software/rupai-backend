@@ -29,11 +29,11 @@ Then in `frontend/`: `npm run dev`. The Vite proxy sends `/api` to `http://local
 
 ## Accounts
 
-| Username  | Password (local)                                 | What it is                                                         |
-| --------- | ------------------------------------------------ | ------------------------------------------------------------------ |
-| `admin`   | `BOOTSTRAP_ADMIN_PASSWORD` in `.env`             | Bootstrap administrator. Must change the password at first sign-in |
-| `manager` | `DEMO_PASSWORD` in `.env` (after `db:seed:demo`) | Administrator + Demo estate administration (P1.07), all estates    |
-| `viewer`  | `DEMO_PASSWORD`                                  | Read-only (users, roles, hierarchy), scope: estate DEMO-A only     |
+| Username  | Password (local)                                 | What it is                                                                             |
+| --------- | ------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `admin`   | `BOOTSTRAP_ADMIN_PASSWORD` in `.env`             | Bootstrap administrator. Must change the password at first sign-in                     |
+| `manager` | `DEMO_PASSWORD` in `.env` (after `db:seed:demo`) | Administrator + Demo estate administration (estates, facilities, parties), all estates |
+| `viewer`  | `DEMO_PASSWORD`                                  | Read-only; scope: estate DEMO-A, factory DEMO-F1, warehouse DEMO-W1                    |
 
 Five wrong passwords lock an account for 15 minutes. To unlock locally: `docker exec rupai-mysql mysql -uroot -prupai_root_dev rupai -e "UPDATE user SET locked_until = NULL, failed_attempts = 0"`.
 
