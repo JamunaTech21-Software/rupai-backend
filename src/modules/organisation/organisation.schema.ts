@@ -50,6 +50,7 @@ const organisationFields = {
   email: nullable(zEmail),
   website: nullable(text(150)),
   fiscal_year_start_month: z.number().int().min(1).max(12),
+  country_id: zId,
 };
 export const ReplaceOrganisationBody = z.strictObject(organisationFields);
 export const PatchOrganisationBody = z.strictObject(organisationFields).partial();
@@ -65,14 +66,13 @@ export const OrganisationOut = z.object({
   address_line2: z.string().nullable(),
   city: z.string().nullable(),
   postal_code: z.string().nullable(),
-  /** Set once country exists (P1.10). */
-  country_id: z.string().nullable(),
+  country_id: z.string(),
   phone: z.string().nullable(),
   email: z.string().nullable(),
   website: z.string().nullable(),
   logo_path: z.string().nullable(),
-  /** Set once currency exists (P1.10). */
-  base_currency_id: z.string().nullable(),
+  /** The base currency (BDT). Not editable. */
+  base_currency_id: z.string(),
   fiscal_year_start_month: z.number().int(),
   status: z.enum(STATUSES),
   version: z.number().int(),

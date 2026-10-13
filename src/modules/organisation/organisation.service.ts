@@ -4,10 +4,10 @@ import { auditUpdate } from '../../core/audit/audit.js';
 import type { Seeder } from '../../core/db/seed.js';
 import type { Database } from '../../core/db/prisma.js';
 import { withTransaction, type Tx } from '../../core/db/transaction.js';
-import { AppError } from '../../core/errors/app-error.js';
+import { AppError, Errors } from '../../core/errors/app-error.js';
 import type { Organisation, Prisma } from '../../generated/prisma/client.js';
 import { BOOTSTRAP_ADMIN_ID } from '../identity/identity.seed.js';
-import { idOut, iso, versionConflict } from './common.js';
+import { iso, versionConflict } from './common.js';
 import { ORGANISATION_AUDIT } from './organisation.audit.js';
 import type { OrganisationOut, PatchOrganisationBody, Status } from './organisation.schema.js';
 
@@ -15,8 +15,8 @@ import type { OrganisationOut, PatchOrganisationBody, Status } from './organisat
  * The organisation (Spec P3 §4.1): one row per deployment. The database refuses a second row (generated
  * singleton key), the seed creates the first, and the API refuses to start without exactly one.
  *
- * country_id and base_currency_id stay NULL until P1.10 creates country and currency; base_currency_id
- * becomes immutable once any journal exists (P3 §4.1), which P3 accounting enforces.
+ * base_currency_id is the base currency (BDT, seeded) and is not editable here: it becomes immutable once
+ * any journal exists (P3 §4.1). country_id is editable and must name an existing country.
  */
 
 type OrganisationOutT = z.infer<typeof OrganisationOut>;
@@ -33,12 +33,12 @@ export function toOrganisationOut(o: Organisation): OrganisationOutT {
     address_line2: o.addressLine2,
     city: o.city,
     postal_code: o.postalCode,
-    country_id: idOut(o.countryId),
+    country_id: o.countryId.toString(),
     phone: o.phone,
     email: o.email,
     website: o.website,
     logo_path: o.logoPath,
-    base_currency_id: idOut(o.baseCurrencyId),
+    base_currency_id: o.baseCurrencyId.toString(),
     fiscal_year_start_month: o.fiscalYearStartMonth,
     status: o.status as Status,
     version: o.version,
@@ -78,6 +78,7 @@ export function organisationService(db: Database) {
           ...(b.phone !== undefined ? { phone: b.phone } : {}),
           ...(b.email !== undefined ? { email: b.email } : {}),
           ...(b.website !== undefined ? { website: b.website } : {}),
+          ...(b.country_id !== undefined ? { countryId: b.country_id } : {}),
           ...(b.fiscal_year_start_month !== undefined
             ? { fiscalYearStartMonth: b.fiscal_year_start_month }
             : {}),
@@ -99,6 +100,11 @@ export function organisationService(db: Database) {
               },
             ],
           );
+        }
+        if (b.country_id !== undefined && (await tx.country.count({ where: { id: b.country_id } })) !== 1) {
+          throw Errors.validation([
+            { field: 'country_id', code: 'VALIDATION_FAILED', message: 'No such country.' },
+          ]);
         }
         const { count } = await tx.organisation.updateMany({
           where: { id: before.id, version: expectedVersion },
@@ -130,10 +136,15 @@ export const organisationSeeder: Seeder = {
   name: 'organisation: the singleton row',
   async run(tx) {
     if ((await tx.organisation.count()) > 0) return { inserted: 0, updated: 0 };
+    // The lookups seed runs first: BDT is the base currency (P3 §4.1) and Bangladesh the default country.
+    const currency = await tx.currency.findFirstOrThrow({ where: { isBase: true }, select: { id: true } });
+    const country = await tx.country.findUniqueOrThrow({ where: { iso2: 'BD' }, select: { id: true } });
     await tx.organisation.create({
       data: {
         name: 'Organisation',
         shortName: 'ORG',
+        countryId: country.id,
+        baseCurrencyId: currency.id,
         // July–June, Bangladesh's fiscal year; confirmed or changed during implementation.
         fiscalYearStartMonth: 7,
         status: 'active',
