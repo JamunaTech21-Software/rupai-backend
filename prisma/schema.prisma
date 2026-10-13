@@ -134,34 +134,84 @@ model User {
   authorisationsGiven   AccessAuthorisation[] @relation("AccessAuthorisationBy")
   authorisationsRemoved AccessAuthorisation[] @relation("AccessAuthorisationRemovedBy")
 
-  createdOrganisations Organisation[]     @relation("OrganisationCreatedBy")
-  updatedOrganisations Organisation[]     @relation("OrganisationUpdatedBy")
-  createdEstates       Estate[]           @relation("EstateCreatedBy")
-  updatedEstates       Estate[]           @relation("EstateUpdatedBy")
-  createdDivisions     Division[]         @relation("DivisionCreatedBy")
-  updatedDivisions     Division[]         @relation("DivisionUpdatedBy")
-  createdSections      Section[]          @relation("SectionCreatedBy")
-  updatedSections      Section[]          @relation("SectionUpdatedBy")
-  createdFields        Field[]            @relation("FieldCreatedBy")
-  updatedFields        Field[]            @relation("FieldUpdatedBy")
-  createdFactories     Factory[]          @relation("FactoryCreatedBy")
-  updatedFactories     Factory[]          @relation("FactoryUpdatedBy")
-  createdWarehouses    Warehouse[]        @relation("WarehouseCreatedBy")
-  updatedWarehouses    Warehouse[]        @relation("WarehouseUpdatedBy")
-  createdParties       Party[]            @relation("PartyCreatedBy")
-  updatedParties       Party[]            @relation("PartyUpdatedBy")
-  createdContacts      PartyContact[]     @relation("PartyContactCreatedBy")
-  updatedContacts      PartyContact[]     @relation("PartyContactUpdatedBy")
-  createdSeasons       Season[]           @relation("SeasonCreatedBy")
-  updatedSeasons       Season[]           @relation("SeasonUpdatedBy")
-  closedSeasons        Season[]           @relation("SeasonClosedBy")
-  createdFiscalYears   FiscalYear[]       @relation("FiscalYearCreatedBy")
-  updatedFiscalYears   FiscalYear[]       @relation("FiscalYearUpdatedBy")
-  closedFiscalYears    FiscalYear[]       @relation("FiscalYearClosedBy")
-  createdPeriods       AccountingPeriod[] @relation("AccountingPeriodCreatedBy")
-  updatedPeriods       AccountingPeriod[] @relation("AccountingPeriodUpdatedBy")
-  closedPeriods        AccountingPeriod[] @relation("AccountingPeriodClosedBy")
-  reopenedPeriods      AccountingPeriod[] @relation("AccountingPeriodReopenedBy")
+  createdOrganisations        Organisation[]        @relation("OrganisationCreatedBy")
+  updatedOrganisations        Organisation[]        @relation("OrganisationUpdatedBy")
+  createdEstates              Estate[]              @relation("EstateCreatedBy")
+  updatedEstates              Estate[]              @relation("EstateUpdatedBy")
+  createdDivisions            Division[]            @relation("DivisionCreatedBy")
+  updatedDivisions            Division[]            @relation("DivisionUpdatedBy")
+  createdSections             Section[]             @relation("SectionCreatedBy")
+  updatedSections             Section[]             @relation("SectionUpdatedBy")
+  createdFields               Field[]               @relation("FieldCreatedBy")
+  updatedFields               Field[]               @relation("FieldUpdatedBy")
+  createdFactories            Factory[]             @relation("FactoryCreatedBy")
+  updatedFactories            Factory[]             @relation("FactoryUpdatedBy")
+  createdWarehouses           Warehouse[]           @relation("WarehouseCreatedBy")
+  updatedWarehouses           Warehouse[]           @relation("WarehouseUpdatedBy")
+  createdParties              Party[]               @relation("PartyCreatedBy")
+  updatedParties              Party[]               @relation("PartyUpdatedBy")
+  createdContacts             PartyContact[]        @relation("PartyContactCreatedBy")
+  updatedContacts             PartyContact[]        @relation("PartyContactUpdatedBy")
+  createdSeasons              Season[]              @relation("SeasonCreatedBy")
+  updatedSeasons              Season[]              @relation("SeasonUpdatedBy")
+  closedSeasons               Season[]              @relation("SeasonClosedBy")
+  createdFiscalYears          FiscalYear[]          @relation("FiscalYearCreatedBy")
+  updatedFiscalYears          FiscalYear[]          @relation("FiscalYearUpdatedBy")
+  closedFiscalYears           FiscalYear[]          @relation("FiscalYearClosedBy")
+  createdPeriods              AccountingPeriod[]    @relation("AccountingPeriodCreatedBy")
+  updatedPeriods              AccountingPeriod[]    @relation("AccountingPeriodUpdatedBy")
+  closedPeriods               AccountingPeriod[]    @relation("AccountingPeriodClosedBy")
+  reopenedPeriods             AccountingPeriod[]    @relation("AccountingPeriodReopenedBy")
+  createdDepartments          Department[]          @relation("DepartmentCreatedBy")
+  updatedDepartments          Department[]          @relation("DepartmentUpdatedBy")
+  createdDesignations         Designation[]         @relation("DesignationCreatedBy")
+  updatedDesignations         Designation[]         @relation("DesignationUpdatedBy")
+  createdWorkerCategorys      WorkerCategory[]      @relation("WorkerCategoryCreatedBy")
+  updatedWorkerCategorys      WorkerCategory[]      @relation("WorkerCategoryUpdatedBy")
+  createdEmployeeCategorys    EmployeeCategory[]    @relation("EmployeeCategoryCreatedBy")
+  updatedEmployeeCategorys    EmployeeCategory[]    @relation("EmployeeCategoryUpdatedBy")
+  createdEmploymentTypes      EmploymentType[]      @relation("EmploymentTypeCreatedBy")
+  updatedEmploymentTypes      EmploymentType[]      @relation("EmploymentTypeUpdatedBy")
+  createdLeaveTypes           LeaveType[]           @relation("LeaveTypeCreatedBy")
+  updatedLeaveTypes           LeaveType[]           @relation("LeaveTypeUpdatedBy")
+  createdBuyerTypes           BuyerType[]           @relation("BuyerTypeCreatedBy")
+  updatedBuyerTypes           BuyerType[]           @relation("BuyerTypeUpdatedBy")
+  createdTradingTypes         TradingType[]         @relation("TradingTypeCreatedBy")
+  updatedTradingTypes         TradingType[]         @relation("TradingTypeUpdatedBy")
+  createdPackagingTypes       PackagingType[]       @relation("PackagingTypeCreatedBy")
+  updatedPackagingTypes       PackagingType[]       @relation("PackagingTypeUpdatedBy")
+  createdChargeTypes          ChargeType[]          @relation("ChargeTypeCreatedBy")
+  updatedChargeTypes          ChargeType[]          @relation("ChargeTypeUpdatedBy")
+  createdDocumentTypes        DocumentType[]        @relation("DocumentTypeCreatedBy")
+  updatedDocumentTypes        DocumentType[]        @relation("DocumentTypeUpdatedBy")
+  createdPaymentMethods       PaymentMethod[]       @relation("PaymentMethodCreatedBy")
+  updatedPaymentMethods       PaymentMethod[]       @relation("PaymentMethodUpdatedBy")
+  createdLandTypes            LandType[]            @relation("LandTypeCreatedBy")
+  updatedLandTypes            LandType[]            @relation("LandTypeUpdatedBy")
+  createdAdjustmentReasons    AdjustmentReason[]    @relation("AdjustmentReasonCreatedBy")
+  updatedAdjustmentReasons    AdjustmentReason[]    @relation("AdjustmentReasonUpdatedBy")
+  createdQualityGrades        QualityGrade[]        @relation("QualityGradeCreatedBy")
+  updatedQualityGrades        QualityGrade[]        @relation("QualityGradeUpdatedBy")
+  createdCollectionPointTypes CollectionPointType[] @relation("CollectionPointTypeCreatedBy")
+  updatedCollectionPointTypes CollectionPointType[] @relation("CollectionPointTypeUpdatedBy")
+  createdTeaTypes             TeaType[]             @relation("TeaTypeCreatedBy")
+  updatedTeaTypes             TeaType[]             @relation("TeaTypeUpdatedBy")
+  createdTeaGrades            TeaGrade[]            @relation("TeaGradeCreatedBy")
+  updatedTeaGrades            TeaGrade[]            @relation("TeaGradeUpdatedBy")
+  createdActivityTypes        ActivityType[]        @relation("ActivityTypeCreatedBy")
+  updatedActivityTypes        ActivityType[]        @relation("ActivityTypeUpdatedBy")
+  createdShifts               Shift[]               @relation("ShiftCreatedBy")
+  updatedShifts               Shift[]               @relation("ShiftUpdatedBy")
+  createdUomCategorys         UomCategory[]         @relation("UomCategoryCreatedBy")
+  updatedUomCategorys         UomCategory[]         @relation("UomCategoryUpdatedBy")
+  createdTeaVarietys          TeaVariety[]          @relation("TeaVarietyCreatedBy")
+  updatedTeaVarietys          TeaVariety[]          @relation("TeaVarietyUpdatedBy")
+  createdUoms                 Uom[]                 @relation("UomCreatedBy")
+  updatedUoms                 Uom[]                 @relation("UomUpdatedBy")
+  createdCurrencys            Currency[]            @relation("CurrencyCreatedBy")
+  updatedCurrencys            Currency[]            @relation("CurrencyUpdatedBy")
+  createdCountrys             Country[]             @relation("CountryCreatedBy")
+  updatedCountrys             Country[]             @relation("CountryUpdatedBy")
 
   scopes        UserScope[] @relation("UserScopeUser")
   grantedScopes UserScope[] @relation("UserScopeGrantedBy")
@@ -462,12 +512,12 @@ model Organisation {
   addressLine2         String?   @map("address_line2") @db.VarChar(200)
   city                 String?   @db.VarChar(100)
   postalCode           String?   @map("postal_code") @db.VarChar(20)
-  countryId            BigInt?   @map("country_id") @db.UnsignedBigInt
+  countryId            BigInt    @map("country_id") @db.UnsignedBigInt
   phone                String?   @db.VarChar(30)
   email                String?   @db.VarChar(150)
   website              String?   @db.VarChar(150)
   logoPath             String?   @map("logo_path") @db.VarChar(255)
-  baseCurrencyId       BigInt?   @map("base_currency_id") @db.UnsignedBigInt
+  baseCurrencyId       BigInt    @map("base_currency_id") @db.UnsignedBigInt
   /// 1 to 12. Governs every estate (O-17).
   fiscalYearStartMonth Int       @map("fiscal_year_start_month") @db.SmallInt
   /// active | inactive
@@ -480,14 +530,18 @@ model Organisation {
   updatedAt            DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy            BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  creator     User         @relation("OrganisationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_created_by")
-  updater     User?        @relation("OrganisationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_updated_by")
-  estates     Estate[]
-  factories   Factory[]
-  warehouses  Warehouse[]
-  fiscalYears FiscalYear[]
+  creator      User         @relation("OrganisationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_created_by")
+  updater      User?        @relation("OrganisationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_updated_by")
+  estates      Estate[]
+  factories    Factory[]
+  warehouses   Warehouse[]
+  fiscalYears  FiscalYear[]
+  country      Country      @relation(fields: [countryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_country")
+  baseCurrency Currency     @relation(fields: [baseCurrencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_base_currency")
 
   @@unique([singleton], map: "ux_organisation_singleton")
+  @@index([countryId], map: "ix_organisation_country")
+  @@index([baseCurrencyId], map: "ix_organisation_base_currency")
   @@index([createdBy], map: "ix_organisation_created_by")
   @@index([updatedBy], map: "ix_organisation_updated_by")
   @@map("organisation")
@@ -528,6 +582,7 @@ model Estate {
   fields       Field[]
   factories    Factory[]
   seasons      Season[]
+  shifts       Shift[]      @relation("ShiftEstate")
 
   @@unique([organisationId, code], map: "ux_estate_code")
   @@index([status], map: "ix_estate_status")
@@ -897,4 +952,677 @@ model AccountingPeriod {
   @@index([createdBy], map: "ix_accounting_period_created_by")
   @@index([updatedBy], map: "ix_accounting_period_updated_by")
   @@map("accounting_period")
+}
+
+// ---- P1.10 reference lookups and units (Spec P3 §5, §7.1) -----------------------------------------
+/// Generated from the lookup definitions: 16 common-shape lookups (P3 §5.1) and the lookups with
+/// additional columns (§5.2–§5.4, §7.1). is_system rows are seeded and may be renamed, never deleted or
+/// deactivated. The API is served by one engine (src/modules/lookups).
+
+model Department {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("DepartmentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_created_by")
+  updater User? @relation("DepartmentUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_updated_by")
+
+  @@unique([code], map: "ux_department_code")
+  @@index([status], map: "ix_department_status")
+  @@index([createdBy], map: "ix_department_created_by")
+  @@index([updatedBy], map: "ix_department_updated_by")
+  @@map("department")
+}
+
+model Designation {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("DesignationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_designation_created_by")
+  updater User? @relation("DesignationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_designation_updated_by")
+
+  @@unique([code], map: "ux_designation_code")
+  @@index([status], map: "ix_designation_status")
+  @@index([createdBy], map: "ix_designation_created_by")
+  @@index([updatedBy], map: "ix_designation_updated_by")
+  @@map("designation")
+}
+
+model WorkerCategory {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("WorkerCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_worker_category_created_by")
+  updater User? @relation("WorkerCategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_worker_category_updated_by")
+
+  @@unique([code], map: "ux_worker_category_code")
+  @@index([status], map: "ix_worker_category_status")
+  @@index([createdBy], map: "ix_worker_category_created_by")
+  @@index([updatedBy], map: "ix_worker_category_updated_by")
+  @@map("worker_category")
+}
+
+model EmployeeCategory {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("EmployeeCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_employee_category_created_by")
+  updater User? @relation("EmployeeCategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_employee_category_updated_by")
+
+  @@unique([code], map: "ux_employee_category_code")
+  @@index([status], map: "ix_employee_category_status")
+  @@index([createdBy], map: "ix_employee_category_created_by")
+  @@index([updatedBy], map: "ix_employee_category_updated_by")
+  @@map("employee_category")
+}
+
+model EmploymentType {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("EmploymentTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_employment_type_created_by")
+  updater User? @relation("EmploymentTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_employment_type_updated_by")
+
+  @@unique([code], map: "ux_employment_type_code")
+  @@index([status], map: "ix_employment_type_status")
+  @@index([createdBy], map: "ix_employment_type_created_by")
+  @@index([updatedBy], map: "ix_employment_type_updated_by")
+  @@map("employment_type")
+}
+
+model LeaveType {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("LeaveTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_type_created_by")
+  updater User? @relation("LeaveTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_type_updated_by")
+
+  @@unique([code], map: "ux_leave_type_code")
+  @@index([status], map: "ix_leave_type_status")
+  @@index([createdBy], map: "ix_leave_type_created_by")
+  @@index([updatedBy], map: "ix_leave_type_updated_by")
+  @@map("leave_type")
+}
+
+model BuyerType {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("BuyerTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_buyer_type_created_by")
+  updater User? @relation("BuyerTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_buyer_type_updated_by")
+
+  @@unique([code], map: "ux_buyer_type_code")
+  @@index([status], map: "ix_buyer_type_status")
+  @@index([createdBy], map: "ix_buyer_type_created_by")
+  @@index([updatedBy], map: "ix_buyer_type_updated_by")
+  @@map("buyer_type")
+}
+
+model TradingType {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("TradingTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_trading_type_created_by")
+  updater User? @relation("TradingTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_trading_type_updated_by")
+
+  @@unique([code], map: "ux_trading_type_code")
+  @@index([status], map: "ix_trading_type_status")
+  @@index([createdBy], map: "ix_trading_type_created_by")
+  @@index([updatedBy], map: "ix_trading_type_updated_by")
+  @@map("trading_type")
+}
+
+model PackagingType {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("PackagingTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_packaging_type_created_by")
+  updater User? @relation("PackagingTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_packaging_type_updated_by")
+
+  @@unique([code], map: "ux_packaging_type_code")
+  @@index([status], map: "ix_packaging_type_status")
+  @@index([createdBy], map: "ix_packaging_type_created_by")
+  @@index([updatedBy], map: "ix_packaging_type_updated_by")
+  @@map("packaging_type")
+}
+
+model ChargeType {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("ChargeTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_charge_type_created_by")
+  updater User? @relation("ChargeTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_charge_type_updated_by")
+
+  @@unique([code], map: "ux_charge_type_code")
+  @@index([status], map: "ix_charge_type_status")
+  @@index([createdBy], map: "ix_charge_type_created_by")
+  @@index([updatedBy], map: "ix_charge_type_updated_by")
+  @@map("charge_type")
+}
+
+model DocumentType {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("DocumentTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_document_type_created_by")
+  updater User? @relation("DocumentTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_document_type_updated_by")
+
+  @@unique([code], map: "ux_document_type_code")
+  @@index([status], map: "ix_document_type_status")
+  @@index([createdBy], map: "ix_document_type_created_by")
+  @@index([updatedBy], map: "ix_document_type_updated_by")
+  @@map("document_type")
+}
+
+model PaymentMethod {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("PaymentMethodCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_method_created_by")
+  updater User? @relation("PaymentMethodUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_method_updated_by")
+
+  @@unique([code], map: "ux_payment_method_code")
+  @@index([status], map: "ix_payment_method_status")
+  @@index([createdBy], map: "ix_payment_method_created_by")
+  @@index([updatedBy], map: "ix_payment_method_updated_by")
+  @@map("payment_method")
+}
+
+model LandType {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("LandTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_land_type_created_by")
+  updater User? @relation("LandTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_land_type_updated_by")
+
+  @@unique([code], map: "ux_land_type_code")
+  @@index([status], map: "ix_land_type_status")
+  @@index([createdBy], map: "ix_land_type_created_by")
+  @@index([updatedBy], map: "ix_land_type_updated_by")
+  @@map("land_type")
+}
+
+model AdjustmentReason {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("AdjustmentReasonCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_adjustment_reason_created_by")
+  updater User? @relation("AdjustmentReasonUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_adjustment_reason_updated_by")
+
+  @@unique([code], map: "ux_adjustment_reason_code")
+  @@index([status], map: "ix_adjustment_reason_status")
+  @@index([createdBy], map: "ix_adjustment_reason_created_by")
+  @@index([updatedBy], map: "ix_adjustment_reason_updated_by")
+  @@map("adjustment_reason")
+}
+
+model QualityGrade {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("QualityGradeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_quality_grade_created_by")
+  updater User? @relation("QualityGradeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_quality_grade_updated_by")
+
+  @@unique([code], map: "ux_quality_grade_code")
+  @@index([status], map: "ix_quality_grade_status")
+  @@index([createdBy], map: "ix_quality_grade_created_by")
+  @@index([updatedBy], map: "ix_quality_grade_updated_by")
+  @@map("quality_grade")
+}
+
+model CollectionPointType {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("CollectionPointTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_point_type_created_by")
+  updater User? @relation("CollectionPointTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_point_type_updated_by")
+
+  @@unique([code], map: "ux_collection_point_type_code")
+  @@index([status], map: "ix_collection_point_type_status")
+  @@index([createdBy], map: "ix_collection_point_type_created_by")
+  @@index([updatedBy], map: "ix_collection_point_type_updated_by")
+  @@map("collection_point_type")
+}
+
+model TeaType {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code               String    @db.VarChar(20)
+  name               String    @db.VarChar(150)
+  description        String?   @db.VarChar(500)
+  sortOrder          Int       @default(0) @map("sort_order")
+  isSystem           Boolean   @default(false) @map("is_system")
+  manufactureProcess String?   @map("manufacture_process") @db.VarChar(30)
+  /// active | inactive
+  status             String    @default("active") @db.VarChar(30)
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator          User       @relation("TeaTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_type_created_by")
+  updater          User?      @relation("TeaTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_type_updated_by")
+  teaGradeTeaTypes TeaGrade[] @relation("TeaGradeTeaType")
+
+  @@unique([code], map: "ux_tea_type_code")
+  @@index([status], map: "ix_tea_type_status")
+  @@index([createdBy], map: "ix_tea_type_created_by")
+  @@index([updatedBy], map: "ix_tea_type_updated_by")
+  @@map("tea_type")
+}
+
+model TeaGrade {
+  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code           String    @db.VarChar(20)
+  name           String    @db.VarChar(150)
+  description    String?   @db.VarChar(500)
+  sortOrder      Int       @default(0) @map("sort_order")
+  isSystem       Boolean   @default(false) @map("is_system")
+  teaTypeId      BigInt?   @map("tea_type_id") @db.UnsignedBigInt
+  gradeCategory  String?   @map("grade_category") @db.VarChar(30)
+  isPrimaryGrade Boolean   @default(false) @map("is_primary_grade")
+  /// active | inactive
+  status         String    @default("active") @db.VarChar(30)
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy      BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt      DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy      BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  teaType TeaType? @relation("TeaGradeTeaType", fields: [teaTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_grade_tea_type")
+  creator User     @relation("TeaGradeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_grade_created_by")
+  updater User?    @relation("TeaGradeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_grade_updated_by")
+
+  @@unique([code], map: "ux_tea_grade_code")
+  @@index([teaTypeId], map: "ix_tea_grade_tea_type")
+  @@index([status], map: "ix_tea_grade_status")
+  @@index([createdBy], map: "ix_tea_grade_created_by")
+  @@index([updatedBy], map: "ix_tea_grade_updated_by")
+  @@map("tea_grade")
+}
+
+model ActivityType {
+  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code             String    @db.VarChar(20)
+  name             String    @db.VarChar(150)
+  description      String?   @db.VarChar(500)
+  sortOrder        Int       @default(0) @map("sort_order")
+  isSystem         Boolean   @default(false) @map("is_system")
+  costCategory     String    @map("cost_category") @db.VarChar(30)
+  defaultUomId     BigInt?   @map("default_uom_id") @db.UnsignedBigInt
+  requiresMaterial Boolean   @default(false) @map("requires_material")
+  /// active | inactive
+  status           String    @default("active") @db.VarChar(30)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy        BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  defaultUom Uom?  @relation("ActivityTypeDefaultUom", fields: [defaultUomId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_activity_type_default_uom")
+  creator    User  @relation("ActivityTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_activity_type_created_by")
+  updater    User? @relation("ActivityTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_activity_type_updated_by")
+
+  @@unique([code], map: "ux_activity_type_code")
+  @@index([defaultUomId], map: "ix_activity_type_default_uom")
+  @@index([status], map: "ix_activity_type_status")
+  @@index([createdBy], map: "ix_activity_type_created_by")
+  @@index([updatedBy], map: "ix_activity_type_updated_by")
+  @@map("activity_type")
+}
+
+model Shift {
+  id                   BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code                 String    @db.VarChar(20)
+  name                 String    @db.VarChar(150)
+  description          String?   @db.VarChar(500)
+  sortOrder            Int       @default(0) @map("sort_order")
+  isSystem             Boolean   @default(false) @map("is_system")
+  estateId             BigInt?   @map("estate_id") @db.UnsignedBigInt
+  startTime            DateTime  @map("start_time") @db.Time(0)
+  endTime              DateTime  @map("end_time") @db.Time(0)
+  breakMinutes         Int       @default(0) @map("break_minutes")
+  graceMinutes         Int       @default(0) @map("grace_minutes")
+  halfDayHours         Decimal?  @map("half_day_hours") @db.Decimal(9, 4)
+  isOvernight          Boolean   @default(false) @map("is_overnight")
+  overtimeAfterMinutes Int?      @map("overtime_after_minutes")
+  /// active | inactive
+  status               String    @default("active") @db.VarChar(30)
+  version              Int       @default(1)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy            BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt            DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy            BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  estate  Estate? @relation("ShiftEstate", fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_shift_estate")
+  creator User    @relation("ShiftCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_shift_created_by")
+  updater User?   @relation("ShiftUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_shift_updated_by")
+
+  @@unique([code], map: "ux_shift_code")
+  @@index([estateId], map: "ix_shift_estate")
+  @@index([status], map: "ix_shift_status")
+  @@index([createdBy], map: "ix_shift_created_by")
+  @@index([updatedBy], map: "ix_shift_updated_by")
+  @@map("shift")
+}
+
+model UomCategory {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  baseUomId   BigInt?   @map("base_uom_id") @db.UnsignedBigInt
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  baseUom         Uom?  @relation("UomCategoryBaseUom", fields: [baseUomId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_uom_category_base_uom")
+  creator         User  @relation("UomCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_uom_category_created_by")
+  updater         User? @relation("UomCategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_uom_category_updated_by")
+  uomUomCategorys Uom[] @relation("UomUomCategory")
+
+  @@unique([code], map: "ux_uom_category_code")
+  @@index([baseUomId], map: "ix_uom_category_base_uom")
+  @@index([status], map: "ix_uom_category_status")
+  @@index([createdBy], map: "ix_uom_category_created_by")
+  @@index([updatedBy], map: "ix_uom_category_updated_by")
+  @@map("uom_category")
+}
+
+model TeaVariety {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code               String    @db.VarChar(20)
+  name               String    @db.VarChar(150)
+  description        String?   @db.VarChar(500)
+  sortOrder          Int       @default(0) @map("sort_order")
+  isSystem           Boolean   @default(false) @map("is_system")
+  varietyType        String?   @map("variety_type") @db.VarChar(30)
+  recommendedSpacing String?   @map("recommended_spacing") @db.VarChar(100)
+  typicalYieldKgHa   Decimal?  @map("typical_yield_kg_ha") @db.Decimal(14, 3)
+  /// active | inactive
+  status             String    @default("active") @db.VarChar(30)
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("TeaVarietyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_variety_created_by")
+  updater User? @relation("TeaVarietyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_variety_updated_by")
+
+  @@unique([code], map: "ux_tea_variety_code")
+  @@index([status], map: "ix_tea_variety_status")
+  @@index([createdBy], map: "ix_tea_variety_created_by")
+  @@index([updatedBy], map: "ix_tea_variety_updated_by")
+  @@map("tea_variety")
+}
+
+model Uom {
+  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  uomCategoryId    BigInt    @map("uom_category_id") @db.UnsignedBigInt
+  code             String    @db.VarChar(20)
+  name             String    @db.VarChar(100)
+  decimalPrecision Int       @default(3) @map("decimal_precision") @db.SmallInt
+  conversionFactor Decimal?  @map("conversion_factor") @db.Decimal(9, 4)
+  isBase           Boolean   @default(false) @map("is_base")
+  isSystem         Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status           String    @default("active") @db.VarChar(30)
+  /// GENERATED column (see migration SQL): at most one base row (per category for uom).
+  baseKey          BigInt?   @map("base_key") @db.UnsignedBigInt
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy        BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  uomCategory             UomCategory    @relation("UomUomCategory", fields: [uomCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_uom_uom_category")
+  creator                 User           @relation("UomCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_uom_created_by")
+  updater                 User?          @relation("UomUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_uom_updated_by")
+  activityTypeDefaultUoms ActivityType[] @relation("ActivityTypeDefaultUom")
+  uomCategoryBaseUoms     UomCategory[]  @relation("UomCategoryBaseUom")
+
+  @@unique([code], map: "ux_uom_code")
+  @@unique([baseKey], map: "ux_uom_base")
+  @@index([uomCategoryId], map: "ix_uom_uom_category")
+  @@index([status], map: "ix_uom_status")
+  @@index([createdBy], map: "ix_uom_created_by")
+  @@index([updatedBy], map: "ix_uom_updated_by")
+  @@map("uom")
+}
+
+model Currency {
+  id            BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code          String    @db.Char(3)
+  name          String    @db.VarChar(150)
+  symbol        String?   @db.VarChar(10)
+  decimalPlaces Int       @default(2) @map("decimal_places") @db.SmallInt
+  isBase        Boolean   @default(false) @map("is_base")
+  /// active | inactive
+  status        String    @default("active") @db.VarChar(30)
+  /// GENERATED column (see migration SQL): at most one base row (per category for uom).
+  baseKey       Int?      @map("base_key") @db.TinyInt
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy     BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt     DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy     BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator       User           @relation("CurrencyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_currency_created_by")
+  updater       User?          @relation("CurrencyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_currency_updated_by")
+  organisations Organisation[]
+
+  @@unique([code], map: "ux_currency_code")
+  @@unique([baseKey], map: "ux_currency_base")
+  @@index([status], map: "ix_currency_status")
+  @@index([createdBy], map: "ix_currency_created_by")
+  @@index([updatedBy], map: "ix_currency_updated_by")
+  @@map("currency")
+}
+
+model Country {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  iso2         String    @db.Char(2)
+  iso3         String    @db.Char(3)
+  name         String    @db.VarChar(150)
+  diallingCode String?   @map("dialling_code") @db.VarChar(10)
+  /// active | inactive
+  status       String    @default("active") @db.VarChar(30)
+  version      Int       @default(1)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy    BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt    DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy    BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator       User           @relation("CountryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_country_created_by")
+  updater       User?          @relation("CountryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_country_updated_by")
+  organisations Organisation[]
+
+  @@unique([iso2], map: "ux_country_iso2")
+  @@unique([iso3], map: "ux_country_iso3")
+  @@index([status], map: "ix_country_status")
+  @@index([createdBy], map: "ix_country_created_by")
+  @@index([updatedBy], map: "ix_country_updated_by")
+  @@map("country")
 }

@@ -11,6 +11,7 @@ import type { Mailer } from '../core/mail/mailer.js';
 import type { Platform } from '../core/platform.js';
 import { auditModule } from './audit/audit.routes.js';
 import { identityModules } from './identity/identity.routes.js';
+import { lookupModules } from './lookups/lookup.routes.js';
 import { calendarModules } from './calendar/calendar.routes.js';
 import { facilitiesModules } from './facilities/facilities.routes.js';
 import { organisationModules } from './organisation/organisation.routes.js';
@@ -31,7 +32,7 @@ export interface ModuleDeps {
 
 /**
  * The application's modules, in mount order. Each epic adds its module here, starting with P1.01
- * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) and P1.09 (calendars). server.ts mounts them, and the OpenAPI document is
+ * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) and P1.10 (reference lookups). server.ts mounts them, and the OpenAPI document is
  * generated from them.
  */
 export function buildModules(deps: ModuleDeps): ApiModule[] {
@@ -41,5 +42,6 @@ export function buildModules(deps: ModuleDeps): ApiModule[] {
     ...organisationModules(deps),
     ...facilitiesModules(deps),
     ...calendarModules(deps),
+    ...lookupModules(deps),
   ];
 }

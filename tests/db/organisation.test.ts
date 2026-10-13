@@ -136,7 +136,7 @@ describe('organisation: one row per deployment (P3 §4.1)', () => {
     expect(await organisationStartupProblem(mdb.db)).toBeNull();
     await expect(
       mdb.migrator.$executeRawUnsafe(
-        "INSERT INTO organisation (name, short_name, fiscal_year_start_month, created_by) VALUES ('Second', 'TWO', 1, 1)",
+        "INSERT INTO organisation (name, short_name, fiscal_year_start_month, country_id, base_currency_id, created_by) SELECT 'Second', 'TWO', 1, country_id, base_currency_id, 1 FROM organisation",
       ),
     ).rejects.toThrow(/ux_organisation_singleton/);
   });
@@ -144,7 +144,7 @@ describe('organisation: one row per deployment (P3 §4.1)', () => {
   it('is read and edited without an id, with If-Match, and audited', async () => {
     const got = await api.get('/organisation');
     expect(got.status).toBe(200);
-    expect(got.body.data).toMatchObject({ short_name: 'ORG', fiscal_year_start_month: 7, country_id: null });
+    expect(got.body.data).toMatchObject({ short_name: 'ORG', fiscal_year_start_month: 7 });
     const v = got.body.data.version as number;
     expect((await api.patch('/organisation', { name: 'Jamuna Tea' }, v + 5)).status).toBe(409);
     const res = await api.patch(

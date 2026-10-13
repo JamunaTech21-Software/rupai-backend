@@ -24,6 +24,8 @@ import {
  * contacts and a party. "Demo estate administration" covers facilities and parties too.
  * P1.09 adds seasons (2025-26 closed and 2026-27 active on DEMO-A, 2026-27 active on DEMO-B) and fiscal
  * year FY2026-27 with its 13 periods, July to October open.
+ * P1.10 adds a few of the client's own lookups (departments, designations, worker categories) and three
+ * shifts: one organisation-wide, one per demo estate (the viewer sees DEMO-A's, not DEMO-B's).
  *
  * Idempotent: existing users and roles are left exactly as they are (a password changed through the
  * app is never reset by a re-seed).
@@ -44,6 +46,14 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['season', 'view'],
   ['fiscal_year', 'view'],
   ['accounting_period', 'view'],
+  ['lookup', 'view'],
+  ['uom', 'view'],
+  ['tea_type', 'view'],
+  ['tea_grade', 'view'],
+  ['activity_type', 'view'],
+  ['shift', 'view'],
+  ['currency', 'view'],
+  ['country', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -60,6 +70,14 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     'land',
     'season',
     'fiscal_year',
+    'lookup',
+    'uom',
+    'tea_type',
+    'tea_grade',
+    'activity_type',
+    'shift',
+    'currency',
+    'country',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
   ['accounting_period', 'view'],
   ['accounting_period', 'edit'],
@@ -176,6 +194,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoHierarchySeeder,
     demoFacilitiesSeeder,
     demoCalendarSeeder,
+    demoLookupSeeder,
   ];
 }
 
@@ -462,6 +481,80 @@ const demoCalendarSeeder: Seeder = {
           })),
         });
         inserted += 14;
+      }
+      return { inserted, updated: 0 };
+    }),
+};
+
+/** P1.10: the lists that ship empty (they are the client's own), filled for the demo, and shifts. */
+const demoLookupSeeder: Seeder = {
+  name: 'demo: departments, designations, worker categories and shifts',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const rows = { code: true } as const;
+      const lists = [
+        [
+          tx.department,
+          [
+            ['FIELD', 'Field'],
+            ['FACTORY', 'Factory'],
+            ['ACCOUNTS', 'Accounts'],
+          ],
+        ],
+        [
+          tx.designation,
+          [
+            ['MANAGER', 'Manager'],
+            ['SUPERVISOR', 'Supervisor'],
+            ['CLERK', 'Clerk'],
+          ],
+        ],
+        [
+          tx.workerCategory,
+          [
+            ['PERMANENT', 'Permanent worker'],
+            ['CASUAL', 'Casual worker'],
+          ],
+        ],
+      ] as const;
+      for (const [model, values] of lists) {
+        for (const [i, [code, name]] of values.entries()) {
+          const delegate = model as unknown as {
+            findFirst(a: object): Promise<unknown>;
+            create(a: object): Promise<unknown>;
+          };
+          if (await delegate.findFirst({ where: { code }, select: rows })) continue;
+          await delegate.create({ data: { code, name, sortOrder: (i + 1) * 10, createdBy: by } });
+          inserted += 1;
+        }
+      }
+      const time = (hhmm: string) => new Date(`1970-01-01T${hhmm}:00.000Z`);
+      const estate = async (code: string) =>
+        (await tx.estate.findFirst({ where: { code }, select: { id: true } }))?.id ?? null;
+      const shifts = [
+        ['DAY', 'Day shift', null, '06:00', '14:00', false],
+        ['A-NIGHT', 'DEMO-A night shift', await estate('DEMO-A'), '22:00', '06:00', true],
+        ['B-LATE', 'DEMO-B late shift', await estate('DEMO-B'), '14:00', '22:00', false],
+      ] as const;
+      for (const [code, name, estateId, start, end, overnight] of shifts) {
+        if (code !== 'DAY' && estateId === null) continue;
+        if (await tx.shift.findFirst({ where: { code }, select: { id: true } })) continue;
+        await tx.shift.create({
+          data: {
+            code,
+            name,
+            estateId,
+            startTime: time(start),
+            endTime: time(end),
+            isOvernight: overnight,
+            breakMinutes: 30,
+            graceMinutes: 10,
+            createdBy: by,
+          },
+        });
+        inserted += 1;
       }
       return { inserted, updated: 0 };
     }),
