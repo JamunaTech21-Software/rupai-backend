@@ -134,24 +134,34 @@ model User {
   authorisationsGiven   AccessAuthorisation[] @relation("AccessAuthorisationBy")
   authorisationsRemoved AccessAuthorisation[] @relation("AccessAuthorisationRemovedBy")
 
-  createdOrganisations Organisation[] @relation("OrganisationCreatedBy")
-  updatedOrganisations Organisation[] @relation("OrganisationUpdatedBy")
-  createdEstates       Estate[]       @relation("EstateCreatedBy")
-  updatedEstates       Estate[]       @relation("EstateUpdatedBy")
-  createdDivisions     Division[]     @relation("DivisionCreatedBy")
-  updatedDivisions     Division[]     @relation("DivisionUpdatedBy")
-  createdSections      Section[]      @relation("SectionCreatedBy")
-  updatedSections      Section[]      @relation("SectionUpdatedBy")
-  createdFields        Field[]        @relation("FieldCreatedBy")
-  updatedFields        Field[]        @relation("FieldUpdatedBy")
-  createdFactories     Factory[]      @relation("FactoryCreatedBy")
-  updatedFactories     Factory[]      @relation("FactoryUpdatedBy")
-  createdWarehouses    Warehouse[]    @relation("WarehouseCreatedBy")
-  updatedWarehouses    Warehouse[]    @relation("WarehouseUpdatedBy")
-  createdParties       Party[]        @relation("PartyCreatedBy")
-  updatedParties       Party[]        @relation("PartyUpdatedBy")
-  createdContacts      PartyContact[] @relation("PartyContactCreatedBy")
-  updatedContacts      PartyContact[] @relation("PartyContactUpdatedBy")
+  createdOrganisations Organisation[]     @relation("OrganisationCreatedBy")
+  updatedOrganisations Organisation[]     @relation("OrganisationUpdatedBy")
+  createdEstates       Estate[]           @relation("EstateCreatedBy")
+  updatedEstates       Estate[]           @relation("EstateUpdatedBy")
+  createdDivisions     Division[]         @relation("DivisionCreatedBy")
+  updatedDivisions     Division[]         @relation("DivisionUpdatedBy")
+  createdSections      Section[]          @relation("SectionCreatedBy")
+  updatedSections      Section[]          @relation("SectionUpdatedBy")
+  createdFields        Field[]            @relation("FieldCreatedBy")
+  updatedFields        Field[]            @relation("FieldUpdatedBy")
+  createdFactories     Factory[]          @relation("FactoryCreatedBy")
+  updatedFactories     Factory[]          @relation("FactoryUpdatedBy")
+  createdWarehouses    Warehouse[]        @relation("WarehouseCreatedBy")
+  updatedWarehouses    Warehouse[]        @relation("WarehouseUpdatedBy")
+  createdParties       Party[]            @relation("PartyCreatedBy")
+  updatedParties       Party[]            @relation("PartyUpdatedBy")
+  createdContacts      PartyContact[]     @relation("PartyContactCreatedBy")
+  updatedContacts      PartyContact[]     @relation("PartyContactUpdatedBy")
+  createdSeasons       Season[]           @relation("SeasonCreatedBy")
+  updatedSeasons       Season[]           @relation("SeasonUpdatedBy")
+  closedSeasons        Season[]           @relation("SeasonClosedBy")
+  createdFiscalYears   FiscalYear[]       @relation("FiscalYearCreatedBy")
+  updatedFiscalYears   FiscalYear[]       @relation("FiscalYearUpdatedBy")
+  closedFiscalYears    FiscalYear[]       @relation("FiscalYearClosedBy")
+  createdPeriods       AccountingPeriod[] @relation("AccountingPeriodCreatedBy")
+  updatedPeriods       AccountingPeriod[] @relation("AccountingPeriodUpdatedBy")
+  closedPeriods        AccountingPeriod[] @relation("AccountingPeriodClosedBy")
+  reopenedPeriods      AccountingPeriod[] @relation("AccountingPeriodReopenedBy")
 
   scopes        UserScope[] @relation("UserScopeUser")
   grantedScopes UserScope[] @relation("UserScopeGrantedBy")
@@ -470,11 +480,12 @@ model Organisation {
   updatedAt            DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy            BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  creator    User        @relation("OrganisationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_created_by")
-  updater    User?       @relation("OrganisationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_updated_by")
-  estates    Estate[]
-  factories  Factory[]
-  warehouses Warehouse[]
+  creator     User         @relation("OrganisationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_created_by")
+  updater     User?        @relation("OrganisationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_organisation_updated_by")
+  estates     Estate[]
+  factories   Factory[]
+  warehouses  Warehouse[]
+  fiscalYears FiscalYear[]
 
   @@unique([singleton], map: "ux_organisation_singleton")
   @@index([createdBy], map: "ix_organisation_created_by")
@@ -516,6 +527,7 @@ model Estate {
   divisions    Division[]
   fields       Field[]
   factories    Factory[]
+  seasons      Season[]
 
   @@unique([organisationId, code], map: "ux_estate_code")
   @@index([status], map: "ix_estate_status")
@@ -773,4 +785,116 @@ model PartyContact {
   @@index([createdBy], map: "ix_party_contact_created_by")
   @@index([updatedBy], map: "ix_party_contact_updated_by")
   @@map("party_contact")
+}
+
+// ---- P1.09 calendars (Spec P3 §4.8–§4.10, P1 §5.2, §14) ------------------------------------------
+
+/// The agricultural calendar of ONE estate (P3 §4.8). Independent of the fiscal calendar: nothing may
+/// infer one from the other (P1 §5.2). Seasons of an estate never overlap; a closed season rejects new
+/// operational transactions dated within it.
+model Season {
+  id        BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  estateId  BigInt    @map("estate_id") @db.UnsignedBigInt
+  /// For example 2026-27. Unique within the estate.
+  code      String    @db.VarChar(20)
+  name      String    @db.VarChar(150)
+  startDate DateTime  @map("start_date") @db.Date
+  endDate   DateTime  @map("end_date") @db.Date
+  /// planned | active | closed
+  state     String    @default("planned") @db.VarChar(30)
+  closedAt  DateTime? @map("closed_at") @db.DateTime(0)
+  closedBy  BigInt?   @map("closed_by") @db.UnsignedBigInt
+  version   Int       @default(1)
+  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  estate  Estate @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_season_estate")
+  closer  User?  @relation("SeasonClosedBy", fields: [closedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_season_closed_by")
+  creator User   @relation("SeasonCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_season_created_by")
+  updater User?  @relation("SeasonUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_season_updated_by")
+
+  @@unique([estateId, code], map: "ux_season_code")
+  @@index([estateId, startDate, endDate], map: "ix_season_dates")
+  @@index([state], map: "ix_season_state")
+  @@index([closedBy], map: "ix_season_closed_by")
+  @@index([createdBy], map: "ix_season_created_by")
+  @@index([updatedBy], map: "ix_season_updated_by")
+  @@map("season")
+}
+
+/// The accounting calendar of the whole organisation (P3 §4.9, decision O-17): no estate_id, ever.
+model FiscalYear {
+  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  organisationId BigInt    @map("organisation_id") @db.UnsignedBigInt
+  /// For example FY2026-27.
+  code           String    @db.VarChar(20)
+  name           String    @db.VarChar(150)
+  /// Derived from organisation.fiscal_year_start_month on creation.
+  startDate      DateTime  @map("start_date") @db.Date
+  endDate        DateTime  @map("end_date") @db.Date
+  /// future | open | closed
+  state          String    @default("future") @db.VarChar(30)
+  closedAt       DateTime? @map("closed_at") @db.DateTime(0)
+  closedBy       BigInt?   @map("closed_by") @db.UnsignedBigInt
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy      BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt      DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy      BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  organisation Organisation       @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_organisation")
+  closer       User?              @relation("FiscalYearClosedBy", fields: [closedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_closed_by")
+  creator      User               @relation("FiscalYearCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_created_by")
+  updater      User?              @relation("FiscalYearUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_updated_by")
+  periods      AccountingPeriod[]
+
+  @@unique([organisationId, code], map: "ux_fiscal_year_code")
+  @@unique([organisationId, startDate], map: "ux_fiscal_year_start")
+  @@index([startDate, endDate], map: "ix_fiscal_year_dates")
+  @@index([state], map: "ix_fiscal_year_state")
+  @@index([closedBy], map: "ix_fiscal_year_closed_by")
+  @@index([createdBy], map: "ix_fiscal_year_created_by")
+  @@index([updatedBy], map: "ix_fiscal_year_updated_by")
+  @@map("fiscal_year")
+}
+
+/// One period of a fiscal year (P3 §4.10): 1–12 monthly, 13 reserved for year-end adjustments. Every
+/// posting tests this row's state: the single point of period control (P1 §14).
+model AccountingPeriod {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  fiscalYearId BigInt    @map("fiscal_year_id") @db.UnsignedBigInt
+  periodNumber Int       @map("period_number") @db.SmallInt
+  name         String    @db.VarChar(100)
+  startDate    DateTime  @map("start_date") @db.Date
+  endDate      DateTime  @map("end_date") @db.Date
+  /// future | open | soft_closed | closed | reopened (P1 Table 14.1)
+  state        String    @default("future") @db.VarChar(30)
+  closedAt     DateTime? @map("closed_at") @db.DateTime(0)
+  closedBy     BigInt?   @map("closed_by") @db.UnsignedBigInt
+  reopenedAt   DateTime? @map("reopened_at") @db.DateTime(0)
+  reopenedBy   BigInt?   @map("reopened_by") @db.UnsignedBigInt
+  /// Required when reopened_at is set.
+  reopenReason String?   @map("reopen_reason") @db.VarChar(500)
+  version      Int       @default(1)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy    BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt    DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy    BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  fiscalYear FiscalYear @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_fiscal_year")
+  closer     User?      @relation("AccountingPeriodClosedBy", fields: [closedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_closed_by")
+  reopener   User?      @relation("AccountingPeriodReopenedBy", fields: [reopenedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_reopened_by")
+  creator    User       @relation("AccountingPeriodCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_created_by")
+  updater    User?      @relation("AccountingPeriodUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_updated_by")
+
+  @@unique([fiscalYearId, periodNumber], map: "ux_period")
+  @@index([startDate, endDate], map: "ix_accounting_period_dates")
+  @@index([state], map: "ix_accounting_period_state")
+  @@index([closedBy], map: "ix_accounting_period_closed_by")
+  @@index([reopenedBy], map: "ix_accounting_period_reopened_by")
+  @@index([createdBy], map: "ix_accounting_period_created_by")
+  @@index([updatedBy], map: "ix_accounting_period_updated_by")
+  @@map("accounting_period")
 }

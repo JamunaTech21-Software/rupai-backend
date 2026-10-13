@@ -4,6 +4,7 @@ import { auditUpdate } from '../../core/audit/audit.js';
 import type { Seeder } from '../../core/db/seed.js';
 import type { Database } from '../../core/db/prisma.js';
 import { withTransaction, type Tx } from '../../core/db/transaction.js';
+import { AppError } from '../../core/errors/app-error.js';
 import type { Organisation, Prisma } from '../../generated/prisma/client.js';
 import { BOOTSTRAP_ADMIN_ID } from '../identity/identity.seed.js';
 import { idOut, iso, versionConflict } from './common.js';
@@ -81,6 +82,24 @@ export function organisationService(db: Database) {
             ? { fiscalYearStartMonth: b.fiscal_year_start_month }
             : {}),
         };
+        // Every fiscal year's dates derive from the start month (P3 §4.9), so it is fixed once one exists.
+        if (
+          b.fiscal_year_start_month !== undefined &&
+          b.fiscal_year_start_month !== before.fiscalYearStartMonth &&
+          (await tx.fiscalYear.count()) > 0
+        ) {
+          throw new AppError(
+            'INVARIANT_VIOLATED',
+            'The fiscal year start month cannot change once a fiscal year exists.',
+            [
+              {
+                field: 'fiscal_year_start_month',
+                code: 'INVARIANT_VIOLATED',
+                message: 'fixed once a fiscal year exists',
+              },
+            ],
+          );
+        }
         const { count } = await tx.organisation.updateMany({
           where: { id: before.id, version: expectedVersion },
           data: { ...data, version: { increment: 1 }, updatedAt: new Date(), updatedBy: actorId },

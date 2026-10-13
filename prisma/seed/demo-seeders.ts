@@ -2,6 +2,8 @@ import { hashPassword } from '../../src/core/auth/password.js';
 import type { Seeder } from '../../src/core/db/seed.js';
 import type { Tx } from '../../src/core/db/transaction.js';
 import { runUnscoped } from '../../src/core/scope/scope.js';
+import { businessDateToDb, type BusinessDate } from '../../src/core/time/dates.js';
+import { fiscalYearCode, fiscalYearDates, periodsOf } from '../../src/modules/calendar/fiscal.service.js';
 import { ADMINISTRATOR_ROLE_CODE } from '../../src/modules/identity/permission-catalogue.js';
 import {
   BOOTSTRAP_ADMIN_ID,
@@ -20,6 +22,8 @@ import {
  * P1.07 adds two demo estates (DEMO-A, DEMO-B), each with divisions, sections and fields.
  * P1.08 adds two factories and two warehouses (the viewer is granted DEMO-F1 and DEMO-W1 only), warehouse
  * contacts and a party. "Demo estate administration" covers facilities and parties too.
+ * P1.09 adds seasons (2025-26 closed and 2026-27 active on DEMO-A, 2026-27 active on DEMO-B) and fiscal
+ * year FY2026-27 with its 13 periods, July to October open.
  *
  * Idempotent: existing users and roles are left exactly as they are (a password changed through the
  * app is never reset by a re-seed).
@@ -37,15 +41,28 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['factory', 'view'],
   ['warehouse', 'view'],
   ['land', 'view'],
+  ['season', 'view'],
+  ['fiscal_year', 'view'],
+  ['accounting_period', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
 const DEMO_ESTATE_ADMIN_PERMISSIONS = [
   ['organisation', 'view'],
   ['organisation', 'edit'],
-  ...['estate', 'division', 'section', 'field', 'factory', 'warehouse', 'land'].flatMap((m) =>
-    ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const),
-  ),
+  ...[
+    'estate',
+    'division',
+    'section',
+    'field',
+    'factory',
+    'warehouse',
+    'land',
+    'season',
+    'fiscal_year',
+  ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
+  ['accounting_period', 'view'],
+  ['accounting_period', 'edit'],
 ] as const;
 
 /** A demo role holding at least these permissions: created if missing, missing permissions added. */
@@ -158,6 +175,7 @@ export function demoSeeders(password: string): Seeder[] {
     },
     demoHierarchySeeder,
     demoFacilitiesSeeder,
+    demoCalendarSeeder,
   ];
 }
 
@@ -372,6 +390,78 @@ const demoFacilitiesSeeder: Seeder = {
           });
           inserted += 1;
         }
+      }
+      return { inserted, updated: 0 };
+    }),
+};
+
+/** P1.09: seasons for the demo estates and one fiscal year with its periods. */
+const demoCalendarSeeder: Seeder = {
+  name: 'demo: seasons, fiscal year FY2026-27 and its periods (July to October open)',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const day = (d: string) => businessDateToDb(d as BusinessDate);
+
+      const season = async (
+        estateCode: string,
+        code: string,
+        start: string,
+        end: string,
+        state: 'active' | 'closed',
+      ) => {
+        const estate = await tx.estate.findFirst({ where: { code: estateCode }, select: { id: true } });
+        if (!estate) return;
+        if (await tx.season.findFirst({ where: { estateId: estate.id, code }, select: { id: true } })) return;
+        await tx.season.create({
+          data: {
+            estateId: estate.id,
+            code,
+            name: `Season ${code}`,
+            startDate: day(start),
+            endDate: day(end),
+            state,
+            ...(state === 'closed' ? { closedAt: new Date(), closedBy: by } : {}),
+            createdBy: by,
+          },
+        });
+        inserted += 1;
+      };
+      await season('DEMO-A', '2025-26', '2025-03-01', '2026-02-28', 'closed');
+      await season('DEMO-A', '2026-27', '2026-03-01', '2027-02-28', 'active');
+      await season('DEMO-B', '2026-27', '2026-03-01', '2027-02-28', 'active');
+
+      const org = await tx.organisation.findFirstOrThrow({
+        select: { id: true, fiscalYearStartMonth: true },
+      });
+      const code = fiscalYearCode(2026, org.fiscalYearStartMonth);
+      if (!(await tx.fiscalYear.findFirst({ where: { code }, select: { id: true } }))) {
+        const { start, end } = fiscalYearDates(2026, org.fiscalYearStartMonth);
+        const year = await tx.fiscalYear.create({
+          data: {
+            organisationId: org.id,
+            code,
+            name: `Fiscal year ${code.replace(/^FY/, '')}`,
+            startDate: businessDateToDb(start),
+            endDate: businessDateToDb(end),
+            state: 'open',
+            createdBy: by,
+          },
+          select: { id: true },
+        });
+        await tx.accountingPeriod.createMany({
+          data: periodsOf(start).map((p) => ({
+            fiscalYearId: year.id,
+            periodNumber: p.number,
+            name: p.name,
+            startDate: businessDateToDb(p.start),
+            endDate: businessDateToDb(p.end),
+            state: p.number <= 4 ? 'open' : 'future',
+            createdBy: by,
+          })),
+        });
+        inserted += 14;
       }
       return { inserted, updated: 0 };
     }),
