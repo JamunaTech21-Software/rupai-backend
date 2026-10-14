@@ -10,6 +10,7 @@ import type { Database } from '../core/db/prisma.js';
 import type { Mailer } from '../core/mail/mailer.js';
 import type { Platform } from '../core/platform.js';
 import type { FileStorage } from '../core/storage/storage.js';
+import { approvalsModule } from './approvals/approvals.routes.js';
 import { auditModule } from './audit/audit.routes.js';
 import { identityModules } from './identity/identity.routes.js';
 import { lookupModules } from './lookups/lookup.routes.js';
@@ -38,7 +39,7 @@ export interface ModuleDeps {
 
 /**
  * The application's modules, in mount order. Each epic adds its module here, starting with P1.01
- * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments) and P1.13 (approval workflow definitions). server.ts mounts them, and the OpenAPI document is
+ * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments), P1.13 (approval workflow definitions) and P1.14 (approval runtime and queue). server.ts mounts them, and the OpenAPI document is
  * generated from them.
  */
 export function buildModules(deps: ModuleDeps): ApiModule[] {
@@ -52,5 +53,6 @@ export function buildModules(deps: ModuleDeps): ApiModule[] {
     ...systemModules(deps),
     documentsModule(deps),
     workflowsModule(deps),
+    approvalsModule(deps),
   ];
 }

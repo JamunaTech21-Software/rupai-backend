@@ -26,6 +26,8 @@ export const ERROR_CODES = {
   PERMISSION_DENIED: 403,
   SCOPE_DENIED: 403,
   SELF_APPROVAL_FORBIDDEN: 403,
+  /** The user is not among the approvers of the current step, directly or by delegation (P7 §4). */
+  NOT_AN_APPROVER: 403,
   /** A rule version taking effect in the past needs elevated approval (P1 §3.2, §10.7, P1.06). */
   RETROSPECTIVE_APPROVAL_REQUIRED: 403,
   /** A temporary password must be changed before anything else (P3 §32.2, P1.02). */
@@ -50,6 +52,8 @@ export const ERROR_CODES = {
   VERSION_CONFLICT: 409,
   /** A request with this Idempotency-Key is still being processed. */
   IDEMPOTENCY_IN_PROGRESS: 409,
+  /** Someone else acted on this approval step first: it is no longer the step you saw (P7 §17). */
+  APPROVAL_STEP_CHANGED: 409,
 
   // ---- period and lock (423) -------------------------------------------------------------------
   PERIOD_CLOSED: 423,

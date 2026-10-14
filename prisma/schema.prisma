@@ -214,25 +214,33 @@ model User {
   createdCountrys             Country[]             @relation("CountryCreatedBy")
   updatedCountrys             Country[]             @relation("CountryUpdatedBy")
 
-  scopes               UserScope[]     @relation("UserScopeUser")
-  grantedScopes        UserScope[]     @relation("UserScopeGrantedBy")
-  createdScopes        UserScope[]     @relation("UserScopeCreatedBy")
-  updatedScopes        UserScope[]     @relation("UserScopeUpdatedBy")
-  createdNumberFormats NumberFormat[]  @relation("NumberFormatCreatedBy")
-  updatedNumberFormats NumberFormat[]  @relation("NumberFormatUpdatedBy")
-  createdSettings      SystemSetting[] @relation("SystemSettingCreatedBy")
-  updatedSettings      SystemSetting[] @relation("SystemSettingUpdatedBy")
-  createdDocuments     DocumentFile[]  @relation("DocumentFileCreatedBy")
-  updatedDocuments     DocumentFile[]  @relation("DocumentFileUpdatedBy")
-  uploadedDocuments    DocumentFile[]  @relation("DocumentFileUploadedBy")
-  createdWorkflows     Workflow[]      @relation("WorkflowCreatedBy")
-  updatedWorkflows     Workflow[]      @relation("WorkflowUpdatedBy")
-  submittedWorkflows   Workflow[]      @relation("WorkflowSubmittedBy")
-  approvedWorkflows    Workflow[]      @relation("WorkflowApprovedBy")
-  rejectedWorkflows    Workflow[]      @relation("WorkflowRejectedBy")
-  createdWorkflowSteps WorkflowStep[]  @relation("WorkflowStepCreatedBy")
-  updatedWorkflowSteps WorkflowStep[]  @relation("WorkflowStepUpdatedBy")
-  workflowSteps        WorkflowStep[]  @relation("WorkflowStepUser")
+  scopes               UserScope[]          @relation("UserScopeUser")
+  grantedScopes        UserScope[]          @relation("UserScopeGrantedBy")
+  createdScopes        UserScope[]          @relation("UserScopeCreatedBy")
+  updatedScopes        UserScope[]          @relation("UserScopeUpdatedBy")
+  createdNumberFormats NumberFormat[]       @relation("NumberFormatCreatedBy")
+  updatedNumberFormats NumberFormat[]       @relation("NumberFormatUpdatedBy")
+  createdSettings      SystemSetting[]      @relation("SystemSettingCreatedBy")
+  updatedSettings      SystemSetting[]      @relation("SystemSettingUpdatedBy")
+  createdDocuments     DocumentFile[]       @relation("DocumentFileCreatedBy")
+  updatedDocuments     DocumentFile[]       @relation("DocumentFileUpdatedBy")
+  uploadedDocuments    DocumentFile[]       @relation("DocumentFileUploadedBy")
+  createdWorkflows     Workflow[]           @relation("WorkflowCreatedBy")
+  updatedWorkflows     Workflow[]           @relation("WorkflowUpdatedBy")
+  submittedWorkflows   Workflow[]           @relation("WorkflowSubmittedBy")
+  approvedWorkflows    Workflow[]           @relation("WorkflowApprovedBy")
+  rejectedWorkflows    Workflow[]           @relation("WorkflowRejectedBy")
+  createdWorkflowSteps WorkflowStep[]       @relation("WorkflowStepCreatedBy")
+  updatedWorkflowSteps WorkflowStep[]       @relation("WorkflowStepUpdatedBy")
+  workflowSteps        WorkflowStep[]       @relation("WorkflowStepUser")
+  submittedApprovals   ApprovalRequest[]    @relation("ApprovalRequestSubmittedBy")
+  createdApprovalDocs  ApprovalRequest[]    @relation("ApprovalRequestDocumentCreatedBy")
+  approvalActions      ApprovalAction[]     @relation("ApprovalActionUser")
+  actedForApprovals    ApprovalAction[]     @relation("ApprovalActionActingFor")
+  delegationsFrom      ApprovalDelegation[] @relation("ApprovalDelegationFrom")
+  delegationsTo        ApprovalDelegation[] @relation("ApprovalDelegationTo")
+  createdDelegations   ApprovalDelegation[] @relation("ApprovalDelegationCreatedBy")
+  updatedDelegations   ApprovalDelegation[] @relation("ApprovalDelegationUpdatedBy")
 
   @@unique([username], map: "ux_user_username")
   @@unique([email], map: "ux_user_email")
@@ -1822,16 +1830,17 @@ model Workflow {
   /// GENERATED (see migration SQL): document type + scope + effective_from while ACTIVE, else NULL.
   activeKey         String?   @map("active_key") @db.VarChar(255)
 
-  supersedes   Workflow?      @relation("WorkflowSupersedes", fields: [supersedesId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_supersedes")
-  supersededBy Workflow[]     @relation("WorkflowSupersedes")
-  estate       Estate?        @relation(fields: [scopeEstateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_estate")
-  department   Department?    @relation(fields: [scopeDepartmentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_department")
-  creator      User           @relation("WorkflowCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_created_by")
-  updater      User?          @relation("WorkflowUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_updated_by")
-  submitter    User?          @relation("WorkflowSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_submitted_by")
-  approver     User?          @relation("WorkflowApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_approved_by")
-  rejecter     User?          @relation("WorkflowRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_rejected_by")
+  supersedes   Workflow?         @relation("WorkflowSupersedes", fields: [supersedesId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_supersedes")
+  supersededBy Workflow[]        @relation("WorkflowSupersedes")
+  estate       Estate?           @relation(fields: [scopeEstateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_estate")
+  department   Department?       @relation(fields: [scopeDepartmentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_department")
+  creator      User              @relation("WorkflowCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_created_by")
+  updater      User?             @relation("WorkflowUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_updated_by")
+  submitter    User?             @relation("WorkflowSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_submitted_by")
+  approver     User?             @relation("WorkflowApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_approved_by")
+  rejecter     User?             @relation("WorkflowRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_rejected_by")
   steps        WorkflowStep[]
+  requests     ApprovalRequest[]
 
   @@unique([activeKey], map: "ux_workflow_scope_from")
   @@index([documentType, specificity, effectiveFrom, effectiveTo, state], map: "ix_workflow_resolution")
@@ -1876,11 +1885,13 @@ model WorkflowStep {
   updatedAt         DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy         BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_workflow")
-  role     Role?    @relation(fields: [roleId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_role")
-  user     User?    @relation("WorkflowStepUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_user")
-  creator  User     @relation("WorkflowStepCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_created_by")
-  updater  User?    @relation("WorkflowStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_updated_by")
+  workflow  Workflow          @relation(fields: [workflowId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_workflow")
+  role      Role?             @relation(fields: [roleId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_role")
+  user      User?             @relation("WorkflowStepUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_user")
+  creator   User              @relation("WorkflowStepCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_created_by")
+  updater   User?             @relation("WorkflowStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_updated_by")
+  currentOf ApprovalRequest[]
+  actions   ApprovalAction[]
 
   @@unique([workflowId, stepNumber], map: "ux_workflow_step_number")
   @@index([roleId], map: "ix_workflow_step_role")
@@ -1888,4 +1899,139 @@ model WorkflowStep {
   @@index([createdBy], map: "ix_workflow_step_created_by")
   @@index([updatedBy], map: "ix_workflow_step_updated_by")
   @@map("workflow_step")
+}
+
+/// One document's run through its workflow (P7 §3.3, P3 §28.3). The path is FROZEN at submission: a
+/// later change to the workflow never changes it. A returned document starts a new request when it is
+/// resubmitted; the old one stays, as history.
+model ApprovalRequest {
+  id                BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// The approvable document type (core/approval/document-types.ts).
+  documentType      String    @map("document_type") @db.VarChar(50)
+  documentId        BigInt    @map("document_id") @db.UnsignedBigInt
+  /// The workflow version that governed it, chosen once at submission.
+  workflowId        BigInt    @map("workflow_id") @db.UnsignedBigInt
+  /// The frozen path: [{ step_id, step_number }], in order.
+  path              Json
+  /// The step awaiting a decision; NULL once the request is complete.
+  currentStepNumber Int?      @map("current_step_number")
+  currentStepId     BigInt?   @map("current_step_id") @db.UnsignedBigInt
+  /// When the current step became current: the age shown in the queue.
+  stepStartedAt     DateTime? @map("step_started_at") @db.DateTime(0)
+  /// pending | approved | rejected | returned
+  state             String    @default("pending") @db.VarChar(30)
+  /// The current step resolves to nobody (P7 §4.3): on the exception list until it does.
+  isUnresolved      Boolean   @default(false) @map("is_unresolved")
+  /// The document marked itself exceptional at submission: never bulk-approved (P7 §13.2).
+  isExceptional     Boolean   @default(false) @map("is_exceptional")
+  /// The last refusal of the document's own guards at final approval (P7 §2.2), for the user to see.
+  guardFailure      Json?     @map("guard_failure")
+  submittedAt       DateTime  @map("submitted_at") @db.DateTime(0)
+  submittedBy       BigInt    @map("submitted_by") @db.UnsignedBigInt
+  /// Who created the document: neither its creator nor its submitter may approve it (P7 §12.2).
+  documentCreatedBy BigInt    @map("document_created_by") @db.UnsignedBigInt
+  completedAt       DateTime? @map("completed_at") @db.DateTime(0)
+  /// approved | rejected | returned
+  finalOutcome      String?   @map("final_outcome") @db.VarChar(30)
+  /// Where the document sits, for approver scope (P7 §4.4) and queue filters.
+  estateId          BigInt?   @map("estate_id") @db.UnsignedBigInt
+  factoryId         BigInt?   @map("factory_id") @db.UnsignedBigInt
+  warehouseId       BigInt?   @map("warehouse_id") @db.UnsignedBigInt
+  departmentId      BigInt?   @map("department_id") @db.UnsignedBigInt
+  /// What the queue shows (P7 §13.1): number, a label, the amount or quantity. Copied at submission.
+  documentNumber    String?   @map("document_number") @db.VarChar(50)
+  documentLabel     String    @map("document_label") @db.VarChar(200)
+  summaryAmount     Decimal?  @map("summary_amount") @db.Decimal(18, 2)
+  summaryQuantity   Decimal?  @map("summary_quantity") @db.Decimal(18, 3)
+  /// GENERATED (see migration SQL): the document while this request is pending, else NULL. At most one
+  /// pending request per document (P3 §28.3: "UNIQUE … where state is active").
+  activeKey         String?   @map("active_key") @db.VarChar(80)
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt         DateTime? @map("updated_at") @db.DateTime(0)
+
+  workflow        Workflow         @relation(fields: [workflowId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_request_workflow")
+  currentStep     WorkflowStep?    @relation(fields: [currentStepId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_request_step")
+  submitter       User             @relation("ApprovalRequestSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_request_submitted_by")
+  documentCreator User             @relation("ApprovalRequestDocumentCreatedBy", fields: [documentCreatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_request_document_created_by")
+  actions         ApprovalAction[]
+
+  @@unique([activeKey], map: "ux_approval_request_active")
+  @@index([documentType, documentId], map: "ix_approval_request_document")
+  @@index([state, currentStepId], map: "ix_approval_request_queue")
+  @@index([state, isUnresolved], map: "ix_approval_request_unresolved")
+  @@index([workflowId], map: "ix_approval_request_workflow")
+  @@index([currentStepId], map: "ix_approval_request_step")
+  @@index([submittedBy], map: "ix_approval_request_submitted_by")
+  @@index([documentCreatedBy], map: "ix_approval_request_document_created_by")
+  @@index([estateId], map: "ix_approval_request_estate")
+  @@map("approval_request")
+}
+
+/// Every decision and remark on a request (P7 §14): append-only, never updated, never deleted, kept for
+/// rejected documents too.
+model ApprovalAction {
+  id                BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  approvalRequestId BigInt   @map("approval_request_id") @db.UnsignedBigInt
+  workflowStepId    BigInt?  @map("workflow_step_id") @db.UnsignedBigInt
+  stepNumber        Int?     @map("step_number")
+  /// Who acted.
+  userId            BigInt   @map("user_id") @db.UnsignedBigInt
+  /// Whom they acted for, under a delegation (P7 §11.1): "approved by X acting for Y".
+  actingForUserId   BigInt?  @map("acting_for_user_id") @db.UnsignedBigInt
+  /// approve | reject | return | comment
+  action            String   @db.VarChar(30)
+  comment           String?  @db.VarChar(1000)
+  actedAt           DateTime @default(now()) @map("acted_at") @db.DateTime(0)
+  ipAddress         String?  @map("ip_address") @db.VarChar(45)
+  /// The actor created or submitted the document, on a step that allows it (P7 §12.2): flagged.
+  isSelfApproval    Boolean  @default(false) @map("is_self_approval")
+  /// Shared by the actions of one bulk approval (P7 §13.2).
+  bulkReference     String?  @map("bulk_reference") @db.VarChar(30)
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  request   ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_action_request")
+  step      WorkflowStep?   @relation(fields: [workflowStepId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_action_step")
+  user      User            @relation("ApprovalActionUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_action_user")
+  actingFor User?           @relation("ApprovalActionActingFor", fields: [actingForUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_action_acting_for")
+
+  @@index([approvalRequestId, id], map: "ix_approval_action_request")
+  @@index([workflowStepId], map: "ix_approval_action_step")
+  @@index([userId, actedAt], map: "ix_approval_action_user")
+  @@index([actingForUserId], map: "ix_approval_action_acting_for")
+  @@index([bulkReference], map: "ix_approval_action_bulk")
+  @@map("approval_action")
+}
+
+/// A time-bounded handover of approval authority (P7 §11.1). It transfers approval only, never a
+/// permission: the delegate must already hold the permission being exercised. One hop: a delegate never
+/// acts on authority that was itself delegated.
+model ApprovalDelegation {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  fromUserId   BigInt    @map("from_user_id") @db.UnsignedBigInt
+  toUserId     BigInt    @map("to_user_id") @db.UnsignedBigInt
+  /// NULL: every document type.
+  documentType String?   @map("document_type") @db.VarChar(50)
+  validFrom    DateTime  @map("valid_from") @db.DateTime(0)
+  /// Expires by itself; ending it early moves this forward.
+  validTo      DateTime  @map("valid_to") @db.DateTime(0)
+  reason       String    @db.VarChar(500)
+  /// Ended before valid_to by an administrator. An ended delegation never applies again.
+  endedAt      DateTime? @map("ended_at") @db.DateTime(0)
+  version      Int       @default(1)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy    BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt    DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy    BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  fromUser User  @relation("ApprovalDelegationFrom", fields: [fromUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_delegation_from")
+  toUser   User  @relation("ApprovalDelegationTo", fields: [toUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_delegation_to")
+  creator  User  @relation("ApprovalDelegationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_delegation_created_by")
+  updater  User? @relation("ApprovalDelegationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_approval_delegation_updated_by")
+
+  @@index([toUserId, validFrom, validTo], map: "ix_approval_delegation_to")
+  @@index([fromUserId, validFrom, validTo], map: "ix_approval_delegation_from")
+  @@index([createdBy], map: "ix_approval_delegation_created_by")
+  @@index([updatedBy], map: "ix_approval_delegation_updated_by")
+  @@map("approval_delegation")
 }
