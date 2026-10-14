@@ -73,19 +73,17 @@ const UNSPECIFIED = new Set(['', 'application/octet-stream']);
 const refuse = (code: string, message: string, context?: Record<string, unknown>) =>
   Errors.validation([{ field: 'file', code, message, ...(context ? { context } : {}) }]);
 
+/** A path separator or a control character: neither belongs in a file name. */
+// eslint-disable-next-line no-control-regex
+const PATH_OR_CONTROL = /[\\/\u0000-\u001f\u007f]/;
+
 /**
- * The file name as metadata: its last path segment is NOT taken, a name carrying a path is refused
- * outright (P13 §10: "path traversal in the filename rejected").
+ * The file name, kept as metadata only. A name carrying a path is refused outright rather than cut down
+ * to its last segment (P13 §10: "path traversal in the filename rejected").
  */
 export function checkFileName(name: string): string {
   const trimmed = name.normalize('NFC').trim();
-  // eslint-disable-next-line no-control-regex
-  if (
-    trimmed === '' ||
-    trimmed.length > 200 ||
-    /[\\/\u0000-\u001f\u007f]/.test(trimmed) ||
-    /^\.+$/.test(trimmed)
-  ) {
+  if (trimmed === '' || trimmed.length > 200 || PATH_OR_CONTROL.test(trimmed) || /^\.+$/.test(trimmed)) {
     throw refuse(
       'FILE_NAME_INVALID',
       'The file name must be 1 to 200 characters, without a path or control characters.',
