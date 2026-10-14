@@ -167,6 +167,19 @@ const envSchema = z.object({
   /** How long a signed download link works (P4 §6.6: "short-lived"). */
   DOWNLOAD_URL_SECONDS: positiveInt(30, 3600, 300),
 
+  // ---- Background jobs (P1.15, Spec P4 §5.3, P14 §2.1) ------------------------------------------
+
+  /** Jobs one worker process runs at a time. */
+  JOB_CONCURRENCY: positiveInt(1, 16, 2),
+  /** A running job renews its lease; one silent this long is presumed dead and run again. */
+  JOB_LEASE_SECONDS: positiveInt(30, 3600, 120),
+  /** How often a worker looks in the database for due jobs (the queue is only the fast path). */
+  JOB_POLL_SECONDS: positiveInt(1, 300, 10),
+  /** Finished jobs and their results are kept this long (P4 §5.3: seven days). */
+  JOB_RETENTION_DAYS: positiveInt(1, 365, 7),
+  /** On shutdown, how long running jobs get to finish before they are handed back to the queue. */
+  JOB_SHUTDOWN_SECONDS: positiveInt(1, 600, 30),
+
   /** Access token lifetime (P4 §2.2.1: fifteen minutes by default). */
   AUTH_ACCESS_TOKEN_MINUTES: positiveInt(1, 60, 15),
   /** A refresh token unused for this long expires: the idle timeout of a session. */
@@ -276,6 +289,13 @@ export interface Config {
     readonly dir: string;
     readonly maxUploadBytes: number;
     readonly downloadUrlSeconds: number;
+  };
+  readonly jobs: {
+    readonly concurrency: number;
+    readonly leaseSeconds: number;
+    readonly pollSeconds: number;
+    readonly retentionDays: number;
+    readonly shutdownSeconds: number;
   };
   readonly app: { readonly publicUrl: string };
   readonly mail: {
@@ -394,6 +414,13 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       dir: e.STORAGE_DIR,
       maxUploadBytes: e.UPLOAD_MAX_MB * 1024 * 1024,
       downloadUrlSeconds: e.DOWNLOAD_URL_SECONDS,
+    }),
+    jobs: Object.freeze({
+      concurrency: e.JOB_CONCURRENCY,
+      leaseSeconds: e.JOB_LEASE_SECONDS,
+      pollSeconds: e.JOB_POLL_SECONDS,
+      retentionDays: e.JOB_RETENTION_DAYS,
+      shutdownSeconds: e.JOB_SHUTDOWN_SECONDS,
     }),
     app: Object.freeze({ publicUrl: (e.APP_PUBLIC_URL ?? 'http://localhost:5173').replace(/\/+$/, '') }),
     mail: Object.freeze({

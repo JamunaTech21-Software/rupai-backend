@@ -19,6 +19,7 @@ import {
   CreateSectionBody,
   DivisionOut,
   EstateOut,
+  EstateSummaryOut,
   FIELD_STATUSES,
   FieldOut,
   IdParams,
@@ -154,6 +155,24 @@ function estatesModule(deps: OrganisationDeps, h: ReturnType<typeof hierarchySer
       const { body } = getValidated(res, { body: CreateEstateBody });
       const e = await h.estates.create(body, currentActorId());
       sendCreated(res, e, `/api/v1/estates/${e.id}`, e.version);
+    },
+  });
+
+  m.route({
+    method: 'get',
+    path: '/:id/summary',
+    summary: 'The estate overview',
+    description:
+      'Computed, never entered: the declared total land area, the tea area (planted area of fields that ' +
+      'carry tea), the non-tea area, and counts of divisions, sections, fields, factories and photographs. ' +
+      'Areas in acres. Workers and families are 0 until HR exists (workforce_available: false).',
+    auth: { permission: 'estate.view' },
+    ...byId,
+    success: { status: 200, description: 'The overview', schema: EstateSummaryOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      sendOne(res, await h.estateSummary(params.id));
     },
   });
 

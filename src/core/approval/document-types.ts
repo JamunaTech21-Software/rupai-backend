@@ -120,7 +120,7 @@ export const APPROVABLE_DOCUMENTS: readonly ApprovableDocument[] = [
   ]),
   doc('catalogue', 'Catalogue', 'operational', 'organisation', 'catalogue'),
   doc('land_allocation', 'Land allocation', 'operational', 'estate', 'land_allocation', [
-    qty('allocated_area', 'Allocated area (ha)'),
+    qty('allocated_area', 'Allocated area (acres)'),
     attr('recipient_type', 'Recipient type'),
   ]),
   doc('lease', 'Lease agreement', 'operational', 'estate', 'lease', [

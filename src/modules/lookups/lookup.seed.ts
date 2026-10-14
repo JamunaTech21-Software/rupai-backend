@@ -53,6 +53,21 @@ const COMMON_SEEDS: Readonly<Record<string, Row[]>> = {
     ['MATERNITY', 'Maternity leave'],
     ['UNPAID', 'Unpaid leave'],
   ]),
+  // R.2: the estate profile's facility checkboxes (the manager's design). Factories are not here: an
+  // estate has one when the factory register says so.
+  amenity: plain([
+    ['WAREHOUSE', 'Warehouse'],
+    ['STAFF_QUARTER', 'Staff quarter'],
+    ['HOSPITAL', 'Hospital / dispensary'],
+    ['SCHOOL', 'School'],
+    ['PLAYGROUND', 'Playground'],
+    ['RELIGIOUS', 'Mosque / temple'],
+    ['ELECTRICITY', 'Electricity'],
+    ['WATER_SUPPLY', 'Water supply'],
+    ['TRANSPORT', 'Transport'],
+    ['CANTEEN', 'Canteen'],
+    ['CLUB_LIBRARY', 'Club & library'],
+  ]),
   land_type: plain([
     ['TEA', 'Tea'],
     ['SHADE', 'Shade'],

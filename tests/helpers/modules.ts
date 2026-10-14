@@ -11,6 +11,7 @@ import { databaseNameOf, sessionStore } from '../../src/core/auth/sessions.js';
 import { tokenSigner } from '../../src/core/auth/tokens.js';
 import type { Database } from '../../src/core/db/prisma.js';
 import { createLogger } from '../../src/core/logging/logger.js';
+import { noQueue, type JobQueue } from '../../src/core/jobs/queue.js';
 import { memoryMailer } from '../../src/core/mail/mailer.js';
 import { memoryPlatform, type Platform } from '../../src/core/platform.js';
 import { localFileStorage, type FileStorage } from '../../src/core/storage/storage.js';
@@ -27,6 +28,7 @@ export function testModuleDeps(opts: {
   platform?: Platform;
   authz?: PermissionResolver;
   storage?: FileStorage;
+  jobs?: JobQueue;
 }): ModuleDeps & { mailer: ReturnType<typeof memoryMailer> } {
   const logger = opts.logger ?? createLogger({ appEnv: 'test', log: { level: 'silent', format: 'json' } });
   const platform = opts.platform ?? memoryPlatform();
@@ -48,5 +50,7 @@ export function testModuleDeps(opts: {
     accessLog: dbAccessLog(opts.db, logger),
     // A throw-away directory per test app: uploads never touch the developer's ./storage.
     storage: opts.storage ?? localFileStorage(mkdtempSync(join(tmpdir(), 'rupai-test-storage-'))),
+    // Tests run jobs themselves (runJob / a worker), so nothing is announced anywhere.
+    jobs: opts.jobs ?? noQueue(),
   };
 }

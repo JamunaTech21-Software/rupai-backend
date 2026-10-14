@@ -172,7 +172,12 @@ describe('estates, divisions, sections (P3 §4.2–§4.4)', () => {
     expect(e).toMatchObject({
       status: 'active',
       total_area: '1250.500',
-      established_on: '1921-03-01',
+      // R.2: the deprecated fields still work, as the year and the estate type they now stand for.
+      established_on: '1921-01-01',
+      established_year: 1921,
+      ownership_type: 'owned',
+      estate_type: 'company_owned',
+      amenities: [],
       version: 1,
     });
     expect((await api.post('/estates', { code: e.code as string, name: 'Again' })).body.error).toMatchObject({

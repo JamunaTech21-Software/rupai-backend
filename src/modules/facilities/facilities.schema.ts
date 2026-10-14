@@ -11,7 +11,16 @@ export type Status = (typeof STATUSES)[number];
 export const FACTORY_TYPES = ['own', 'external'] as const;
 export const WAREHOUSE_TYPES = ['own', 'rented', 'third_party'] as const;
 export const PARTY_TYPES = ['individual', 'organisation', 'government'] as const;
-export const CONTACT_TYPES = ['primary', 'accounts', 'operations', 'emergency', 'other'] as const;
+/** estate_manager and assistant_manager: an estate's key people (R.2), until employment profiles exist. */
+export const CONTACT_TYPES = [
+  'primary',
+  'accounts',
+  'operations',
+  'emergency',
+  'other',
+  'estate_manager',
+  'assistant_manager',
+] as const;
 /** Every owner P3 §6.2 allows. Only those whose table exists have contact endpoints (contacts.service.ts). */
 export const CONTACT_OWNER_TYPES = [
   'buyer',
@@ -22,6 +31,7 @@ export const CONTACT_OWNER_TYPES = [
   'warehouse',
   'party',
   'auction_centre',
+  'estate',
 ] as const;
 export type ContactOwnerType = (typeof CONTACT_OWNER_TYPES)[number];
 

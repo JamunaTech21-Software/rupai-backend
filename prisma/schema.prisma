@@ -188,6 +188,9 @@ model User {
   createdPaymentMethods       PaymentMethod[]       @relation("PaymentMethodCreatedBy")
   updatedPaymentMethods       PaymentMethod[]       @relation("PaymentMethodUpdatedBy")
   createdLandTypes            LandType[]            @relation("LandTypeCreatedBy")
+  createdAmenities            Amenity[]             @relation("AmenityCreatedBy")
+  updatedAmenities            Amenity[]             @relation("AmenityUpdatedBy")
+  createdEstateAmenities      EstateAmenity[]       @relation("EstateAmenityCreatedBy")
   updatedLandTypes            LandType[]            @relation("LandTypeUpdatedBy")
   createdAdjustmentReasons    AdjustmentReason[]    @relation("AdjustmentReasonCreatedBy")
   updatedAdjustmentReasons    AdjustmentReason[]    @relation("AdjustmentReasonUpdatedBy")
@@ -241,6 +244,8 @@ model User {
   delegationsTo        ApprovalDelegation[] @relation("ApprovalDelegationTo")
   createdDelegations   ApprovalDelegation[] @relation("ApprovalDelegationCreatedBy")
   updatedDelegations   ApprovalDelegation[] @relation("ApprovalDelegationUpdatedBy")
+  requestedJobs        Job[]                @relation("JobRequestedBy")
+  updatedJobSchedules  JobSchedule[]        @relation("JobScheduleUpdatedBy")
 
   @@unique([username], map: "ux_user_username")
   @@unique([email], map: "ux_user_email")
@@ -582,14 +587,35 @@ model Estate {
   location         String?   @db.VarChar(200)
   addressLine1     String?   @map("address_line1") @db.VarChar(200)
   district         String?   @db.VarChar(100)
-  /// Hectares. Informational; the authoritative figure is the sum of land_parcel.
+  /// ACRES (D-R.2-1). Declared total land area: the authoritative figure is the sum of land_parcel
+  /// once the land register exists.
   totalArea        Decimal?  @map("total_area") @db.Decimal(14, 3)
   managerProfileId BigInt?   @map("manager_profile_id") @db.UnsignedBigInt
   phone            String?   @db.VarChar(30)
   email            String?   @db.VarChar(150)
+  /// DEPRECATED (R.2): replaced by established_year; kept until the contract migration.
   establishedOn    DateTime? @map("established_on") @db.Date
-  /// owned | leased | government_lease | other
+  /// DEPRECATED (R.2): replaced by estate_type; kept until the contract migration.
   ownershipType    String?   @map("ownership_type") @db.VarChar(30)
+  // ---- R.2 Estate profile (the manager's design, 2026-10-14) ----
+  establishedYear  Int?      @map("established_year") @db.SmallInt
+  /// The company or person that owns the estate.
+  ownerName        String?   @map("owner_name") @db.VarChar(150)
+  /// company_owned | private_estate | government_estate
+  estateType       String?   @map("estate_type") @db.VarChar(30)
+  /// large | medium | small
+  estateCategory   String?   @map("estate_category") @db.VarChar(30)
+  policeStation    String?   @map("police_station") @db.VarChar(100)
+  /// The administrative division of the country (e.g. Rangpur), not one of the estate's own divisions.
+  adminDivision    String?   @map("admin_division") @db.VarChar(100)
+  countryId        BigInt?   @map("country_id") @db.UnsignedBigInt
+  postalCode       String?   @map("postal_code") @db.VarChar(20)
+  website          String?   @db.VarChar(150)
+  latitude         Decimal?  @db.Decimal(9, 6)
+  longitude        Decimal?  @db.Decimal(9, 6)
+  description      String?   @db.Text
+  /// Facilities that are not on the amenity list ("Other").
+  otherAmenities   String?   @map("other_amenities") @db.VarChar(300)
   /// active | inactive
   status           String    @default("active") @db.VarChar(30)
   remarks          String?   @db.VarChar(500)
@@ -599,20 +625,23 @@ model Estate {
   updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_organisation")
-  creator      User         @relation("EstateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_created_by")
-  updater      User?        @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
+  organisation Organisation    @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_organisation")
+  creator      User            @relation("EstateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_created_by")
+  updater      User?           @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
   divisions    Division[]
   fields       Field[]
+  country      Country?        @relation(fields: [countryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_country")
+  amenityLinks EstateAmenity[]
   factories    Factory[]
   seasons      Season[]
-  shifts       Shift[]      @relation("ShiftEstate")
+  shifts       Shift[]         @relation("ShiftEstate")
 
   workflows Workflow[]
 
   @@unique([organisationId, code], map: "ux_estate_code")
   @@index([status], map: "ix_estate_status")
   @@index([managerProfileId], map: "ix_estate_manager")
+  @@index([countryId], map: "ix_estate_country")
   @@index([createdBy], map: "ix_estate_created_by")
   @@index([updatedBy], map: "ix_estate_updated_by")
   @@map("estate")
@@ -626,7 +655,7 @@ model Division {
   code             String    @db.VarChar(20)
   name             String    @db.VarChar(150)
   managerProfileId BigInt?   @map("manager_profile_id") @db.UnsignedBigInt
-  /// Hectares.
+  /// Acres.
   area             Decimal?  @db.Decimal(14, 3)
   /// active | inactive
   status           String    @default("active") @db.VarChar(30)
@@ -688,9 +717,9 @@ model Field {
   /// Unique within the estate.
   fieldNumber          String    @map("field_number") @db.VarChar(20)
   name                 String?   @db.VarChar(150)
-  /// Hectares.
+  /// Acres.
   grossArea            Decimal   @map("gross_area") @db.Decimal(14, 3)
-  /// Hectares. Set here until plantation_record derives it (BACKLOG D-1.07-6).
+  /// Acres. Set here until plantation_record derives it (BACKLOG D-1.07-6).
   plantedArea          Decimal?  @map("planted_area") @db.Decimal(14, 3)
   /// producing | young | nursery | uprooted | fallow | abandoned
   fieldStatus          String    @map("field_status") @db.VarChar(30)
@@ -1648,6 +1677,7 @@ model Country {
   creator       User           @relation("CountryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_country_created_by")
   updater       User?          @relation("CountryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_country_updated_by")
   organisations Organisation[]
+  estates       Estate[]
 
   @@unique([iso2], map: "ux_country_iso2")
   @@unique([iso3], map: "ux_country_iso3")
@@ -2034,4 +2064,165 @@ model ApprovalDelegation {
   @@index([createdBy], map: "ix_approval_delegation_created_by")
   @@index([updatedBy], map: "ix_approval_delegation_updated_by")
   @@map("approval_delegation")
+}
+
+// ---- P1.15 Background jobs and scheduler (P4 §5.3, P1 §2.7, §7.7, P14 §2.1, §6) ---------------------
+
+/// Deferred or scheduled work: the job resource a client polls (P4 §5.3). The database row is the truth;
+/// the queue only carries its id, so a lost queue entry is found again and a redelivered one is a no-op.
+model Job {
+  id            BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// The handler, e.g. payroll.calculate (core/jobs/registry.ts).
+  type          String    @db.VarChar(60)
+  /// queued | running | completed | failed | partial
+  state         String    @default("queued") @db.VarChar(20)
+  /// (document, purpose): at most one queued or running job per key (P1 §2.7). NULL: no such limit.
+  dedupeKey     String?   @map("dedupe_key") @db.VarChar(160)
+  /// GENERATED (see migration SQL): dedupe_key while queued or running, else NULL. Unique.
+  activeKey     String?   @map("active_key") @db.VarChar(160)
+  payload       Json
+  progressDone  Int       @default(0) @map("progress_done")
+  progressTotal Int?      @map("progress_total")
+  /// Where an interrupted run resumes (P1 §7.7: resume rather than restart).
+  checkpoint    Json?
+  /// Runs started so far, the current one included.
+  attempts      Int       @default(0)
+  maxAttempts   Int       @map("max_attempts")
+  /// Not to be started before: the backoff after a failed attempt.
+  availableAt   DateTime  @default(now()) @map("available_at") @db.DateTime(0)
+  /// The run that holds the job, and until when. A run that stops renewing its lease is presumed dead.
+  runToken      String?   @map("run_token") @db.Char(26)
+  leaseUntil    DateTime? @map("lease_until") @db.DateTime(0)
+  /// completed / partial: a summary or a link. failed: NULL.
+  result        Json?
+  /// The last error: of the final attempt when failed, of the previous attempt while retrying.
+  errorCode     String?   @map("error_code") @db.VarChar(60)
+  errorMessage  String?   @map("error_message") @db.VarChar(1000)
+  /// NULL for scheduled work.
+  requestedBy   BigInt?   @map("requested_by") @db.UnsignedBigInt
+  scheduleName  String?   @map("schedule_name") @db.VarChar(60)
+  queuedAt      DateTime  @default(now()) @map("queued_at") @db.DateTime(0)
+  startedAt     DateTime? @map("started_at") @db.DateTime(0)
+  finishedAt    DateTime? @map("finished_at") @db.DateTime(0)
+  /// When the finished job is purged (results kept seven days by default, P4 §5.3).
+  expiresAt     DateTime? @map("expires_at") @db.DateTime(0)
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt     DateTime? @map("updated_at") @db.DateTime(0)
+
+  requester User? @relation("JobRequestedBy", fields: [requestedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_job_requested_by")
+
+  @@unique([activeKey], map: "ux_job_active")
+  @@index([state, availableAt], map: "ix_job_due")
+  @@index([state, leaseUntil], map: "ix_job_lease")
+  @@index([requestedBy, id], map: "ix_job_requested_by")
+  @@index([type, state], map: "ix_job_type")
+  @@index([expiresAt], map: "ix_job_expires")
+  @@map("job")
+}
+
+/// The idempotency guard of a job's effects (P1 §7.7): written in the same transaction as the effect,
+/// so a repeated attempt finds its key and does nothing. Insert only, never purged: it must outlive the job.
+model JobProcessingKey {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  /// (document, purpose[, part]), e.g. payroll_run:4471:calculate:person:812.
+  key       String   @db.VarChar(190)
+  /// The job that wrote it. Not a foreign key: finished jobs are purged, their keys are not.
+  jobId     BigInt?  @map("job_id") @db.UnsignedBigInt
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  @@unique([key], map: "ux_job_processing_key")
+  @@index([jobId], map: "ix_job_processing_key_job")
+  @@map("job_processing_key")
+}
+
+/// A recurring job and when it next runs. The schedules themselves are code (the scheduler syncs one
+/// row per definition); this row holds their state: paused or not, last and next run.
+model JobSchedule {
+  id        BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  name      String    @db.VarChar(60)
+  jobType   String    @map("job_type") @db.VarChar(60)
+  /// Five-field cron, in the organisation's timezone.
+  cron      String    @db.VarChar(60)
+  isPaused  Boolean   @default(false) @map("is_paused")
+  nextRunAt DateTime? @map("next_run_at") @db.DateTime(0)
+  lastRunAt DateTime? @map("last_run_at") @db.DateTime(0)
+  lastJobId BigInt?   @map("last_job_id") @db.UnsignedBigInt
+  version   Int       @default(1)
+  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  updater User? @relation("JobScheduleUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_job_schedule_updated_by")
+
+  @@unique([name], map: "ux_job_schedule_name")
+  @@index([updatedBy], map: "ix_job_schedule_updated_by")
+  @@map("job_schedule")
+}
+
+/// A worker or scheduler process saying it is alive, for /system/health (P4 §14.1, P14 §10).
+model ProcessHeartbeat {
+  id         BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// scheduler | worker:<host>:<pid>
+  processKey String    @map("process_key") @db.VarChar(120)
+  /// scheduler | worker
+  kind       String    @db.VarChar(20)
+  host       String    @db.VarChar(100)
+  pid        Int
+  appVersion String    @map("app_version") @db.VarChar(50)
+  startedAt  DateTime  @map("started_at") @db.DateTime(0)
+  beatAt     DateTime  @map("beat_at") @db.DateTime(0)
+  /// Set on a clean shutdown.
+  stoppedAt  DateTime? @map("stopped_at") @db.DateTime(0)
+
+  @@unique([processKey], map: "ux_process_heartbeat_key")
+  @@map("process_heartbeat")
+}
+
+// ---- R.2 Estate profile extension (the manager's design, 2026-10-14) ----------------------------
+
+/// A facility an estate may have (staff quarter, hospital, school …): a reference list in the common
+/// lookup shape (P3 §5.1). Factories are not on it: they come from the factory register.
+model Amenity {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  estateLinks EstateAmenity[]
+  creator     User            @relation("AmenityCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_amenity_created_by")
+  updater     User?           @relation("AmenityUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_amenity_updated_by")
+
+  @@unique([code], map: "ux_amenity_code")
+  @@index([status], map: "ix_amenity_status")
+  @@index([createdBy], map: "ix_amenity_created_by")
+  @@index([updatedBy], map: "ix_amenity_updated_by")
+  @@map("amenity")
+}
+
+/// Which amenities an estate has. The set is replaced as a whole when the estate is saved.
+model EstateAmenity {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  estateId  BigInt   @map("estate_id") @db.UnsignedBigInt
+  amenityId BigInt   @map("amenity_id") @db.UnsignedBigInt
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy BigInt   @map("created_by") @db.UnsignedBigInt
+
+  estate  Estate  @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_amenity_estate")
+  amenity Amenity @relation(fields: [amenityId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_amenity_amenity")
+  creator User    @relation("EstateAmenityCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_amenity_created_by")
+
+  @@unique([estateId, amenityId], map: "ux_estate_amenity")
+  @@index([amenityId], map: "ix_estate_amenity_amenity")
+  @@index([createdBy], map: "ix_estate_amenity_created_by")
+  @@map("estate_amenity")
 }

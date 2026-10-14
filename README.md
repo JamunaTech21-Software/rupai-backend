@@ -24,6 +24,8 @@ npm run db:migrate:deploy
 npm run db:seed          # permission catalogue, Administrator role, bootstrap admin (BOOTSTRAP_ADMIN_*)
 npm run db:seed:demo     # optional: demo accounts `manager` and `viewer` (DEMO_PASSWORD; never in production)
 npm run dev              # http://localhost:4000, API docs at http://localhost:4000/docs
+npm run dev:worker       # optional: runs background jobs (P1.15). Without it, nothing deferred runs
+npm run dev:scheduler    # optional: fires the recurring jobs. Exactly one may run
 ```
 
 **Frontend developers:** follow [`docs/FRONTEND_SETUP.md`](docs/FRONTEND_SETUP.md).
@@ -145,6 +147,15 @@ Every endpoint follows spec Part 4, through the helpers in `src/core/http`. Don'
 - **Key rotation:** set a new `AUTH_TOKEN_SECRET` and move the old one to `AUTH_TOKEN_PREVIOUS_SECRET`. Nobody is signed out.
 - **Events** (`event: auth.*` in the log): login succeeded/failed, account locked, token refreshed, refresh reuse, logout, logout-all, session revoked, password changed/reset/reset requested. They move to `access_log` with P1.05.
 - **Try it:** `npm run db:seed`, then sign in as `admin` with `BOOTSTRAP_ADMIN_PASSWORD`, then `POST /auth/password/change`. In `/docs`, paste the access token into **Authorize**.
+
+## Background jobs and the scheduler (P1.15)
+
+- **Three kinds of process** (Spec P14 §2.1): the API (`dist/server.js`), one or two **workers** (`dist/worker.js`) and **exactly one scheduler** (`dist/scheduler.js`). Staging runs each in its own container from the same image.
+- **The `job` row is the truth.** Deferred work answers `202` with a job (`GET /api/v1/jobs/{id}`: `queued | running | completed | failed | partial`, progress, result or error). Redis only says "job N is due"; workers also poll the database (`JOB_POLL_SECONDS`), so a lost or doubled message changes nothing. Without `REDIS_URL` (development only) the API runs jobs itself.
+- **Idempotent and resumable** (P1 §2.7, §7.7): one live job per `(document, purpose)` key (asking again returns it); a run holds the job under a lease it renews, and a run that dies is taken over when the lease lapses (`JOB_LEASE_SECONDS`), resuming from its checkpoint. Each effect is guarded by `ctx.once(tx, key)`, written in the effect's own transaction, so a re-run never repeats it.
+- **Retries:** bounded (3 by default), with backoff 5 s, 10 s, 20 s… A job out of attempts is `failed` and stays visible (`GET /jobs?filter[state]=failed`) until `POST /jobs/{id}/retry`. Finished jobs are kept 7 days (`JOB_RETENTION_DAYS`).
+- **Scheduler:** refuses to start while another holds its MySQL lock. Recurring jobs: `GET /system/schedules` (pause, resume, run now); processes alive: `GET /system/processes`.
+- **Writing a job:** `defineJob({ type: 'module.purpose', payload, run })` in the module, registered in `registerJobs` (`src/modules/index.ts`); a schedule goes in `JOB_CATALOGUE_SCHEDULES`. Try it: `POST /api/v1/jobs/self-test`.
 
 ## Deployment (P0.08)
 

@@ -66,3 +66,13 @@ That creates `GET` and `POST /{path}/{id}/documents`, and the shared `/documents
 3. In the document's `POST /{docs}/{id}/submit`, move it to `submitted` and call `submitForApproval(tx, …)` in the same transaction. An outcome of `approved` means no workflow applies: the adapter's `onApproved` has already run.
 4. The document's `/approve`, `/reject` and `/return` endpoints call `decide(db, deps, requestId, …)`, or the client uses `POST /approvals/{id}/…` directly. A refusal comes back as `guardFailure`: answer with it (its own 422 code) after the transaction commits.
 5. `GET /{docs}/{id}/history` is `GET /approvals/history?document_type=…&document_id=…`.
+
+## Deferring work to a job (P1.15)
+
+Anything that cannot reliably finish in a couple of seconds answers `202` with a job (Spec P4 §5.3).
+
+1. Define the job in the module (`<module>.jobs.ts`): `defineJob({ type: 'payroll.calculate', label, payload: z.object({…}), maxAttempts?, run(ctx) })`, and register it in `registerJobs` in `src/modules/index.ts`.
+2. In the endpoint, create it in the same transaction as the change that asks for it: `createJob(tx, { type, payload, dedupeKey: 'payroll_run:4471:calculate', requestedBy })`. While that key's job is queued or running, asking again returns it (`created: false`). After the commit, `deps.jobs.dispatch(job.id)`, then `sendAccepted(res, toJobOut(job))`.
+3. In `run`, keep the contract: guard **every effect** with `await ctx.once(tx, key)` inside the transaction that makes it (or with the document's own unique constraint), report `ctx.progress(done, total, checkpoint)`, resume from `ctx.checkpoint`, and stop when `ctx.signal` aborts. Return `{ state: 'partial', result }` when some of the work was refused (imports).
+4. Throw `PermanentJobError` (or a 4xx `AppError`) for a failure no retry can cure. Anything else is retried with backoff.
+5. Recurring: add a `ScheduleDefinition` (five-field cron, organisation timezone) to `JOB_CATALOGUE_SCHEDULES`. The scheduler creates its row; `GET /system/schedules` shows it.

@@ -7,7 +7,7 @@
 #                                                       # (a developer machine acting as staging)
 #
 #   1. fetch and check out the ref (detached)        5. seed (idempotent; demo accounts if DEMO_PASSWORD)
-#   2. build the api and tools images, tagged by SHA 6. start the new api
+#   2. build the api and tools images, tagged by SHA 6. start the new api; once ready, worker + scheduler
 #   3. start the stack (database, Redis, mail, …)    7. wait for /health/ready
 #   4. back up, then apply migrations                8. on failure: put the previous api back, exit 1
 #
@@ -61,7 +61,6 @@ fi
 
 log "Starting api ${SHA}"
 docker compose up -d --no-deps api
-docker compose up -d # everything else, including the tunnel (COMPOSE_PROFILES=tunnel)
 
 log "Waiting for /health/ready"
 ready=0
@@ -82,6 +81,11 @@ if [ "${ready}" != 1 ]; then
   fi
   die "api ${SHA} did not become ready"
 fi
+
+# Only now the rest: the worker and the scheduler on the new image (P1.15), and the tunnel
+# (COMPOSE_PROFILES=tunnel). A failed api above leaves the previous worker and scheduler running.
+log "Starting worker, scheduler and the rest"
+docker compose up -d
 
 docker tag "rupai-api:${SHA}" rupai-api:latest
 docker tag "rupai-tools:${SHA}" rupai-tools:latest

@@ -560,10 +560,17 @@ describe('GET /auth/me', () => {
 });
 
 describe('database rights', () => {
-  it('sessions and tokens are revoked or marked used, never deleted, by the application', async () => {
+  it('sessions are revoked, never deleted, by the application', async () => {
     await expect(mdb.db.$executeRaw`DELETE FROM auth_session`).rejects.toThrow(/denied/i);
-    await expect(mdb.db.$executeRaw`DELETE FROM auth_refresh_token`).rejects.toThrow(/denied/i);
-    await expect(mdb.db.$executeRaw`DELETE FROM password_reset_token`).rejects.toThrow(/denied/i);
+    // Tokens are marked used, not deleted, while they matter. The purge job removes them 30 days after
+    // they expire (P1.15, D-1.02-2), which is why the app account holds DELETE on these two tables.
+    await expect(
+      mdb.db.$executeRaw`DELETE FROM auth_refresh_token WHERE expires_at < UTC_TIMESTAMP() - INTERVAL 30 DAY`,
+    ).resolves.toBeTypeOf('number');
+    await expect(
+      mdb.db
+        .$executeRaw`DELETE FROM password_reset_token WHERE expires_at < UTC_TIMESTAMP() - INTERVAL 30 DAY`,
+    ).resolves.toBeTypeOf('number');
   });
 
   it('a revoked session always records why', async () => {

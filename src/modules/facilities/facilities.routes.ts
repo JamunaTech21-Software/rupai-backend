@@ -354,5 +354,16 @@ export function facilitiesModules({ db, platform, authz, accessLog }: Facilities
   });
   contactRoutes(parties, contactsService(db, svc.owners.party), 'party', '/parties');
 
-  return [factories.build(), warehouses.build(), parties.build()];
+  // ---- /estates/{id}/contacts (R.2): the estate's key people, on the estates path ------------------
+  const estateContacts = defineModule({
+    name: 'estate-contacts',
+    path: '/estates',
+    tag: 'Estates',
+    platform,
+    authz,
+    accessLog,
+  });
+  contactRoutes(estateContacts, contactsService(db, svc.owners.estate), 'estate', '/estates');
+
+  return [factories.build(), warehouses.build(), parties.build(), estateContacts.build()];
 }

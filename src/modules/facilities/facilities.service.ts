@@ -541,6 +541,12 @@ export function facilitiesService(db: Database) {
         await tx.warehouse.update({ where: { id: ownerId }, data: { phone: primary?.phone ?? null } });
       },
     },
+    /** R.2: the Estate Manager and Assistant Manager of the estate profile. Scoped like the estate. */
+    estate: {
+      type: 'estate',
+      module: 'estate',
+      exists: async (tx, id) => (await tx.estate.count({ where: { id } })) === 1,
+    },
     party: {
       type: 'party',
       module: 'land',
