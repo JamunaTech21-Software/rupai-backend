@@ -8,6 +8,7 @@ import type { ErrorCode } from '../errors/codes.js';
 import type { Platform } from '../platform.js';
 import { idempotency } from './idempotency.js';
 import { listQuery, type ListQuerySpec } from './list-query.js';
+import { refuseMultipart, type MultipartSpec } from './upload.js';
 import { validate } from './validate.js';
 
 /**
@@ -38,6 +39,8 @@ export interface RouteSuccess {
   readonly description: string;
   /** Schema of `data` (or of one item, for lists). Omit for 204. */
   readonly schema?: z.ZodType;
+  /** The response is the file itself, not the JSON envelope (document download). */
+  readonly binary?: true;
 }
 
 export interface RouteSpec {
@@ -53,6 +56,11 @@ export interface RouteSpec {
   /** Non-list query parameters. Lists use `list` instead. */
   readonly query?: z.ZodObject;
   readonly body?: z.ZodType;
+  /**
+   * The request is multipart/form-data carrying one file (core/http/upload.ts). `body` then describes its
+   * text fields, which arrive as strings.
+   */
+  readonly multipart?: MultipartSpec;
   readonly list?: ListQuerySpec;
   /** The handler requires If-Match (versioned mutation, P4 §5.1). Documents the header and the 409/422. */
   readonly ifMatch?: boolean;
@@ -93,6 +101,7 @@ export function assertWellDeclared(route: DeclaredRoute): void {
   }
   if (route.success.status === 204 && route.success.schema)
     problems.push('a 204 response has no body schema');
+  if (route.multipart && !route.body) problems.push('a multipart route must declare its text fields (body)');
   if (problems.length > 0)
     throw new Error(`Route ${where} is not well declared:\n  - ${problems.join('\n  - ')}`);
 }
@@ -159,6 +168,7 @@ export function defineModule(opts: {
       assertWellDeclared(declared);
 
       const chain: RequestHandler[] = [...(spec.before ?? [])];
+      if (!spec.multipart && spec.method !== 'get') chain.push(refuseMultipart);
       if ('permission' in spec.auth) {
         chain.push(requirePermission(opts.authz, spec.auth.permission, opts.accessLog));
       }
@@ -168,6 +178,8 @@ export function defineModule(opts: {
           idempotency({ store: opts.platform.idempotencyStore, required: spec.idempotent === 'required' }),
         );
       }
+      // After the permission check: an unauthorised caller's file is never read.
+      if (spec.multipart) chain.push(spec.multipart.handler);
       if (spec.params || spec.body || spec.query) {
         chain.push(
           validate({

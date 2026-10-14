@@ -14,6 +14,7 @@ import { buildOpenApi } from '../src/core/http/openapi.js';
 import { createLogger } from '../src/core/logging/logger.js';
 import { memoryMailer } from '../src/core/mail/mailer.js';
 import { memoryPlatform } from '../src/core/platform.js';
+import { localFileStorage } from '../src/core/storage/storage.js';
 import { buildModules } from '../src/modules/index.js';
 
 const version = process.env.APP_VERSION ?? '0.0.0-dev';
@@ -33,6 +34,8 @@ const modules = buildModules({
   platform: memoryPlatform(),
   authz: staticPermissionResolver([]),
   sessions: sessionStore(db, null, logger),
+  // Never written to: nothing is created until a file is stored.
+  storage: localFileStorage(config.storage.dir),
   signer: tokenSigner({ secret: config.auth.tokenSecret, ttlSeconds: config.auth.accessTokenSeconds }),
   mailer: memoryMailer(),
   accessLog: noAccessLog,

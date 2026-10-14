@@ -113,37 +113,55 @@ function passwordChangeRequired(): AppError {
 }
 
 /**
- * Route guard: 401 without an authenticated user, 403 PERMISSION_DENIED without the permission.
- * The resolved permission set is kept on the request context for the rest of the request. Every denial
- * is written to the access log (P4 §4.1: "403 PERMISSION_DENIED, logged to access_log").
+ * 401 without an authenticated user, 403 PERMISSION_DENIED without the permission. The resolved
+ * permission set is kept on the request context for the rest of the request. Every denial is written to
+ * the access log (P4 §4.1: "403 PERMISSION_DENIED, logged to access_log").
+ *
+ * Routes normally declare their permission (`requirePermission`). A handler calls this directly only
+ * when the permission depends on the record, as for a document, whose owner decides (P4 §6.6).
  */
+export async function assertPermission(
+  resolver: PermissionResolver,
+  permission: string,
+  request: { method: string; originalUrl: string },
+  accessLog?: AccessLog,
+): Promise<void> {
+  const ctx = getRequestContext();
+  const actorId = currentActorId();
+  // A temporary password unlocks nothing but the user's own account (P3 §32.2).
+  if (ctx?.mustChangePassword) throw passwordChangeRequired();
+  provideScope(resolver, actorId);
+  const permissions = ctx?.permissions ?? (await resolver.permissionsOf(actorId));
+  if (ctx) ctx.permissions = permissions;
+  if (!permissions.has(permission)) {
+    await accessLog?.record({
+      userId: actorId,
+      eventType: 'permission_denied',
+      module: permission.split('.')[0] ?? null,
+      detail: { permission, method: request.method, path: request.originalUrl.split('?')[0] },
+    });
+    throw new AppError('PERMISSION_DENIED', 'You do not have permission to do this.', [
+      { code: 'PERMISSION_DENIED', message: `Requires ${permission}.`, context: { permission } },
+    ]);
+  }
+}
+
+/** Whether the caller holds a permission. No denial is logged: for filtering, not for guarding. */
+export async function holdsPermission(resolver: PermissionResolver, permission: string): Promise<boolean> {
+  const ctx = getRequestContext();
+  const permissions = ctx?.permissions ?? (await resolver.permissionsOf(currentActorId()));
+  if (ctx) ctx.permissions = permissions;
+  return permissions.has(permission);
+}
+
+/** Route guard for a declared permission: see `assertPermission`. */
 export function requirePermission(
   resolver: PermissionResolver,
   permission: string,
   accessLog?: AccessLog,
 ): RequestHandler {
   return (req, _res, next) => {
-    const ctx = getRequestContext();
-    const actorId = currentActorId();
-    // A temporary password unlocks nothing but the user's own account (P3 §32.2).
-    if (ctx?.mustChangePassword) throw passwordChangeRequired();
-    provideScope(resolver, actorId);
-    const run = async () => {
-      const permissions = ctx?.permissions ?? (await resolver.permissionsOf(actorId));
-      if (ctx) ctx.permissions = permissions;
-      if (!permissions.has(permission)) {
-        await accessLog?.record({
-          userId: actorId,
-          eventType: 'permission_denied',
-          module: permission.split('.')[0] ?? null,
-          detail: { permission, method: req.method, path: req.originalUrl.split('?')[0] },
-        });
-        throw new AppError('PERMISSION_DENIED', 'You do not have permission to do this.', [
-          { code: 'PERMISSION_DENIED', message: `Requires ${permission}.`, context: { permission } },
-        ]);
-      }
-    };
-    run().then(() => {
+    assertPermission(resolver, permission, req, accessLog).then(() => {
       next();
     }, next);
   };

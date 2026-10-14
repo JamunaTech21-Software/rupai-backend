@@ -110,6 +110,11 @@ services:
       SMTP_HOST: mail
       SMTP_PORT: '1025'
       MAIL_FROM: RupAI Staging <no-reply@rupai.local>
+      # Uploaded documents live in the `uploads` volume, so a redeploy keeps them.
+      STORAGE_DIR: /var/lib/rupai/uploads
+      UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-10}
+    volumes:
+      - uploads:/var/lib/rupai/uploads
     # No `ports:`. Only cloudflared (same Docker network) reaches it.
 
   # Nightly logical backup, kept for BACKUP_KEEP_DAYS days in ./backups (copy them off the machine too).
@@ -150,3 +155,4 @@ services:
 volumes:
   mysql-data:
   redis-data:
+  uploads:

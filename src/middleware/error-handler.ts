@@ -107,8 +107,9 @@ export const notFoundHandler: RequestHandler = () => {
 };
 
 /**
- * Bodies must be JSON (Spec P4 §2.3). File upload routes (P1.12) mount their own multipart parser BEFORE
- * this guard.
+ * Bodies must be JSON (Spec P4 §2.3). The one exception is multipart/form-data, which passes here and is
+ * accepted only by the routes that declare a file upload (core/http/upload.ts); every other route answers
+ * 415 to it.
  *
  * A chunked request with no Content-Type counts as bodiless: proxies re-encode an empty POST that way (the
  * Cloudflare tunnel turns a browser's `Content-Length: 0` into `Transfer-Encoding: chunked`), and a JSON
@@ -119,7 +120,7 @@ export const requireJsonBody: RequestHandler = (req, _res, next) => {
   const hasBody =
     Number(req.headers['content-length'] ?? 0) > 0 ||
     (req.headers['transfer-encoding'] !== undefined && req.headers['content-type'] !== undefined);
-  if (hasBody && !req.is('application/json')) {
+  if (hasBody && !req.is('application/json') && !req.is('multipart/form-data')) {
     throw new AppError('UNSUPPORTED_MEDIA_TYPE', 'Request bodies must be application/json.', [
       {
         field: 'Content-Type',

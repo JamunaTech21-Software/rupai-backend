@@ -139,6 +139,15 @@ function objectParameters(schema: z.ZodObject, location: 'path' | 'query'): Json
 function successResponse(route: DeclaredRoute): Json {
   const { success, list } = route;
   if (success.status === 204) return { description: success.description };
+  if (success.binary) {
+    return {
+      description: success.description,
+      headers: {
+        'Content-Disposition': { schema: { type: 'string' }, description: 'attachment, with the file name' },
+      },
+      content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } },
+    };
+  }
   const item = success.schema ? stripMeta(toSchema(success.schema)) : {};
   let body: Json;
   if (list) {
@@ -181,6 +190,32 @@ function errorResponses(route: DeclaredRoute): Record<string, Json> {
   return out;
 }
 
+/** JSON, or for an upload route multipart/form-data: the declared text fields plus the file. */
+function requestContent(route: DeclaredRoute, body: z.ZodType): Json {
+  const schema = stripMeta(toSchema(body)) as {
+    properties?: Record<string, Json>;
+    required?: string[];
+  };
+  if (!route.multipart) return { 'application/json': { schema } };
+  const { fileField, maxBytes } = route.multipart;
+  return {
+    'multipart/form-data': {
+      schema: {
+        type: 'object',
+        required: [...(schema.required ?? []), fileField],
+        properties: {
+          ...(schema.properties ?? {}),
+          [fileField]: {
+            type: 'string',
+            format: 'binary',
+            description: `The file, at most ${String(maxBytes)} bytes.`,
+          },
+        },
+      },
+    },
+  };
+}
+
 function operation(route: DeclaredRoute): Json {
   const parameters: Json[] = [];
   if (route.params) parameters.push(...objectParameters(route.params, 'path'));
@@ -208,14 +243,7 @@ function operation(route: DeclaredRoute): Json {
     ...('signedIn' in route.auth && reason ? { 'x-signed-in-only': reason } : {}),
     'x-error-codes': [...new Set([...implicitErrors(route), ...route.errors])],
     ...(parameters.length > 0 ? { parameters } : {}),
-    ...(route.body
-      ? {
-          requestBody: {
-            required: true,
-            content: { 'application/json': { schema: stripMeta(toSchema(route.body)) } },
-          },
-        }
-      : {}),
+    ...(route.body ? { requestBody: { required: true, content: requestContent(route, route.body) } } : {}),
     responses: { [String(route.success.status)]: successResponse(route), ...errorResponses(route) },
   };
 }

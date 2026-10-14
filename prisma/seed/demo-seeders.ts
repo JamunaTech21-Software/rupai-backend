@@ -33,6 +33,7 @@ import {
 
 export const DEMO_VIEWER_ROLE = 'DEMO_VIEWER';
 const DEMO_VIEWER_PERMISSIONS = [
+  ['document', 'view'],
   ['user', 'view'],
   ['role', 'view'],
   ['organisation', 'view'],
@@ -58,6 +59,7 @@ const DEMO_VIEWER_PERMISSIONS = [
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
 const DEMO_ESTATE_ADMIN_PERMISSIONS = [
+  ['document', 'view'],
   ['organisation', 'view'],
   ['organisation', 'edit'],
   ...[
