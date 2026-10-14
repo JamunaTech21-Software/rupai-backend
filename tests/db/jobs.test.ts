@@ -22,7 +22,7 @@ import {
   SchedulerLockHeld,
   syncSchedules,
 } from '../../src/core/jobs/scheduler.js';
-import { claimProcessingKey, createJob } from '../../src/core/jobs/store.js';
+import { claimProcessingKey, createJob, wholeSecond } from '../../src/core/jobs/store.js';
 import { startWorker } from '../../src/core/jobs/worker.js';
 import { memoryPlatform } from '../../src/core/platform.js';
 import { buildModules, JOB_CATALOGUE_SCHEDULES } from '../../src/modules/index.js';
@@ -274,13 +274,13 @@ describe('the job resource and its contract', () => {
     expect(await job(p)).toMatchObject({ state: 'failed', attempts: 1, errorCode: 'NOTHING_TO_DO' });
 
     const unknown = await mdb.migrator.job.create({
-      data: { type: 'test.gone', payload: {}, maxAttempts: 3 },
+      data: { type: 'test.gone', payload: {}, maxAttempts: 3, availableAt: wholeSecond() },
     });
     expect(await runJob(runner, unknown.id)).toEqual({ outcome: 'failed' });
     expect((await job(unknown.id)).errorCode).toBe('UNKNOWN_JOB_TYPE');
 
     const bad = await mdb.migrator.job.create({
-      data: { type: 'test.effects', payload: { steps: 'x' }, maxAttempts: 3 },
+      data: { type: 'test.effects', payload: { steps: 'x' }, maxAttempts: 3, availableAt: wholeSecond() },
     });
     expect(await runJob(runner, bad.id)).toEqual({ outcome: 'failed' });
     expect((await job(bad.id)).errorCode).toBe('INVALID_JOB_PAYLOAD');

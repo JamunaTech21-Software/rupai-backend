@@ -83,7 +83,7 @@ function common(
   };
 }
 
-/** The 16 tables that use the common shape unchanged (P3 §5.1). */
+/** The 17 tables that use the common shape unchanged (P3 §5.1; amenity from R.2, the estate profile). */
 const PLAIN: readonly (readonly [string, string])[] = [
   ['department', 'department'],
   ['designation', 'designation'],
@@ -101,6 +101,7 @@ const PLAIN: readonly (readonly [string, string])[] = [
   ['adjustment_reason', 'adjustment reason'],
   ['quality_grade', 'quality grade'],
   ['collection_point_type', 'collection point type'],
+  ['amenity', 'estate facility'],
 ];
 
 export const MANUFACTURE_PROCESSES = ['ctc', 'orthodox', 'green', 'oolong', 'white', 'other'] as const;

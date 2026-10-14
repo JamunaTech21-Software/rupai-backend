@@ -6,14 +6,15 @@ import { toOrderBy, toPaging, toWhere, type ListFieldMap } from '../../core/db/l
 import type { Database } from '../../core/db/prisma.js';
 import { withTransaction, type Tx } from '../../core/db/transaction.js';
 import { Errors } from '../../core/errors/app-error.js';
+import { dec } from '../../core/money/decimal.js';
+import { runUnscoped } from '../../core/scope/scope.js';
 import type { ListQuery } from '../../core/http/list-query.js';
-import { businessDateToDb, type BusinessDate } from '../../core/time/dates.js';
 import type { Division, Estate, Prisma, Section } from '../../generated/prisma/client.js';
 import { archiveDocumentsOf } from '../documents/documents.service.js';
+import { removeContactsOf } from '../facilities/contacts.service.js';
 import {
   area,
   assertNoScopeGrants,
-  day,
   denyWrite,
   duplicate,
   idIn,
@@ -31,6 +32,7 @@ import type {
   CreateSectionBody,
   DivisionOut,
   EstateOut,
+  EstateSummaryOut,
   PatchDivisionBody,
   PatchEstateBody,
   PatchSectionBody,
@@ -66,7 +68,28 @@ export const NODE_LIST_FIELDS: ListFieldMap = {
   name: { field: 'name' },
 };
 
-export function toEstateOut(e: Estate): EstateOutT {
+/** An estate with its amenities, as every estate read loads it. */
+export type EstateRow = Estate & { amenityLinks: { amenity: { id: bigint; code: string; name: string } }[] };
+export const estateInclude = {
+  amenityLinks: {
+    include: { amenity: { select: { id: true, code: true, name: true, sortOrder: true } } },
+    orderBy: [{ amenity: { sortOrder: 'asc' } }, { amenityId: 'asc' }],
+  },
+} as const satisfies Prisma.EstateInclude;
+
+const LEGACY_OWNERSHIP: Record<string, EstateOutT['estate_type']> = {
+  owned: 'company_owned',
+  government_lease: 'government_estate',
+  leased: 'private_estate',
+  other: null,
+};
+const OWNERSHIP_OF: Record<string, EstateOutT['ownership_type']> = {
+  company_owned: 'owned',
+  government_estate: 'government_lease',
+  private_estate: 'leased',
+};
+
+export function toEstateOut(e: EstateRow): EstateOutT {
   return {
     id: e.id.toString(),
     organisation_id: e.organisationId.toString(),
@@ -79,10 +102,28 @@ export function toEstateOut(e: Estate): EstateOutT {
     manager_profile_id: idOut(e.managerProfileId),
     phone: e.phone,
     email: e.email,
-    established_on: day(e.establishedOn),
-    ownership_type: e.ownershipType as EstateOutT['ownership_type'],
+    established_on: e.establishedYear === null ? null : `${String(e.establishedYear)}-01-01`,
+    ownership_type: e.estateType === null ? null : (OWNERSHIP_OF[e.estateType] ?? null),
     status: e.status as Status,
     remarks: e.remarks,
+    established_year: e.establishedYear,
+    owner_name: e.ownerName,
+    estate_type: e.estateType as EstateOutT['estate_type'],
+    estate_category: e.estateCategory as EstateOutT['estate_category'],
+    police_station: e.policeStation,
+    admin_division: e.adminDivision,
+    country_id: idOut(e.countryId),
+    postal_code: e.postalCode,
+    website: e.website,
+    latitude: e.latitude === null ? null : e.latitude.toFixed(6),
+    longitude: e.longitude === null ? null : e.longitude.toFixed(6),
+    description: e.description,
+    amenities: e.amenityLinks.map((l) => ({
+      id: l.amenity.id.toString(),
+      code: l.amenity.code,
+      name: l.amenity.name,
+    })),
+    other_amenities: e.otherAmenities,
     version: e.version,
     created_at: e.createdAt.toISOString(),
     updated_at: iso(e.updatedAt),
@@ -121,7 +162,6 @@ export function toSectionOut(s: SectionRow): SectionOutT {
 }
 
 const sectionInclude = { division: { select: { estateId: true } } } as const;
-const date = (v: string | null): Date | null => (v === null ? null : businessDateToDb(v as BusinessDate));
 
 /** The singleton organisation's id (P3 §4.1). The API refuses to start without it, so this is a guard. */
 async function organisationId(tx: Tx): Promise<bigint> {
@@ -132,8 +172,8 @@ async function organisationId(tx: Tx): Promise<bigint> {
 
 export function hierarchyService(db: Database, accessLog: AccessLog) {
   // ---- loaders (scoped reads: out of scope is 404) ---------------------------------------------
-  async function estateOrNotFound(tx: Database | Tx, id: bigint): Promise<Estate> {
-    const e = await tx.estate.findUnique({ where: { id } });
+  async function estateOrNotFound(tx: Database | Tx, id: bigint): Promise<EstateRow> {
+    const e = await tx.estate.findUnique({ where: { id }, include: estateInclude });
     if (!e) throw Errors.notFound('Estate not found.');
     return e;
   }
@@ -164,10 +204,100 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
     ...(b.manager_profile_id !== undefined ? { managerProfileId: idIn(b.manager_profile_id) } : {}),
     ...(b.phone !== undefined ? { phone: b.phone } : {}),
     ...(b.email !== undefined ? { email: b.email } : {}),
-    ...(b.established_on !== undefined ? { establishedOn: date(b.established_on) } : {}),
-    ...(b.ownership_type !== undefined ? { ownershipType: b.ownership_type } : {}),
     ...(b.remarks !== undefined ? { remarks: b.remarks } : {}),
+    // The deprecated fields first, so the new ones win when both are sent.
+    ...(b.established_on !== undefined
+      ? { establishedYear: b.established_on === null ? null : Number(b.established_on.slice(0, 4)) }
+      : {}),
+    ...(b.ownership_type !== undefined
+      ? { estateType: b.ownership_type === null ? null : (LEGACY_OWNERSHIP[b.ownership_type] ?? null) }
+      : {}),
+    ...(b.established_year !== undefined ? { establishedYear: b.established_year } : {}),
+    ...(b.owner_name !== undefined ? { ownerName: b.owner_name } : {}),
+    ...(b.estate_type !== undefined ? { estateType: b.estate_type } : {}),
+    ...(b.estate_category !== undefined ? { estateCategory: b.estate_category } : {}),
+    ...(b.police_station !== undefined ? { policeStation: b.police_station } : {}),
+    ...(b.admin_division !== undefined ? { adminDivision: b.admin_division } : {}),
+    ...(b.country_id !== undefined ? { countryId: idIn(b.country_id) } : {}),
+    ...(b.postal_code !== undefined ? { postalCode: b.postal_code } : {}),
+    ...(b.website !== undefined ? { website: b.website } : {}),
+    ...(b.latitude !== undefined ? { latitude: b.latitude } : {}),
+    ...(b.longitude !== undefined ? { longitude: b.longitude } : {}),
+    ...(b.description !== undefined ? { description: b.description } : {}),
+    ...(b.other_amenities !== undefined ? { otherAmenities: b.other_amenities } : {}),
   });
+
+  /** The checks a CHECK constraint cannot make, as field errors the form can show. */
+  async function checkEstate(tx: Tx, b: z.infer<typeof PatchEstateBody>, current?: EstateRow) {
+    const problems: { field: string; code: string; message: string }[] = [];
+    if (
+      b.established_year !== undefined &&
+      b.established_year !== null &&
+      b.established_year > new Date().getUTCFullYear()
+    ) {
+      problems.push({
+        field: 'established_year',
+        code: 'VALIDATION_FAILED',
+        message: 'Cannot be in the future.',
+      });
+    }
+    const lat = b.latitude !== undefined ? b.latitude : (current?.latitude ?? null);
+    const lng = b.longitude !== undefined ? b.longitude : (current?.longitude ?? null);
+    if ((lat === null) !== (lng === null)) {
+      const field = lat === null ? 'latitude' : 'longitude';
+      problems.push({
+        field,
+        code: 'VALIDATION_FAILED',
+        message: 'Give both latitude and longitude, or neither.',
+      });
+    }
+    if (
+      b.country_id !== undefined &&
+      b.country_id !== null &&
+      (await tx.country.count({ where: { id: b.country_id } })) === 0
+    ) {
+      problems.push({ field: 'country_id', code: 'VALIDATION_FAILED', message: 'No such country.' });
+    }
+    if (b.amenity_ids !== undefined) {
+      const wanted = [...new Set(b.amenity_ids.map(String))];
+      const keep = new Set((current?.amenityLinks ?? []).map((l) => l.amenity.id.toString()));
+      const found = await tx.amenity.findMany({
+        where: { id: { in: wanted.map((v) => BigInt(v)) } },
+        select: { id: true, status: true },
+      });
+      const usable = new Set(
+        found.filter((a) => a.status === 'active' || keep.has(a.id.toString())).map((a) => a.id.toString()),
+      );
+      wanted.forEach((v, i) => {
+        if (!usable.has(v)) {
+          problems.push({
+            field: `amenity_ids.${String(i)}`,
+            code: 'VALIDATION_FAILED',
+            message: 'No such active facility.',
+          });
+        }
+      });
+    }
+    if (problems.length > 0) throw Errors.validation(problems);
+  }
+
+  /** Replaces the estate's amenity set. */
+  async function setAmenities(tx: Tx, estateId: bigint, ids: readonly bigint[] | undefined, actorId: bigint) {
+    if (ids === undefined) return;
+    const wanted = [...new Set(ids)];
+    await tx.estateAmenity.deleteMany({ where: { estateId, amenityId: { notIn: wanted } } });
+    const have = new Set(
+      (await tx.estateAmenity.findMany({ where: { estateId }, select: { amenityId: true } })).map(
+        (l) => l.amenityId,
+      ),
+    );
+    const add = wanted.filter((id) => !have.has(id));
+    if (add.length > 0) {
+      await tx.estateAmenity.createMany({
+        data: add.map((amenityId) => ({ estateId, amenityId, createdBy: actorId })),
+      });
+    }
+  }
   const divisionData = (b: z.infer<typeof PatchDivisionBody>): Prisma.DivisionUncheckedUpdateManyInput => ({
     ...(b.code !== undefined ? { code: b.code } : {}),
     ...(b.name !== undefined ? { name: b.name } : {}),
@@ -192,6 +322,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
       const [rows, total] = await Promise.all([
         db.estate.findMany({
           where,
+          include: estateInclude,
           orderBy: [...toOrderBy(q.sort, ESTATE_LIST_FIELDS), { id: 'asc' }],
           ...toPaging(q),
         }),
@@ -207,6 +338,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
     /** Only a user with access to all estates can add one (an estate grant cannot name it yet). */
     async create(body: z.infer<typeof CreateEstateBody>, actorId: bigint) {
       return withTransaction(db, async (tx) => {
+        await checkEstate(tx, body);
         const { id } = await tx.estate
           .create({
             data: {
@@ -220,6 +352,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
             select: { id: true },
           })
           .catch(duplicate('code', `Estate code ${body.code}`));
+        await setAmenities(tx, id, body.amenity_ids, actorId);
         const out = toEstateOut(await estateOrNotFound(tx, id));
         await auditCreate(tx, ESTATE_AUDIT, id, out, { actorId });
         await recordStatusChange(tx, ESTATE_AUDIT.type, id, null, out.status, { actorId });
@@ -236,6 +369,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
       return withTransaction(db, async (tx) => {
         const before = await estateOrNotFound(tx, id);
         if (!(await canWriteEstate(before))) await denyWrite(accessLog, 'estate', id, 'update');
+        await checkEstate(tx, changes, before);
         const { count } = await tx.estate
           .updateMany({
             where: { id, version: expectedVersion },
@@ -243,6 +377,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
           })
           .catch(duplicate('code', `Estate code ${changes.code ?? ''}`));
         if (count !== 1) versionConflict(before, toEstateOut(before));
+        await setAmenities(tx, id, changes.amenity_ids, actorId);
         const after = toEstateOut(await estateOrNotFound(tx, id));
         await auditUpdate(tx, ESTATE_AUDIT, id, toEstateOut(before), after, { actorId });
         return after;
@@ -269,11 +404,65 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
         if (!(await canWriteEstate(e))) await denyWrite(accessLog, 'estate', id, 'delete');
         await assertNoScopeGrants(tx, 'estate', id, 'estate');
         await archiveDocumentsOf(tx, 'estate', id, actorId);
+        await tx.estateAmenity.deleteMany({ where: { estateId: id } });
+        await removeContactsOf(tx, 'estate', id, actorId);
         await tx.estate.delete({ where: { id } }).catch(referenced('estate'));
         await auditDelete(tx, ESTATE_AUDIT, id, toEstateOut(e), { actorId });
       });
     },
   };
+
+  /**
+   * The Estate Overview (R.2): computed from the records, never entered. Counts follow the caller's
+   * scope like every read. Areas in acres.
+   */
+  async function estateSummary(id: bigint): Promise<z.infer<typeof EstateSummaryOut>> {
+    const e = await estateOrNotFound(db, id);
+    const activeFields = { estateId: id, status: 'active' };
+    const [divisionCount, sectionCount, fieldCount, sums, teaSum, factoryCount, photoCount] =
+      await Promise.all([
+        db.division.count({ where: { estateId: id, status: 'active' } }),
+        db.section.count({ where: { division: { estateId: id }, status: 'active' } }),
+        db.field.count({ where: activeFields }),
+        db.field.aggregate({ where: activeFields, _sum: { grossArea: true } }),
+        // Fields that carry tea: not uprooted, fallow or abandoned.
+        db.field.aggregate({
+          where: { ...activeFields, fieldStatus: { notIn: ['uprooted', 'fallow', 'abandoned'] } },
+          _sum: { plantedArea: true },
+        }),
+        // Factories are scoped by factory, not estate: count those of this (visible) estate regardless.
+        runUnscoped('estate overview: the factories of an estate the caller can see', () =>
+          db.factory.count({ where: { primaryEstateId: id, status: 'active' } }),
+        ),
+        db.documentFile.count({
+          where: {
+            ownerType: 'estate',
+            ownerId: id,
+            status: 'active',
+            isCurrent: true,
+            documentType: { code: 'PHOTOGRAPH' },
+          },
+        }),
+      ]);
+    const tea = dec(teaSum._sum.plantedArea?.toString() ?? '0');
+    const total = e.totalArea === null ? null : dec(e.totalArea.toString());
+    const nonTea = total === null ? null : total.minus(tea);
+    return {
+      estate_id: id.toString(),
+      total_land_area: area(e.totalArea),
+      tea_area: tea.toFixed(3),
+      non_tea_area: nonTea === null ? null : (nonTea.isNegative() ? dec('0') : nonTea).toFixed(3),
+      field_area: dec(sums._sum.grossArea?.toString() ?? '0').toFixed(3),
+      division_count: divisionCount,
+      section_count: sectionCount,
+      field_count: fieldCount,
+      factory_count: factoryCount,
+      worker_count: 0,
+      family_count: 0,
+      workforce_available: false,
+      photo_count: photoCount,
+    };
+  }
 
   const divisions = {
     async listFor(estateId: bigint, q: ListQuery) {
@@ -473,7 +662,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
     },
   };
 
-  return { estates, divisions, sections, sectionOrNotFound };
+  return { estates, divisions, sections, sectionOrNotFound, estateSummary };
 }
 
 export type HierarchyService = ReturnType<typeof hierarchyService>;

@@ -188,6 +188,9 @@ model User {
   createdPaymentMethods       PaymentMethod[]       @relation("PaymentMethodCreatedBy")
   updatedPaymentMethods       PaymentMethod[]       @relation("PaymentMethodUpdatedBy")
   createdLandTypes            LandType[]            @relation("LandTypeCreatedBy")
+  createdAmenities            Amenity[]             @relation("AmenityCreatedBy")
+  updatedAmenities            Amenity[]             @relation("AmenityUpdatedBy")
+  createdEstateAmenities      EstateAmenity[]       @relation("EstateAmenityCreatedBy")
   updatedLandTypes            LandType[]            @relation("LandTypeUpdatedBy")
   createdAdjustmentReasons    AdjustmentReason[]    @relation("AdjustmentReasonCreatedBy")
   updatedAdjustmentReasons    AdjustmentReason[]    @relation("AdjustmentReasonUpdatedBy")
@@ -584,14 +587,35 @@ model Estate {
   location         String?   @db.VarChar(200)
   addressLine1     String?   @map("address_line1") @db.VarChar(200)
   district         String?   @db.VarChar(100)
-  /// Hectares. Informational; the authoritative figure is the sum of land_parcel.
+  /// ACRES (D-R.2-1). Declared total land area: the authoritative figure is the sum of land_parcel
+  /// once the land register exists.
   totalArea        Decimal?  @map("total_area") @db.Decimal(14, 3)
   managerProfileId BigInt?   @map("manager_profile_id") @db.UnsignedBigInt
   phone            String?   @db.VarChar(30)
   email            String?   @db.VarChar(150)
+  /// DEPRECATED (R.2): replaced by established_year; kept until the contract migration.
   establishedOn    DateTime? @map("established_on") @db.Date
-  /// owned | leased | government_lease | other
+  /// DEPRECATED (R.2): replaced by estate_type; kept until the contract migration.
   ownershipType    String?   @map("ownership_type") @db.VarChar(30)
+  // ---- R.2 Estate profile (the manager's design, 2026-10-14) ----
+  establishedYear  Int?      @map("established_year") @db.SmallInt
+  /// The company or person that owns the estate.
+  ownerName        String?   @map("owner_name") @db.VarChar(150)
+  /// company_owned | private_estate | government_estate
+  estateType       String?   @map("estate_type") @db.VarChar(30)
+  /// large | medium | small
+  estateCategory   String?   @map("estate_category") @db.VarChar(30)
+  policeStation    String?   @map("police_station") @db.VarChar(100)
+  /// The administrative division of the country (e.g. Rangpur), not one of the estate's own divisions.
+  adminDivision    String?   @map("admin_division") @db.VarChar(100)
+  countryId        BigInt?   @map("country_id") @db.UnsignedBigInt
+  postalCode       String?   @map("postal_code") @db.VarChar(20)
+  website          String?   @db.VarChar(150)
+  latitude         Decimal?  @db.Decimal(9, 6)
+  longitude        Decimal?  @db.Decimal(9, 6)
+  description      String?   @db.Text
+  /// Facilities that are not on the amenity list ("Other").
+  otherAmenities   String?   @map("other_amenities") @db.VarChar(300)
   /// active | inactive
   status           String    @default("active") @db.VarChar(30)
   remarks          String?   @db.VarChar(500)
@@ -601,20 +625,23 @@ model Estate {
   updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_organisation")
-  creator      User         @relation("EstateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_created_by")
-  updater      User?        @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
+  organisation Organisation    @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_organisation")
+  creator      User            @relation("EstateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_created_by")
+  updater      User?           @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
   divisions    Division[]
   fields       Field[]
+  country      Country?        @relation(fields: [countryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_country")
+  amenityLinks EstateAmenity[]
   factories    Factory[]
   seasons      Season[]
-  shifts       Shift[]      @relation("ShiftEstate")
+  shifts       Shift[]         @relation("ShiftEstate")
 
   workflows Workflow[]
 
   @@unique([organisationId, code], map: "ux_estate_code")
   @@index([status], map: "ix_estate_status")
   @@index([managerProfileId], map: "ix_estate_manager")
+  @@index([countryId], map: "ix_estate_country")
   @@index([createdBy], map: "ix_estate_created_by")
   @@index([updatedBy], map: "ix_estate_updated_by")
   @@map("estate")
@@ -628,7 +655,7 @@ model Division {
   code             String    @db.VarChar(20)
   name             String    @db.VarChar(150)
   managerProfileId BigInt?   @map("manager_profile_id") @db.UnsignedBigInt
-  /// Hectares.
+  /// Acres.
   area             Decimal?  @db.Decimal(14, 3)
   /// active | inactive
   status           String    @default("active") @db.VarChar(30)
@@ -690,9 +717,9 @@ model Field {
   /// Unique within the estate.
   fieldNumber          String    @map("field_number") @db.VarChar(20)
   name                 String?   @db.VarChar(150)
-  /// Hectares.
+  /// Acres.
   grossArea            Decimal   @map("gross_area") @db.Decimal(14, 3)
-  /// Hectares. Set here until plantation_record derives it (BACKLOG D-1.07-6).
+  /// Acres. Set here until plantation_record derives it (BACKLOG D-1.07-6).
   plantedArea          Decimal?  @map("planted_area") @db.Decimal(14, 3)
   /// producing | young | nursery | uprooted | fallow | abandoned
   fieldStatus          String    @map("field_status") @db.VarChar(30)
@@ -1650,6 +1677,7 @@ model Country {
   creator       User           @relation("CountryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_country_created_by")
   updater       User?          @relation("CountryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_country_updated_by")
   organisations Organisation[]
+  estates       Estate[]
 
   @@unique([iso2], map: "ux_country_iso2")
   @@unique([iso3], map: "ux_country_iso3")
@@ -2149,4 +2177,52 @@ model ProcessHeartbeat {
 
   @@unique([processKey], map: "ux_process_heartbeat_key")
   @@map("process_heartbeat")
+}
+
+// ---- R.2 Estate profile extension (the manager's design, 2026-10-14) ----------------------------
+
+/// A facility an estate may have (staff quarter, hospital, school …): a reference list in the common
+/// lookup shape (P3 §5.1). Factories are not on it: they come from the factory register.
+model Amenity {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  estateLinks EstateAmenity[]
+  creator     User            @relation("AmenityCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_amenity_created_by")
+  updater     User?           @relation("AmenityUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_amenity_updated_by")
+
+  @@unique([code], map: "ux_amenity_code")
+  @@index([status], map: "ix_amenity_status")
+  @@index([createdBy], map: "ix_amenity_created_by")
+  @@index([updatedBy], map: "ix_amenity_updated_by")
+  @@map("amenity")
+}
+
+/// Which amenities an estate has. The set is replaced as a whole when the estate is saved.
+model EstateAmenity {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  estateId  BigInt   @map("estate_id") @db.UnsignedBigInt
+  amenityId BigInt   @map("amenity_id") @db.UnsignedBigInt
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy BigInt   @map("created_by") @db.UnsignedBigInt
+
+  estate  Estate  @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_amenity_estate")
+  amenity Amenity @relation(fields: [amenityId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_amenity_amenity")
+  creator User    @relation("EstateAmenityCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_amenity_created_by")
+
+  @@unique([estateId, amenityId], map: "ux_estate_amenity")
+  @@index([amenityId], map: "ix_estate_amenity_amenity")
+  @@index([createdBy], map: "ix_estate_amenity_created_by")
+  @@map("estate_amenity")
 }
