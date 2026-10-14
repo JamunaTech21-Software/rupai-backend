@@ -2,7 +2,7 @@
   "name": "rupai-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "RupAI \u2014 Integrated Tea Estate ERP backend (Express + TypeScript + Prisma + MySQL 8)",
+  "description": "RupAI — Integrated Tea Estate ERP backend (Express + TypeScript + Prisma + MySQL 8)",
   "type": "module",
   "engines": {
     "node": ">=24.0.0 <25"
@@ -51,6 +51,7 @@
     "@node-rs/argon2": "^2.2.1",
     "@prisma/adapter-mariadb": "7.10.0",
     "@prisma/client": "7.10.0",
+    "busboy": "1.6.0",
     "cors": "2.8.6",
     "express": "5.2.1",
     "express-rate-limit": "8.7.0",
@@ -71,6 +72,7 @@
     "@commitlint/config-conventional": "21.2.3",
     "@eslint/js": "10.0.1",
     "@testcontainers/mysql": "12.2.0",
+    "@types/busboy": "1.5.5",
     "@types/cors": "2.8.19",
     "@types/express": "5.0.6",
     "@types/node": "24.19.0",

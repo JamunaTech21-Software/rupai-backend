@@ -49,3 +49,12 @@ When a create cannot be judged from the row's own columns (a section reaches its
 - **Lists** of scoped resources pass `appliedScope: await appliedScope()` to `sendPage`, so `meta.applied_scope` tells the client what it is looking at.
 - **Grant targets:** when you create a table that scope grants point at (estate, division, section, factory/warehouse, department), register an existence check in `SCOPE_TARGETS` (`core/scope/targets.ts`).
 - **Test it:** plug the resource into `describeScopeLeakage()` (`tests/helpers/scope-leakage.ts`). It checks list, single (404) and aggregate leakage.
+
+## Attachments for a new record type (P1.12)
+
+Documents attach to any record through a polymorphic owner. To give a new record type an attachments panel, add **one entry** to `DOCUMENT_OWNERS` in `documents/documents.owners.ts`: its `type` (the table name), collection `path`, permission `module`, a scoped `find` (which also supplies the label shown on the expiring-documents list) and `writable`.
+
+That creates `GET` and `POST /{path}/{id}/documents`, and the shared `/documents/{id}` endpoints (read, versions, download, replace, correct, remove) then work for it. Permission and scope are the owner's: `{module}.view / .edit / .delete`, and an owner outside the caller's scope is 404.
+
+- In the owner's delete, call `archiveDocumentsOf(tx, type, id, actorId)`: document rows and files are never deleted.
+- A route that takes a file declares `multipart: multipartUpload({ storage, maxBytes })` and describes its text fields in `body` (they arrive as strings). Every other route answers 415 to multipart.

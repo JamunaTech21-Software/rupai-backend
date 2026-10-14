@@ -154,6 +154,19 @@ const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.string(required('must be at least 32 characters')).min(32, 'must be at least 32 characters').optional(),
   ),
+  // ---- Document storage (P1.12, Spec P1 §5.23, P14 §4.2) -----------------------------------------
+
+  /**
+   * Where uploaded documents are kept: a directory OUTSIDE the web root and outside any release (P14 §4.2:
+   * shared/uploads), so a deployment never loses them. Only relative keys are stored in the database, so
+   * the directory can move. Absolute in production.
+   */
+  STORAGE_DIR: z.string(required('must be a directory path')).min(1, 'is required').default('./storage'),
+  /** Largest file accepted as a document. */
+  UPLOAD_MAX_MB: positiveInt(1, 100, 10),
+  /** How long a signed download link works (P4 §6.6: "short-lived"). */
+  DOWNLOAD_URL_SECONDS: positiveInt(30, 3600, 300),
+
   /** Access token lifetime (P4 §2.2.1: fifteen minutes by default). */
   AUTH_ACCESS_TOKEN_MINUTES: positiveInt(1, 60, 15),
   /** A refresh token unused for this long expires: the idle timeout of a session. */
@@ -259,6 +272,11 @@ export interface Config {
     readonly passwordResetSeconds: number;
   };
   readonly settings: { readonly encryptionKey: string | null };
+  readonly storage: {
+    readonly dir: string;
+    readonly maxUploadBytes: number;
+    readonly downloadUrlSeconds: number;
+  };
   readonly app: { readonly publicUrl: string };
   readonly mail: {
     readonly smtp: {
@@ -323,6 +341,9 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   if (e.SETTINGS_ENCRYPTION_KEY !== undefined && e.SETTINGS_ENCRYPTION_KEY === e.AUTH_TOKEN_SECRET) {
     problems.push('SETTINGS_ENCRYPTION_KEY must differ from AUTH_TOKEN_SECRET');
   }
+  if (e.APP_ENV === 'production' && !e.STORAGE_DIR.startsWith('/')) {
+    problems.push('STORAGE_DIR must be an absolute path in production (outside the release directory)');
+  }
   if (e.AUTH_TOKEN_PREVIOUS_SECRET !== undefined && e.AUTH_TOKEN_PREVIOUS_SECRET === e.AUTH_TOKEN_SECRET) {
     problems.push('AUTH_TOKEN_PREVIOUS_SECRET must differ from AUTH_TOKEN_SECRET');
   }
@@ -369,6 +390,11 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       passwordResetSeconds: e.PASSWORD_RESET_MINUTES * 60,
     }),
     settings: Object.freeze({ encryptionKey: e.SETTINGS_ENCRYPTION_KEY ?? null }),
+    storage: Object.freeze({
+      dir: e.STORAGE_DIR,
+      maxUploadBytes: e.UPLOAD_MAX_MB * 1024 * 1024,
+      downloadUrlSeconds: e.DOWNLOAD_URL_SECONDS,
+    }),
     app: Object.freeze({ publicUrl: (e.APP_PUBLIC_URL ?? 'http://localhost:5173').replace(/\/+$/, '') }),
     mail: Object.freeze({
       smtp: smtpHost

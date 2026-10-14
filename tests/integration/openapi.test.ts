@@ -236,6 +236,7 @@ describe('/docs', () => {
     const prod = {
       APP_ENV: 'production',
       SETTINGS_ENCRYPTION_KEY: 'test-only-settings-key-0123456789abcdef',
+      STORAGE_DIR: '/var/lib/rupai/uploads',
       NODE_ENV: 'production',
       CORS_ORIGINS: 'https://erp.example.com',
       REDIS_URL: 'redis://127.0.0.1:6379',

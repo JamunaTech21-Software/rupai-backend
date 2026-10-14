@@ -221,6 +221,9 @@ model User {
   updatedNumberFormats NumberFormat[]  @relation("NumberFormatUpdatedBy")
   createdSettings      SystemSetting[] @relation("SystemSettingCreatedBy")
   updatedSettings      SystemSetting[] @relation("SystemSettingUpdatedBy")
+  createdDocuments     DocumentFile[]  @relation("DocumentFileCreatedBy")
+  updatedDocuments     DocumentFile[]  @relation("DocumentFileUpdatedBy")
+  uploadedDocuments    DocumentFile[]  @relation("DocumentFileUploadedBy")
 
   @@unique([username], map: "ux_user_username")
   @@unique([email], map: "ux_user_email")
@@ -1228,6 +1231,8 @@ model DocumentType {
   updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
+  documents DocumentFile[]
+
   creator User  @relation("DocumentTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_document_type_created_by")
   updater User? @relation("DocumentTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_document_type_updated_by")
 
@@ -1702,4 +1707,57 @@ model SystemSetting {
   @@index([createdBy], map: "ix_system_setting_created_by")
   @@index([updatedBy], map: "ix_system_setting_updated_by")
   @@map("system_setting")
+}
+
+/// A file attached to any business record (P3 §28.4, P2 §6.2). The owner is polymorphic and decides who
+/// may see the file. Replacing a file adds a version and keeps the previous one; nothing is deleted.
+model DocumentFile {
+  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// estate | field | factory | warehouse | party, and later owners as their modules arrive
+  ownerType      String    @map("owner_type") @db.VarChar(50)
+  ownerId        BigInt    @map("owner_id") @db.UnsignedBigInt
+  documentTypeId BigInt    @map("document_type_id") @db.UnsignedBigInt
+  /// Which document of this type, for this owner: an owner may hold several licences or agreements.
+  seriesNo       Int       @default(1) @map("series_no")
+  /// What tells two documents of the same type apart ("Fire licence").
+  title          String?   @db.VarChar(150)
+  /// The original name as uploaded. Metadata only: never part of a path.
+  fileName       String    @map("file_name") @db.VarChar(200)
+  /// Relative storage key, resolved through the storage abstraction. Never an absolute path.
+  storedPath     String    @map("stored_path") @db.VarChar(255)
+  mimeType       String    @map("mime_type") @db.VarChar(100)
+  fileSizeBytes  Int       @map("file_size_bytes") @db.UnsignedInt
+  /// SHA-256, hex.
+  checksum       String?   @db.VarChar(64)
+  /// The document's version within its series: 1, 2, 3 …
+  version        Int       @default(1)
+  issueDate      DateTime? @map("issue_date") @db.Date
+  expiryDate     DateTime? @map("expiry_date") @db.Date
+  isCurrent      Boolean   @default(true) @map("is_current")
+  uploadedBy     BigInt    @map("uploaded_by") @db.UnsignedBigInt
+  /// active | superseded | archived
+  status         String    @default("active") @db.VarChar(30)
+  /// GENERATED column (see migration SQL): the series while this is its current version, else NULL. Its
+  /// unique index makes "one current version per document" a database guarantee.
+  currentKey     String?   @map("current_key") @db.VarChar(120)
+  /// Optimistic-concurrency counter (If-Match). `version` above is the document's own version number.
+  rowVersion     Int       @default(1) @map("row_version")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy      BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt      DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy      BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_document_file_type")
+  uploader     User         @relation("DocumentFileUploadedBy", fields: [uploadedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_document_file_uploaded_by")
+  creator      User         @relation("DocumentFileCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_document_file_created_by")
+  updater      User?        @relation("DocumentFileUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_document_file_updated_by")
+
+  @@unique([ownerType, ownerId, documentTypeId, seriesNo, version], map: "ux_document_version")
+  @@unique([currentKey], map: "ux_document_current")
+  @@index([expiryDate, isCurrent], map: "ix_document_expiry")
+  @@index([documentTypeId], map: "ix_document_file_type")
+  @@index([uploadedBy], map: "ix_document_file_uploaded_by")
+  @@index([createdBy], map: "ix_document_file_created_by")
+  @@index([updatedBy], map: "ix_document_file_updated_by")
+  @@map("document_file")
 }

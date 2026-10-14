@@ -43,6 +43,11 @@ COPY --from=tools /app/dist ./dist
 ARG APP_VERSION=0.0.0-dev
 ARG BUILD_COMMIT=unknown
 ENV APP_VERSION=${APP_VERSION} BUILD_COMMIT=${BUILD_COMMIT}
+# Uploaded documents (P1.12): outside the application directory, owned by the runtime user. Mount a
+# volume here, or the files are lost with the container.
+ENV STORAGE_DIR=/var/lib/rupai/uploads
+RUN mkdir -p /var/lib/rupai/uploads && chown -R node:node /var/lib/rupai
+VOLUME ["/var/lib/rupai/uploads"]
 USER node
 EXPOSE 4000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \

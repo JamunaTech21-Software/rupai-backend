@@ -1,3 +1,7 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import type { Logger } from 'pino';
 
 import type { Config } from '../../src/config/env.js';
@@ -9,6 +13,7 @@ import type { Database } from '../../src/core/db/prisma.js';
 import { createLogger } from '../../src/core/logging/logger.js';
 import { memoryMailer } from '../../src/core/mail/mailer.js';
 import { memoryPlatform, type Platform } from '../../src/core/platform.js';
+import { localFileStorage, type FileStorage } from '../../src/core/storage/storage.js';
 import type { ModuleDeps } from '../../src/modules/index.js';
 
 /**
@@ -21,6 +26,7 @@ export function testModuleDeps(opts: {
   logger?: Logger;
   platform?: Platform;
   authz?: PermissionResolver;
+  storage?: FileStorage;
 }): ModuleDeps & { mailer: ReturnType<typeof memoryMailer> } {
   const logger = opts.logger ?? createLogger({ appEnv: 'test', log: { level: 'silent', format: 'json' } });
   const platform = opts.platform ?? memoryPlatform();
@@ -40,5 +46,7 @@ export function testModuleDeps(opts: {
     }),
     mailer: memoryMailer(),
     accessLog: dbAccessLog(opts.db, logger),
+    // A throw-away directory per test app: uploads never touch the developer's ./storage.
+    storage: opts.storage ?? localFileStorage(mkdtempSync(join(tmpdir(), 'rupai-test-storage-'))),
   };
 }

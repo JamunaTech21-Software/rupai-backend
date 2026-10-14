@@ -26,6 +26,7 @@ import {
   versionConflict,
 } from '../organisation/common.js';
 import { removeContactsOf, type ContactOwner } from './contacts.service.js';
+import { archiveDocumentsOf } from '../documents/documents.service.js';
 import type {
   CreateFactoryBody,
   CreatePartyBody,
@@ -346,6 +347,7 @@ export function facilitiesService(db: Database) {
       await withTransaction(db, async (tx) => {
         const f = await factoryOrNotFound(tx, id);
         await assertNoGrants(tx, 'factory', id);
+        await archiveDocumentsOf(tx, 'factory', id, actorId);
         await tx.factory.delete({ where: { id } }).catch(referenced('factory'));
         await auditDelete(tx, FACTORY_AUDIT, id, toFactoryOut(f), { actorId });
       });
@@ -427,6 +429,7 @@ export function facilitiesService(db: Database) {
         const w = await warehouseOrNotFound(tx, id);
         await assertNoGrants(tx, 'warehouse', id);
         await removeContactsOf(tx, 'warehouse', id, actorId);
+        await archiveDocumentsOf(tx, 'warehouse', id, actorId);
         await tx.warehouse.delete({ where: { id } }).catch(referenced('warehouse'));
         await auditDelete(tx, WAREHOUSE_AUDIT, id, toWarehouseOut(w), { actorId });
       });
@@ -520,6 +523,7 @@ export function facilitiesService(db: Database) {
       await withTransaction(db, async (tx) => {
         const p = await partyOrNotFound(tx, id);
         await removeContactsOf(tx, 'party', id, actorId);
+        await archiveDocumentsOf(tx, 'party', id, actorId);
         await tx.party.delete({ where: { id } }).catch(referenced('party'));
         await auditDelete(tx, PARTY_AUDIT, id, partyAuditValues(toPartyOut(p)), { actorId });
       });

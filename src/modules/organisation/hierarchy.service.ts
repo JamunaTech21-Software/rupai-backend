@@ -9,6 +9,7 @@ import { Errors } from '../../core/errors/app-error.js';
 import type { ListQuery } from '../../core/http/list-query.js';
 import { businessDateToDb, type BusinessDate } from '../../core/time/dates.js';
 import type { Division, Estate, Prisma, Section } from '../../generated/prisma/client.js';
+import { archiveDocumentsOf } from '../documents/documents.service.js';
 import {
   area,
   assertNoScopeGrants,
@@ -267,6 +268,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
         const e = await estateOrNotFound(tx, id);
         if (!(await canWriteEstate(e))) await denyWrite(accessLog, 'estate', id, 'delete');
         await assertNoScopeGrants(tx, 'estate', id, 'estate');
+        await archiveDocumentsOf(tx, 'estate', id, actorId);
         await tx.estate.delete({ where: { id } }).catch(referenced('estate'));
         await auditDelete(tx, ESTATE_AUDIT, id, toEstateOut(e), { actorId });
       });

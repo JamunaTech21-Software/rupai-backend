@@ -10,6 +10,7 @@ import type { ListQuery } from '../../core/http/list-query.js';
 import { dec } from '../../core/money/decimal.js';
 import { businessDateFromDb, businessDateToDb, todayIn } from '../../core/time/dates.js';
 import type { Field, Prisma } from '../../generated/prisma/client.js';
+import { archiveDocumentsOf } from '../documents/documents.service.js';
 import {
   area,
   day,
@@ -296,6 +297,7 @@ export function fieldsService(db: Database, accessLog: AccessLog, timezone: stri
       await withTransaction(db, async (tx) => {
         const f = await fieldOrNotFound(tx, id);
         if (!(await canWrite(f))) await denyWrite(accessLog, 'field', id, 'delete');
+        await archiveDocumentsOf(tx, 'field', id, actorId);
         await tx.field.delete({ where: { id } }).catch(referenced('field'));
         await auditDelete(tx, FIELD_AUDIT, id, toFieldOut(f), { actorId });
       });

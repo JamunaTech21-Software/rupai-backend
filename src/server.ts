@@ -11,6 +11,7 @@ import { databaseNameOf, sessionStore } from './core/auth/sessions.js';
 import { tokenSigner } from './core/auth/tokens.js';
 import { createMailer } from './core/mail/mailer.js';
 import { createPlatform } from './core/platform.js';
+import { localFileStorage } from './core/storage/storage.js';
 import { buildModules } from './modules/index.js';
 import { organisationStartupProblem } from './modules/organisation/organisation.service.js';
 
@@ -58,13 +59,27 @@ const signer = tokenSigner({
 });
 const mailer = createMailer(config, logger);
 const accessLog = dbAccessLog(db, logger);
+const storage = localFileStorage(config.storage.dir);
 const app = createApp({
   config,
   logger,
   db,
   platform,
   authenticate: authenticate({ signer, sessions }),
-  modules: buildModules({ config, logger, db, platform, authz, sessions, signer, mailer, accessLog }),
+  modules: buildModules({
+    config,
+    logger,
+    db,
+    platform,
+    authz,
+    sessions,
+    signer,
+    mailer,
+    accessLog,
+    storage,
+  }),
+  // Not ready while documents cannot be stored: uploads would fail one by one otherwise.
+  readinessChecks: [{ name: 'storage', run: () => storage.check() }],
 });
 
 const server = app.listen(config.port, () => {

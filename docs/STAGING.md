@@ -96,6 +96,8 @@ The first deploy creates the database, its two accounts (`rupai_migrator` for DD
 
 Copy `backups/` off the machine from time to time. A backup on the same disk does not survive the disk.
 
+Uploaded documents are files, not database rows: they live in the Docker volume `rupai-staging_uploads` and are **not** in the nightly database backup. Copy them with `docker run --rm -v rupai-staging_uploads:/u -v "$PWD/backups":/b alpine tar czf /b/uploads-$(date +%F).tar.gz -C /u .` when the staging documents matter. `docker compose down -v` deletes them with everything else.
+
 ## Temporary address without a domain (quick tunnel)
 
 Until there is a domain on Cloudflare, set `COMPOSE_PROFILES=quicktunnel` in `.env` and run `./deploy.sh` (or `./deploy.sh --worktree` on a developer machine, which deploys the files on disk without touching git). Instead of the named tunnel, the stack starts a Cloudflare _quick tunnel_, and the script prints its address: `https://<random-words>.trycloudflare.com`.
