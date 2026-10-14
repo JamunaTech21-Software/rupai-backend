@@ -33,6 +33,7 @@ import {
 
 export const DEMO_VIEWER_ROLE = 'DEMO_VIEWER';
 const DEMO_VIEWER_PERMISSIONS = [
+  ['workflow', 'view'],
   ['document', 'view'],
   ['user', 'view'],
   ['role', 'view'],
@@ -83,6 +84,15 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
   ['accounting_period', 'view'],
   ['accounting_period', 'edit'],
+] as const;
+
+/** P1.13: approves workflow changes and, as an approver role, purchase orders (the demo ladder). */
+export const DEMO_APPROVER_ROLE = 'DEMO_APPROVER';
+const DEMO_APPROVER_PERMISSIONS = [
+  ['workflow', 'view'],
+  ['workflow', 'approve'],
+  ['purchase_order', 'view'],
+  ['purchase_order', 'approve'],
 ] as const;
 
 /** A demo role holding at least these permissions: created if missing, missing permissions added. */
@@ -190,6 +200,29 @@ export function demoSeeders(password: string): Seeder[] {
         const viewer = await ensureUser(tx, 'viewer', 'viewer@rupai.local', hash);
         if (viewer.created) inserted += 1;
         inserted += await ensureUserRole(tx, viewer.id, viewerRole.id);
+
+        // P1.13: a second person, because nobody approves what they created.
+        const approverRole = await ensureRole(
+          tx,
+          DEMO_APPROVER_ROLE,
+          'Demo approver',
+          'Staging demo: approves workflow changes; an approver role on the demo expenditure ladder.',
+          DEMO_APPROVER_PERMISSIONS,
+        );
+        inserted += approverRole.inserted;
+        const approver = await ensureUser(tx, 'approver', 'approver@rupai.local', hash);
+        if (approver.created) {
+          await tx.userScope.create({
+            data: {
+              userId: approver.id,
+              scopeType: 'all_estates',
+              grantedBy: BOOTSTRAP_ADMIN_ID,
+              createdBy: BOOTSTRAP_ADMIN_ID,
+            },
+          });
+          inserted += 2;
+        }
+        inserted += await ensureUserRole(tx, approver.id, approverRole.id);
         return { inserted, updated: 0 };
       },
     },
@@ -197,6 +230,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoFacilitiesSeeder,
     demoCalendarSeeder,
     demoLookupSeeder,
+    demoWorkflowSeeder,
   ];
 }
 
@@ -560,4 +594,108 @@ const demoLookupSeeder: Seeder = {
       }
       return { inserted, updated: 0 };
     }),
+};
+
+/**
+ * P1.13: the standard expenditure ladder (P7 Table 6.1) as the next version of the seeded purchase-order
+ * workflow, left SUBMITTED so the manager can preview it and the `approver` account can approve it. Only
+ * while the purchase-order workflow is still the seeded one.
+ */
+const demoWorkflowSeeder: Seeder = {
+  name: 'demo: a submitted expenditure ladder for purchase orders, awaiting the approver',
+  async run(tx) {
+    const existing = await tx.workflow.findMany({
+      where: { documentType: 'purchase_order' },
+      select: { id: true, ruleCode: true },
+    });
+    const [seeded] = existing;
+    if (existing.length !== 1 || !seeded) return { inserted: 0, updated: 0 };
+    const role = async (code: string) =>
+      (await tx.role.findUniqueOrThrow({ where: { code }, select: { id: true } })).id;
+    const estateAdmin = await role(DEMO_ESTATE_ADMIN_ROLE);
+    const approver = await role(DEMO_APPROVER_ROLE);
+    const manager = await tx.user.findUniqueOrThrow({ where: { username: 'manager' }, select: { id: true } });
+    const now = new Date();
+    // Tomorrow (UTC), so the version is never retrospective in the organisation's timezone.
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const by = BOOTSTRAP_ADMIN_ID;
+    const amount = (value: string) => ({
+      conditionField: 'total_base_amount',
+      conditionOperator: 'gte',
+      conditionValue: value,
+    });
+    const w = await tx.workflow.create({
+      data: {
+        ruleCode: seeded.ruleCode,
+        name: 'Purchase order: expenditure ladder (demo)',
+        documentType: 'purchase_order',
+        method: 'sequential',
+        parameters: {},
+        effectiveFrom: from,
+        supersedesId: seeded.id,
+        notes: 'Demo of P7 Table 6.1. The thresholds are the proposed T1 to T3, not confirmed figures.',
+        state: 'submitted',
+        stateChangedAt: now,
+        submittedAt: now,
+        submittedBy: by,
+        createdBy: by,
+        steps: {
+          create: [
+            {
+              stepNumber: 1,
+              sequence: 1,
+              name: 'Estate manager',
+              approverRule: 'by_role',
+              roleId: estateAdmin,
+              createdBy: by,
+            },
+            {
+              stepNumber: 2,
+              sequence: 2,
+              name: 'Accounts verification',
+              approverRule: 'by_role',
+              roleId: approver,
+              ...amount('50001'),
+              createdBy: by,
+            },
+            {
+              stepNumber: 3,
+              sequence: 3,
+              name: 'General manager',
+              approverRule: 'by_role',
+              roleId: approver,
+              ...amount('250001'),
+              createdBy: by,
+            },
+            {
+              stepNumber: 4,
+              sequence: 4,
+              name: 'Managing director',
+              approverRule: 'by_named_user',
+              userId: manager.id,
+              ...amount('1000001'),
+              createdBy: by,
+            },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    for (const [fromState, toState] of [
+      [null, 'draft'],
+      ['draft', 'submitted'],
+    ] as const) {
+      await tx.statusHistory.create({
+        data: {
+          recordType: 'workflow',
+          recordId: w.id.toString(),
+          fromState,
+          toState,
+          changedBy: by,
+          comment: 'Demo seed',
+        },
+      });
+    }
+    return { inserted: 5, updated: 0 };
+  },
 };

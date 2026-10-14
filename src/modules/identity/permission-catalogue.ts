@@ -187,7 +187,8 @@ export const MODULES: readonly CatalogueModule[] = [
   ...m('Platform', 'master', [
     ['user', 'Users'],
     ['role', 'Roles'],
-    ['workflow', 'Workflows'],
+    // Changing who approves what is itself approved (P7 §15.1): a master with an approve action.
+    ['workflow', 'Workflows', ['approve']],
     ['document', 'Documents'],
     ['notification', 'Notifications'],
     ['system', 'System settings'],

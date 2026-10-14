@@ -3,6 +3,7 @@ import { identitySeeders, type BootstrapAdmin } from '../../src/modules/identity
 import { lookupSeeder } from '../../src/modules/lookups/lookup.seed.js';
 import { organisationSeeder } from '../../src/modules/organisation/organisation.service.js';
 import { numberFormatSeeder } from '../../src/modules/system/system.service.js';
+import { workflowSeeder } from '../../src/modules/workflows/workflows.service.js';
 
 /**
  * Seeders, run in this order. Each epic adds its own (Spec P3 §31):
@@ -20,5 +21,5 @@ export function buildSeeders(env: Record<string, string | undefined>): readonly 
     email: env.BOOTSTRAP_ADMIN_EMAIL?.trim() ? env.BOOTSTRAP_ADMIN_EMAIL.trim() : null,
     password: env.BOOTSTRAP_ADMIN_PASSWORD,
   };
-  return [...identitySeeders(admin), lookupSeeder, organisationSeeder, numberFormatSeeder];
+  return [...identitySeeders(admin), lookupSeeder, organisationSeeder, numberFormatSeeder, workflowSeeder];
 }
