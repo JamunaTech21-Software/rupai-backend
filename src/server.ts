@@ -1,7 +1,4 @@
-import { existsSync } from 'node:fs';
-
 import { createApp } from './app.js';
-import { ConfigError, loadConfig, type Config } from './config/env.js';
 import { createDatabase } from './core/db/prisma.js';
 import { createLogger } from './core/logging/logger.js';
 import { dbAccessLog } from './core/audit/access-log.js';
@@ -9,11 +6,14 @@ import { authenticate } from './core/auth/authenticate.js';
 import { dbPermissionResolver } from './core/auth/authorize.js';
 import { databaseNameOf, sessionStore } from './core/auth/sessions.js';
 import { tokenSigner } from './core/auth/tokens.js';
+import { inlineQueue, redisQueue, type JobQueue } from './core/jobs/queue.js';
+import { runJob } from './core/jobs/runner.js';
 import { createMailer } from './core/mail/mailer.js';
 import { createPlatform } from './core/platform.js';
 import { localFileStorage } from './core/storage/storage.js';
 import { buildModules } from './modules/index.js';
 import { organisationStartupProblem } from './modules/organisation/organisation.service.js';
+import { exitOnFatal, loadProcessConfig, onShutdown } from './process.js';
 
 /**
  * Process entry point: loads and validates configuration, binds the HTTP port, and shuts down cleanly.
@@ -21,21 +21,9 @@ import { organisationStartupProblem } from './modules/organisation/organisation.
  * rather than limping on.
  */
 
-// A local .env file is a development convenience. Real environment variables always take precedence.
-if (existsSync('.env')) process.loadEnvFile('.env');
-
-let config: Config;
-try {
-  config = loadConfig(process.env);
-} catch (err) {
-  if (err instanceof ConfigError) {
-    process.stderr.write(`${err.message}\n`);
-    process.exit(1);
-  }
-  throw err;
-}
-
+const config = loadProcessConfig();
 const logger = createLogger(config);
+exitOnFatal(logger);
 const db = createDatabase(config);
 // P3 §4.1: exactly one organisation row, or the API does not start.
 const organisationProblem = await organisationStartupProblem(db).catch((err: unknown) => {
@@ -60,6 +48,24 @@ const signer = tokenSigner({
 const mailer = createMailer(config, logger);
 const accessLog = dbAccessLog(db, logger);
 const storage = localFileStorage(config.storage.dir);
+// Jobs are announced on Redis for the worker processes (P1 §2.7). Without Redis (development only), they
+// run here in the API process, which is fine for trying things and wrong for anything else.
+let jobs: JobQueue;
+if (config.redis.url) {
+  jobs = redisQueue(config.redis.url, logger);
+} else {
+  logger.warn('REDIS_URL not set: jobs run inside the API process. Development only.');
+  const runnerDeps = {
+    db,
+    logger,
+    leaseSeconds: config.jobs.leaseSeconds,
+    retentionDays: config.jobs.retentionDays,
+  };
+  jobs = inlineQueue(async (id) => {
+    const r = await runJob(runnerDeps, id);
+    if (r.outcome === 'retry') await jobs.dispatch(id, r.retryInSeconds);
+  }, logger);
+}
 const app = createApp({
   config,
   logger,
@@ -77,6 +83,7 @@ const app = createApp({
     mailer,
     accessLog,
     storage,
+    jobs,
   }),
   // Not ready while documents cannot be stored: uploads would fail one by one otherwise.
   readinessChecks: [{ name: 'storage', run: () => storage.check() }],
@@ -86,29 +93,12 @@ const server = app.listen(config.port, () => {
   logger.info({ port: config.port, timezone: config.timezone }, 'rupai-backend listening');
 });
 
-function shutdown(signal: NodeJS.Signals): void {
-  logger.info({ signal }, 'shutdown signal received, draining');
-  server.close(() => {
-    logger.info('server closed');
-    void Promise.allSettled([db.$disconnect(), platform.close()]).finally(() => process.exit(0));
+onShutdown(logger, 10, async () => {
+  await new Promise<void>((resolve) => {
+    server.close(() => {
+      resolve();
+    });
   });
-  // Hard stop if in-flight requests do not drain in time (Spec P14 §6).
-  setTimeout(() => {
-    logger.error('drain timeout exceeded, forcing exit');
-    process.exit(1);
-  }, 10_000).unref();
-}
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-
-// An unhandled rejection or exception leaves the process in an unknown state. Log it and let the
-// supervisor restart the process (Spec P2 §3.3).
-process.on('unhandledRejection', (reason) => {
-  logger.fatal({ err: reason }, 'unhandled promise rejection');
-  process.exit(1);
-});
-process.on('uncaughtException', (err) => {
-  logger.fatal({ err }, 'uncaught exception');
-  process.exit(1);
+  logger.info('server closed');
+  await Promise.allSettled([jobs.close(), db.$disconnect(), platform.close()]);
 });

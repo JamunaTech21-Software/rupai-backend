@@ -12,6 +12,7 @@ import { tokenSigner } from '../src/core/auth/tokens.js';
 import { createDatabase } from '../src/core/db/prisma.js';
 import { buildOpenApi } from '../src/core/http/openapi.js';
 import { createLogger } from '../src/core/logging/logger.js';
+import { noQueue } from '../src/core/jobs/queue.js';
 import { memoryMailer } from '../src/core/mail/mailer.js';
 import { memoryPlatform } from '../src/core/platform.js';
 import { localFileStorage } from '../src/core/storage/storage.js';
@@ -39,6 +40,7 @@ const modules = buildModules({
   signer: tokenSigner({ secret: config.auth.tokenSecret, ttlSeconds: config.auth.accessTokenSeconds }),
   mailer: memoryMailer(),
   accessLog: noAccessLog,
+  jobs: noQueue(),
 });
 const doc = buildOpenApi(modules, { version });
 mkdirSync('docs', { recursive: true });

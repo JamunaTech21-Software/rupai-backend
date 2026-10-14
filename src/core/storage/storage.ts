@@ -1,3 +1,4 @@
+import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { access, constants, mkdir, rename, rm, stat } from 'node:fs/promises';
@@ -79,6 +80,7 @@ export function localFileStorage(rootDir: string): FileStorage {
       const head: Buffer[] = [];
       let headSize = 0;
       let size = 0;
+      const out = createWriteStream(path, { mode: 0o640, flags: 'wx' });
       try {
         await pipeline(
           stream,
@@ -94,9 +96,12 @@ export function localFileStorage(rootDir: string): FileStorage {
               yield chunk;
             }
           },
-          createWriteStream(path, { mode: 0o640, flags: 'wx' }),
+          out,
         );
       } catch (err) {
+        // A file stream still opening when the upload is refused creates the file AFTER the error: wait
+        // for it to close, or the removal below runs first and an empty temp file is left behind.
+        if (!out.closed) await once(out, 'close').catch(() => undefined);
         await rm(path, { force: true });
         throw err;
       }

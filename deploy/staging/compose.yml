@@ -89,7 +89,7 @@ services:
     depends_on:
       mysql: { condition: service_healthy }
       redis: { condition: service_healthy }
-    environment:
+    environment: &app-env
       <<: *db-urls
       NODE_ENV: production
       APP_ENV: staging
@@ -116,6 +116,33 @@ services:
     volumes:
       - uploads:/var/lib/rupai/uploads
     # No `ports:`. Only cloudflared (same Docker network) reaches it.
+
+  # Background jobs (P1.15, P14 §2.1): same image, its own process. Deferred and scheduled work runs here,
+  # never in the API. It takes jobs from Redis and also polls the database, so it loses nothing if Redis
+  # restarts. Stopping gives running jobs JOB_SHUTDOWN_SECONDS to finish, then hands them back.
+  worker:
+    image: rupai-api:${API_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: [node, dist/worker.js]
+    environment: *app-env
+    stop_grace_period: 45s
+    # The image's health check probes the API's port, which a worker does not open. Workers report
+    # through GET /api/v1/system/processes instead.
+    healthcheck: { disable: true }
+
+  # EXACTLY ONE (P14 §2.1). It refuses to start while another holds the scheduler lock, so never scale it.
+  scheduler:
+    image: rupai-api:${API_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: [node, dist/scheduler.js]
+    environment: *app-env
+    healthcheck: { disable: true }
 
   # Nightly logical backup, kept for BACKUP_KEEP_DAYS days in ./backups (copy them off the machine too).
   backup:
