@@ -11,10 +11,11 @@ coverage/
 .env.*
 !.env.example
 
-# local storage & logs
-storage/
-uploads/
-logs/
+# local storage & logs, at the backend root only: without the leading slash these would also hide
+# source folders of the same name (src/core/storage)
+/storage/
+/uploads/
+/logs/
 *.log
 
 # OS / editor
