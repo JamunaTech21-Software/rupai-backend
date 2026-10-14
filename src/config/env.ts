@@ -145,6 +145,15 @@ const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.string(required('must be at least 32 characters')).min(32, 'must be at least 32 characters').optional(),
   ),
+  /**
+   * Encrypts system settings marked is_encrypted (P3 §28.6), AES-256-GCM. At least 32 characters, held
+   * outside the repository, and different from the token secret. Without it encrypted settings cannot be
+   * written or read (the API says so); it is required in production. Losing it loses those values.
+   */
+  SETTINGS_ENCRYPTION_KEY: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string(required('must be at least 32 characters')).min(32, 'must be at least 32 characters').optional(),
+  ),
   /** Access token lifetime (P4 §2.2.1: fifteen minutes by default). */
   AUTH_ACCESS_TOKEN_MINUTES: positiveInt(1, 60, 15),
   /** A refresh token unused for this long expires: the idle timeout of a session. */
@@ -249,6 +258,7 @@ export interface Config {
     readonly cookieSecure: boolean;
     readonly passwordResetSeconds: number;
   };
+  readonly settings: { readonly encryptionKey: string | null };
   readonly app: { readonly publicUrl: string };
   readonly mail: {
     readonly smtp: {
@@ -307,6 +317,12 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     if (e.AUTH_COOKIE_SECURE === 'false') problems.push('AUTH_COOKIE_SECURE must be true in production');
     if (/change-me/i.test(e.AUTH_TOKEN_SECRET)) problems.push('AUTH_TOKEN_SECRET is still the example value');
   }
+  if (e.APP_ENV === 'production' && e.SETTINGS_ENCRYPTION_KEY === undefined) {
+    problems.push('SETTINGS_ENCRYPTION_KEY is required in production (encrypted system settings)');
+  }
+  if (e.SETTINGS_ENCRYPTION_KEY !== undefined && e.SETTINGS_ENCRYPTION_KEY === e.AUTH_TOKEN_SECRET) {
+    problems.push('SETTINGS_ENCRYPTION_KEY must differ from AUTH_TOKEN_SECRET');
+  }
   if (e.AUTH_TOKEN_PREVIOUS_SECRET !== undefined && e.AUTH_TOKEN_PREVIOUS_SECRET === e.AUTH_TOKEN_SECRET) {
     problems.push('AUTH_TOKEN_PREVIOUS_SECRET must differ from AUTH_TOKEN_SECRET');
   }
@@ -352,6 +368,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
           : e.AUTH_COOKIE_SECURE === 'true',
       passwordResetSeconds: e.PASSWORD_RESET_MINUTES * 60,
     }),
+    settings: Object.freeze({ encryptionKey: e.SETTINGS_ENCRYPTION_KEY ?? null }),
     app: Object.freeze({ publicUrl: (e.APP_PUBLIC_URL ?? 'http://localhost:5173').replace(/\/+$/, '') }),
     mail: Object.freeze({
       smtp: smtpHost
