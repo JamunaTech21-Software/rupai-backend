@@ -38,7 +38,7 @@ export interface ResolvedApprovers {
 }
 
 /** The live scope grants that let a user act on a document in this place. */
-function scopeFilter(document: ApprovableDocument, place: DocumentPlace) {
+export function scopeFilter(document: ApprovableDocument, place: DocumentPlace) {
   const live = { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] };
   const grants: { scopeType: string; scopeId?: bigint }[] = [{ scopeType: 'all_estates' }];
   if (document.tier === 'estate' && place.estateId)
@@ -51,7 +51,7 @@ function scopeFilter(document: ApprovableDocument, place: DocumentPlace) {
 }
 
 /** Whether the place needed to judge scope for this document's tier is known. */
-function placeKnown(document: ApprovableDocument, place: DocumentPlace): boolean {
+export function placeKnown(document: ApprovableDocument, place: DocumentPlace): boolean {
   if (document.tier === 'organisation') return true;
   if (document.tier === 'estate') return Boolean(place.estateId);
   return Boolean(place.factoryId) || Boolean(place.warehouseId);
@@ -93,4 +93,36 @@ export async function resolveApprovers(
     take: 50,
   });
   return { users: users.map((u) => ({ id: u.id.toString(), username: u.username })), deferred: false };
+}
+
+/**
+ * Whether this one user is an approver of the step, by the same rule as `resolveApprovers`. At runtime the
+ * place is always known (it is copied from the document at submission), so scope always applies.
+ */
+export async function isApprover(
+  db: Database | Tx,
+  document: ApprovableDocument,
+  step: StepApproverRule,
+  place: DocumentPlace,
+  userId: bigint,
+): Promise<boolean> {
+  if (step.approverRule === 'by_named_user') {
+    return step.userId === userId && (await db.user.count({ where: { id: userId, status: 'active' } })) === 1;
+  }
+  if (step.approverRule !== 'by_role' || step.roleId === null) return false;
+  const count = await db.user.count({
+    where: {
+      id: userId,
+      status: 'active',
+      roles: {
+        some: {
+          roleId: step.roleId,
+          role: { status: 'active' },
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+      },
+      ...(placeKnown(document, place) ? { scopes: { some: scopeFilter(document, place) } } : {}),
+    },
+  });
+  return count === 1;
 }

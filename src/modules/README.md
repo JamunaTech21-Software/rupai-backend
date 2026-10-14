@@ -58,3 +58,11 @@ That creates `GET` and `POST /{path}/{id}/documents`, and the shared `/documents
 
 - In the owner's delete, call `archiveDocumentsOf(tx, type, id, actorId)`: document rows and files are never deleted.
 - A route that takes a file declares `multipart: multipartUpload({ storage, maxBytes })` and describes its text fields in `body` (they arrive as strings). Every other route answers 415 to multipart.
+
+## Making a document approvable (P1.14)
+
+1. Give the document the state and approval blocks (P3 §3.2–§3.3) and check its entry in `APPROVABLE_DOCUMENTS` (`core/approval/document-types.ts`): the fields its workflow conditions may test.
+2. Register an adapter once, from the module's routes file: `registerApprovalAdapter({ documentType, describe, onApproved, onRejected, onReturned })`. `describe` gives the engine the document's creator, place (estate, factory or warehouse), condition values (amounts in base currency), label, number and amount. `onApproved` runs the document's guards and effects; throw an `AppError` to refuse.
+3. In the document's `POST /{docs}/{id}/submit`, move it to `submitted` and call `submitForApproval(tx, …)` in the same transaction. An outcome of `approved` means no workflow applies: the adapter's `onApproved` has already run.
+4. The document's `/approve`, `/reject` and `/return` endpoints call `decide(db, deps, requestId, …)`, or the client uses `POST /approvals/{id}/…` directly. A refusal comes back as `guardFailure`: answer with it (its own 422 code) after the transaction commits.
+5. `GET /{docs}/{id}/history` is `GET /approvals/history?document_type=…&document_id=…`.
