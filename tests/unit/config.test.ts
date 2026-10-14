@@ -73,6 +73,7 @@ describe('loadConfig', () => {
     const problems = problemsOf({
       ...TEST_ENV,
       APP_ENV: 'production',
+      SETTINGS_ENCRYPTION_KEY: 'test-only-settings-key-0123456789abcdef',
       NODE_ENV: 'development',
       CORS_ORIGINS: 'https://erp.example.com',
       REDIS_URL: 'redis://:secret@127.0.0.1:6379',
@@ -90,6 +91,7 @@ describe('loadConfig', () => {
     const c = loadConfig({
       ...TEST_ENV,
       APP_ENV: 'production',
+      SETTINGS_ENCRYPTION_KEY: 'test-only-settings-key-0123456789abcdef',
       NODE_ENV: 'production',
       CORS_ORIGINS: 'https://erp.example.com',
       REDIS_URL: 'redis://:secret@127.0.0.1:6379',
@@ -138,6 +140,7 @@ describe('authentication configuration (P1.02)', () => {
     const problems = problemsOf({
       ...TEST_ENV,
       APP_ENV: 'production',
+      SETTINGS_ENCRYPTION_KEY: 'test-only-settings-key-0123456789abcdef',
       NODE_ENV: 'production',
       CORS_ORIGINS: 'https://erp.example.com',
       REDIS_URL: 'redis://:secret@127.0.0.1:6379',

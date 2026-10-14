@@ -213,10 +213,14 @@ model User {
   createdCountrys             Country[]             @relation("CountryCreatedBy")
   updatedCountrys             Country[]             @relation("CountryUpdatedBy")
 
-  scopes        UserScope[] @relation("UserScopeUser")
-  grantedScopes UserScope[] @relation("UserScopeGrantedBy")
-  createdScopes UserScope[] @relation("UserScopeCreatedBy")
-  updatedScopes UserScope[] @relation("UserScopeUpdatedBy")
+  scopes               UserScope[]     @relation("UserScopeUser")
+  grantedScopes        UserScope[]     @relation("UserScopeGrantedBy")
+  createdScopes        UserScope[]     @relation("UserScopeCreatedBy")
+  updatedScopes        UserScope[]     @relation("UserScopeUpdatedBy")
+  createdNumberFormats NumberFormat[]  @relation("NumberFormatCreatedBy")
+  updatedNumberFormats NumberFormat[]  @relation("NumberFormatUpdatedBy")
+  createdSettings      SystemSetting[] @relation("SystemSettingCreatedBy")
+  updatedSettings      SystemSetting[] @relation("SystemSettingUpdatedBy")
 
   @@unique([username], map: "ux_user_username")
   @@unique([email], map: "ux_user_email")
@@ -1625,4 +1629,77 @@ model Country {
   @@index([createdBy], map: "ix_country_created_by")
   @@index([updatedBy], map: "ix_country_updated_by")
   @@map("country")
+}
+
+// ---- P1.11 document numbering and system settings (Spec P3 §28.6, P2 §6.5) -----------------------
+
+/// How one document type is numbered (P2 §6.5): one row per document type the system has. The set of
+/// rows is the system's (seeded); the client edits the format. is_gapless follows the document's
+/// lifecycle (financial: allocated at posting) and is not editable.
+model NumberFormat {
+  id                BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  documentType      String    @map("document_type") @db.VarChar(40)
+  prefix            String    @db.VarChar(20)
+  includeFiscalYear Boolean   @default(false) @map("include_fiscal_year")
+  includeSeason     Boolean   @default(false) @map("include_season")
+  includeEstateCode Boolean   @default(false) @map("include_estate_code")
+  separator         String    @default("-") @db.VarChar(5)
+  sequenceWidth     Int       @default(5) @map("sequence_width") @db.SmallInt
+  /// never | yearly | monthly
+  resetFrequency    String    @default("never") @map("reset_frequency") @db.VarChar(30)
+  isGapless         Boolean   @default(false) @map("is_gapless")
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy         BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt         DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy         BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("NumberFormatCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_number_format_created_by")
+  updater User? @relation("NumberFormatUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_number_format_updated_by")
+
+  @@unique([documentType], map: "ux_number_format_document_type")
+  @@index([createdBy], map: "ix_number_format_created_by")
+  @@index([updatedBy], map: "ix_number_format_updated_by")
+  @@map("number_format")
+}
+
+/// The last number allocated per (document type, scope). The row is locked by the allocating
+/// transaction, so numbers in a scope are unique and, for gapless documents, without holes.
+model NumberSequence {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  documentType String   @map("document_type") @db.VarChar(40)
+  /// Estate, fiscal year, season and reset period, as the format includes them. "*" when none.
+  scopeKey     String   @map("scope_key") @db.VarChar(120)
+  lastNumber   BigInt   @default(0) @map("last_number") @db.UnsignedBigInt
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.DateTime(0)
+
+  @@unique([documentType, scopeKey], map: "ux_number_sequence")
+  @@map("number_sequence")
+}
+
+/// Organisation-wide configuration values (P3 §28.6). An encrypted value is stored as ciphertext and is
+/// write-only through the API.
+model SystemSetting {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  settingKey   String    @map("setting_key") @db.VarChar(100)
+  settingValue String?   @map("setting_value") @db.Text
+  /// string | integer | decimal | boolean | json
+  valueType    String    @map("value_type") @db.VarChar(30)
+  settingGroup String    @map("setting_group") @db.VarChar(50)
+  isEncrypted  Boolean   @default(false) @map("is_encrypted")
+  description  String?   @db.VarChar(500)
+  version      Int       @default(1)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy    BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt    DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy    BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  creator User  @relation("SystemSettingCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_system_setting_created_by")
+  updater User? @relation("SystemSettingUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_system_setting_updated_by")
+
+  @@unique([settingKey], map: "ux_system_setting_key")
+  @@index([settingGroup], map: "ix_system_setting_group")
+  @@index([createdBy], map: "ix_system_setting_created_by")
+  @@index([updatedBy], map: "ix_system_setting_updated_by")
+  @@map("system_setting")
 }

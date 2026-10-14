@@ -99,6 +99,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?}
       AUTH_TOKEN_PREVIOUS_SECRET: ${AUTH_TOKEN_PREVIOUS_SECRET:-}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?}
       AUTH_COOKIE_SECURE: 'true'
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:?}
       # Exact origins, comma-separated; defaults to APP_PUBLIC_URL alone.

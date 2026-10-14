@@ -45,6 +45,14 @@ const plain = (rows: readonly (readonly [string, string, boolean?])[]): Row[] =>
   }));
 
 const COMMON_SEEDS: Readonly<Record<string, Row[]>> = {
+  // P3 Table 31.2 lists leave types with the platform seeds: active, client-editable.
+  leave_type: plain([
+    ['CASUAL', 'Casual leave'],
+    ['SICK', 'Sick leave'],
+    ['EARNED', 'Earned leave'],
+    ['MATERNITY', 'Maternity leave'],
+    ['UNPAID', 'Unpaid leave'],
+  ]),
   land_type: plain([
     ['TEA', 'Tea'],
     ['SHADE', 'Shade'],

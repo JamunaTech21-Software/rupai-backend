@@ -35,7 +35,7 @@ git clone <repo-url> ~/rupai && cd ~/rupai/backend/deploy/staging
 cp .env.example .env && chmod 600 .env
 ```
 
-Fill in `.env`: every password with `openssl rand -hex 24`, `AUTH_TOKEN_SECRET` with `openssl rand -base64 48`, and `APP_PUBLIC_URL` with the Vercel URL. Choose `BOOTSTRAP_ADMIN_PASSWORD` and `DEMO_PASSWORD` (12+ characters).
+Fill in `.env`: every password with `openssl rand -hex 24`, `AUTH_TOKEN_SECRET` and `SETTINGS_ENCRYPTION_KEY` each with their own `openssl rand -base64 48` (never change the settings key once used: encrypted settings would be lost), and `APP_PUBLIC_URL` with the Vercel URL. Choose `BOOTSTRAP_ADMIN_PASSWORD` and `DEMO_PASSWORD` (12+ characters).
 
 Close every inbound port except SSH (`sudo ufw default deny incoming && sudo ufw allow OpenSSH && sudo ufw enable`). Nothing in the stack publishes a port.
 
