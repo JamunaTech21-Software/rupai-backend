@@ -60,10 +60,11 @@ model Role {
   updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  creator     User             @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_role_created_by")
-  updater     User?            @relation("RoleUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_role_updated_by")
-  permissions RolePermission[]
-  users       UserRole[]
+  workflowSteps WorkflowStep[]
+  creator       User             @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_role_created_by")
+  updater       User?            @relation("RoleUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_role_updated_by")
+  permissions   RolePermission[]
+  users         UserRole[]
 
   @@unique([code], map: "ux_role_code")
   @@index([status], map: "ix_role_status")
@@ -224,6 +225,14 @@ model User {
   createdDocuments     DocumentFile[]  @relation("DocumentFileCreatedBy")
   updatedDocuments     DocumentFile[]  @relation("DocumentFileUpdatedBy")
   uploadedDocuments    DocumentFile[]  @relation("DocumentFileUploadedBy")
+  createdWorkflows     Workflow[]      @relation("WorkflowCreatedBy")
+  updatedWorkflows     Workflow[]      @relation("WorkflowUpdatedBy")
+  submittedWorkflows   Workflow[]      @relation("WorkflowSubmittedBy")
+  approvedWorkflows    Workflow[]      @relation("WorkflowApprovedBy")
+  rejectedWorkflows    Workflow[]      @relation("WorkflowRejectedBy")
+  createdWorkflowSteps WorkflowStep[]  @relation("WorkflowStepCreatedBy")
+  updatedWorkflowSteps WorkflowStep[]  @relation("WorkflowStepUpdatedBy")
+  workflowSteps        WorkflowStep[]  @relation("WorkflowStepUser")
 
   @@unique([username], map: "ux_user_username")
   @@unique([email], map: "ux_user_email")
@@ -590,6 +599,8 @@ model Estate {
   factories    Factory[]
   seasons      Season[]
   shifts       Shift[]      @relation("ShiftEstate")
+
+  workflows Workflow[]
 
   @@unique([organisationId, code], map: "ux_estate_code")
   @@index([status], map: "ix_estate_status")
@@ -980,6 +991,8 @@ model Department {
   createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
   updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  workflows Workflow[]
 
   creator User  @relation("DepartmentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_created_by")
   updater User? @relation("DepartmentUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_updated_by")
@@ -1760,4 +1773,119 @@ model DocumentFile {
   @@index([createdBy], map: "ix_document_file_created_by")
   @@index([updatedBy], map: "ix_document_file_updated_by")
   @@map("document_file")
+}
+
+/// An approval workflow (P7 §3, P3 §28.3): which steps a document of one type goes through. It is an
+/// effective-dated policy record and carries the rule block of core/rules (rule-sql.ts): versions are
+/// drafted, approved and superseded, never edited in place or deleted. `method` and `parameters` are the
+/// block's and unused here.
+model Workflow {
+  id                BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// The workflow's code. One code names one chain of versions.
+  ruleCode          String    @map("rule_code") @db.VarChar(30)
+  name              String    @db.VarChar(150)
+  /// The approvable document type it governs (core/approval/document-types.ts).
+  documentType      String    @map("document_type") @db.VarChar(50)
+  /// NULL: every estate.
+  scopeEstateId     BigInt?   @map("scope_estate_id") @db.UnsignedBigInt
+  /// NULL: every department.
+  scopeDepartmentId BigInt?   @map("scope_department_id") @db.UnsignedBigInt
+  /// GENERATED (see migration SQL): estate 2 + department 1. The most specific workflow wins.
+  specificity       Int?      @db.UnsignedSmallInt
+  method            String    @db.VarChar(30)
+  parameters        Json
+  currencyId        BigInt?   @map("currency_id") @db.UnsignedBigInt
+  roundingMode      String?   @map("rounding_mode") @db.VarChar(30)
+  roundingPrecision Int?      @map("rounding_precision") @db.SmallInt
+  effectiveFrom     DateTime  @map("effective_from") @db.Date
+  effectiveTo       DateTime? @map("effective_to") @db.Date
+  isRetrospective   Boolean   @default(false) @map("is_retrospective")
+  supersedesId      BigInt?   @map("supersedes_id") @db.UnsignedBigInt
+  notes             String?   @db.VarChar(500)
+  /// When the workflow applies at all: a list of conditions, all of which must hold. NULL: always.
+  conditionJson     Json?     @map("condition_json")
+  /// draft | submitted | active | rejected | superseded
+  state             String    @default("draft") @db.VarChar(30)
+  stateChangedAt    DateTime? @map("state_changed_at") @db.DateTime(0)
+  submittedAt       DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy       BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt        DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy        BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt        DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy        BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason   String?   @map("rejection_reason") @db.VarChar(500)
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy         BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt         DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy         BigInt?   @map("updated_by") @db.UnsignedBigInt
+  /// GENERATED (see migration SQL): document type + scope + effective_from while ACTIVE, else NULL.
+  activeKey         String?   @map("active_key") @db.VarChar(255)
+
+  supersedes   Workflow?      @relation("WorkflowSupersedes", fields: [supersedesId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_supersedes")
+  supersededBy Workflow[]     @relation("WorkflowSupersedes")
+  estate       Estate?        @relation(fields: [scopeEstateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_estate")
+  department   Department?    @relation(fields: [scopeDepartmentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_department")
+  creator      User           @relation("WorkflowCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_created_by")
+  updater      User?          @relation("WorkflowUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_updated_by")
+  submitter    User?          @relation("WorkflowSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_submitted_by")
+  approver     User?          @relation("WorkflowApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_approved_by")
+  rejecter     User?          @relation("WorkflowRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_rejected_by")
+  steps        WorkflowStep[]
+
+  @@unique([activeKey], map: "ux_workflow_scope_from")
+  @@index([documentType, specificity, effectiveFrom, effectiveTo, state], map: "ix_workflow_resolution")
+  @@index([ruleCode, effectiveFrom], map: "ix_workflow_code")
+  @@index([state], map: "ix_workflow_state")
+  @@index([isRetrospective], map: "ix_workflow_retrospective")
+  @@index([supersedesId], map: "ix_workflow_supersedes")
+  @@index([scopeEstateId], map: "ix_workflow_estate")
+  @@index([scopeDepartmentId], map: "ix_workflow_department")
+  @@index([createdBy], map: "ix_workflow_created_by")
+  @@index([updatedBy], map: "ix_workflow_updated_by")
+  @@index([submittedBy], map: "ix_workflow_submitted_by")
+  @@index([approvedBy], map: "ix_workflow_approved_by")
+  @@index([rejectedBy], map: "ix_workflow_rejected_by")
+  @@map("workflow")
+}
+
+/// One step of a workflow (P7 §3.1, P3 §28.3). It stores a RULE for finding the approver, never a
+/// resolved user: approvers are resolved when the step becomes current (P7 §4.2). Steps change only
+/// while their workflow is a draft; an active workflow's steps are fixed.
+model WorkflowStep {
+  id                BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  workflowId        BigInt    @map("workflow_id") @db.UnsignedBigInt
+  stepNumber        Int       @map("step_number")
+  /// What the step is for, shown on the approval timeline ("Accounts verification").
+  name              String?   @db.VarChar(100)
+  /// by_role | by_reporting_line | by_named_user | by_cost_centre_manager
+  approverRule      String    @map("approver_rule") @db.VarChar(30)
+  roleId            BigInt?   @map("role_id") @db.UnsignedBigInt
+  userId            BigInt?   @map("user_id") @db.UnsignedBigInt
+  /// by_reporting_line: 1 is the submitter's supervisor.
+  reportingLevel    Int?      @map("reporting_level") @db.UnsignedTinyInt
+  /// When the step applies. All three NULL: always.
+  conditionField    String?   @map("condition_field") @db.VarChar(50)
+  conditionOperator String?   @map("condition_operator") @db.VarChar(20)
+  conditionValue    Json?     @map("condition_value")
+  allowSelfApproval Boolean   @default(false) @map("allow_self_approval")
+  /// Display order. Always equal to step_number.
+  sequence          Int
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy         BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt         DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy         BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_workflow")
+  role     Role?    @relation(fields: [roleId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_role")
+  user     User?    @relation("WorkflowStepUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_user")
+  creator  User     @relation("WorkflowStepCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_created_by")
+  updater  User?    @relation("WorkflowStepUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_workflow_step_updated_by")
+
+  @@unique([workflowId, stepNumber], map: "ux_workflow_step_number")
+  @@index([roleId], map: "ix_workflow_step_role")
+  @@index([userId], map: "ix_workflow_step_user")
+  @@index([createdBy], map: "ix_workflow_step_created_by")
+  @@index([updatedBy], map: "ix_workflow_step_updated_by")
+  @@map("workflow_step")
 }
