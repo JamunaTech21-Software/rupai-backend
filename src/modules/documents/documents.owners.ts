@@ -1,5 +1,6 @@
 import type { Database } from '../../core/db/prisma.js';
 import type { Tx } from '../../core/db/transaction.js';
+import type { ItemPlace } from '../../core/notify/notify.js';
 import { writable } from '../organisation/common.js';
 
 /**
@@ -27,7 +28,12 @@ export interface DocumentOwner {
   find(db: Database | Tx, ids: readonly bigint[]): Promise<Map<bigint, string>>;
   /** Whether the caller's scope may CHANGE this owner (a parent seen through a child grant is read-only). */
   writable(db: Database | Tx, id: bigint): Promise<boolean>;
+  /** Where each owner sits, for scope: who may hear of its documents (P1.16 expiry alerts). */
+  places(db: Database | Tx, ids: readonly bigint[]): Promise<Map<bigint, ItemPlace>>;
 }
+
+const byId = <T extends { id: bigint }>(rows: readonly T[], place: (r: T) => ItemPlace) =>
+  new Map(rows.map((r) => [r.id, place(r)]));
 
 const named = (rows: readonly { id: bigint; code: string; name: string }[]) =>
   new Map(rows.map((r) => [r.id, `${r.code} · ${r.name}`]));
@@ -42,6 +48,7 @@ export const DOCUMENT_OWNERS: readonly DocumentOwner[] = [
     label: 'estate',
     find: async (db, ids) => named(await db.estate.findMany({ where: { id: { in: [...ids] } }, select })),
     writable: (_db, id) => writable({ estate: id }),
+    places: (_db, ids) => Promise.resolve(new Map(ids.map((id) => [id, { estateId: id }]))),
   },
   {
     type: 'field',
@@ -66,6 +73,11 @@ export const DOCUMENT_OWNERS: readonly DocumentOwner[] = [
         f !== null && writable({ estate: f.estateId, division: f.section.divisionId, section: f.sectionId })
       );
     },
+    places: async (db, ids) =>
+      byId(
+        await db.field.findMany({ where: { id: { in: [...ids] } }, select: { id: true, estateId: true } }),
+        (f) => ({ estateId: f.estateId }),
+      ),
   },
   {
     type: 'factory',
@@ -74,6 +86,7 @@ export const DOCUMENT_OWNERS: readonly DocumentOwner[] = [
     label: 'factory',
     find: async (db, ids) => named(await db.factory.findMany({ where: { id: { in: [...ids] } }, select })),
     writable: always,
+    places: (_db, ids) => Promise.resolve(new Map(ids.map((id) => [id, { factoryId: id }]))),
   },
   {
     type: 'warehouse',
@@ -82,6 +95,7 @@ export const DOCUMENT_OWNERS: readonly DocumentOwner[] = [
     label: 'warehouse',
     find: async (db, ids) => named(await db.warehouse.findMany({ where: { id: { in: [...ids] } }, select })),
     writable: always,
+    places: (_db, ids) => Promise.resolve(new Map(ids.map((id) => [id, { warehouseId: id }]))),
   },
   {
     type: 'party',
@@ -90,6 +104,8 @@ export const DOCUMENT_OWNERS: readonly DocumentOwner[] = [
     label: 'party',
     find: async (db, ids) => named(await db.party.findMany({ where: { id: { in: [...ids] } }, select })),
     writable: always,
+    // Organisation level: no estate scope applies.
+    places: (_db, ids) => Promise.resolve(new Map(ids.map((id) => [id, {}]))),
   },
 ];
 

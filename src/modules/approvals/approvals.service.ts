@@ -104,9 +104,11 @@ export interface ApprovalsDeps {
   readonly authz: PermissionResolver;
   readonly accessLog: AccessLog;
   readonly timezone: string;
+  /** Called after a decision has committed: asks for the approvers' notifications (P1.16). Never throws. */
+  readonly afterDecision?: () => Promise<void>;
 }
 
-export function approvalsService({ db, authz, timezone }: ApprovalsDeps) {
+export function approvalsService({ db, authz, timezone, afterDecision }: ApprovalsDeps) {
   const engineDeps: EngineDeps = {
     timezone,
     can: (permission) => holdsPermission(authz, permission),
@@ -494,6 +496,7 @@ export function approvalsService({ db, authz, timezone }: ApprovalsDeps) {
           await loadVisible(tx, id, actor.userId);
         },
       );
+      if (kind !== 'comment') await afterDecision?.();
       const r = await db.approvalRequest.findUniqueOrThrow({ where: { id }, include: requestInclude });
       return {
         approval: await view(db, r, (await access(db, r, actor.userId)).actions),

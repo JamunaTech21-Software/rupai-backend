@@ -1,3 +1,5 @@
+import type { Logger } from 'pino';
+
 import type { ApiModule } from '../../app.js';
 import type { Config } from '../../config/env.js';
 import { APPROVABLE_DOCUMENTS } from '../../core/approval/document-types.js';
@@ -5,6 +7,7 @@ import type { ApprovalActionKind } from '../../core/approval/engine.js';
 import type { AccessLog } from '../../core/audit/access-log.js';
 import { assertPermission, currentActorId, type PermissionResolver } from '../../core/auth/authorize.js';
 import type { Database } from '../../core/db/prisma.js';
+import type { JobQueue } from '../../core/jobs/queue.js';
 import { getListQuery } from '../../core/http/list-query.js';
 import { sendCreated, sendOne, sendPage } from '../../core/http/response.js';
 import { defineModule } from '../../core/http/route.js';
@@ -24,6 +27,7 @@ import {
   REQUEST_STATES,
   ReturnBody,
 } from './approvals.schema.js';
+import { notifyApprovalsSoon } from './approvals.jobs.js';
 import { approvalsService } from './approvals.service.js';
 import { z } from 'zod';
 
@@ -35,6 +39,8 @@ export interface ApprovalsDeps {
   readonly platform: Platform;
   readonly authz: PermissionResolver;
   readonly accessLog: AccessLog;
+  readonly jobs: JobQueue;
+  readonly logger: Logger;
 }
 
 const byId = { params: IdParams };
@@ -42,8 +48,22 @@ const DOCUMENT_KEYS = APPROVABLE_DOCUMENTS.map((d) => d.key);
 const ANY_USER = 'Every user has a queue: what they may approve is decided per item (P4 §14.1 "any").';
 const OWN = 'Who may see or act on an approval depends on the approval, not on one permission.';
 
-export function approvalsModule({ config, db, platform, authz, accessLog }: ApprovalsDeps): ApiModule {
-  const svc = approvalsService({ db, authz, accessLog, timezone: config.timezone });
+export function approvalsModule({
+  config,
+  db,
+  platform,
+  authz,
+  accessLog,
+  jobs,
+  logger,
+}: ApprovalsDeps): ApiModule {
+  const svc = approvalsService({
+    db,
+    authz,
+    accessLog,
+    timezone: config.timezone,
+    afterDecision: () => notifyApprovalsSoon({ db, jobs, logger }),
+  });
   const m = defineModule({
     name: 'approvals',
     path: '/approvals',

@@ -6,6 +6,7 @@ import { createDatabase } from '../../src/core/db/prisma.js';
 import { backoffSeconds, checkCron, nextRun } from '../../src/core/jobs/cron.js';
 import { defineJob } from '../../src/core/jobs/registry.js';
 import { checkSchedules, schedulerLockName } from '../../src/core/jobs/scheduler.js';
+import { memoryMailer } from '../../src/core/mail/mailer.js';
 import { JOB_CATALOGUE_SCHEDULES, registerJobs } from '../../src/modules/index.js';
 import { TEST_ENV } from '../helpers/test-app.js';
 
@@ -32,7 +33,7 @@ describe('schedules', () => {
 
   it('every schedule of the catalogue is valid and names a registered job', () => {
     const config = loadConfig({ ...TEST_ENV });
-    registerJobs({ db: createDatabase(config) });
+    registerJobs({ db: createDatabase(config), config, mailer: memoryMailer() });
     expect(checkSchedules(JOB_CATALOGUE_SCHEDULES, 'Asia/Dhaka')).toEqual([]);
     expect(
       checkSchedules(

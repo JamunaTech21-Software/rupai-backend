@@ -60,11 +60,12 @@ model Role {
   updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  workflowSteps WorkflowStep[]
-  creator       User             @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_role_created_by")
-  updater       User?            @relation("RoleUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_role_updated_by")
-  permissions   RolePermission[]
-  users         UserRole[]
+  workflowSteps     WorkflowStep[]
+  notificationRules NotificationRule[]
+  creator           User               @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_role_created_by")
+  updater           User?              @relation("RoleUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_role_updated_by")
+  permissions       RolePermission[]
+  users             UserRole[]
 
   @@unique([code], map: "ux_role_code")
   @@index([status], map: "ix_role_status")
@@ -246,6 +247,10 @@ model User {
   updatedDelegations   ApprovalDelegation[] @relation("ApprovalDelegationUpdatedBy")
   requestedJobs        Job[]                @relation("JobRequestedBy")
   updatedJobSchedules  JobSchedule[]        @relation("JobScheduleUpdatedBy")
+  notifiedByRules      NotificationRule[]   @relation("NotificationRuleUser")
+  createdNotifRules    NotificationRule[]   @relation("NotificationRuleCreatedBy")
+  updatedNotifRules    NotificationRule[]   @relation("NotificationRuleUpdatedBy")
+  notifications        Notification[]       @relation("NotificationUser")
 
   @@unique([username], map: "ux_user_username")
   @@unique([email], map: "ux_user_email")
@@ -2225,4 +2230,89 @@ model EstateAmenity {
   @@index([amenityId], map: "ix_estate_amenity_amenity")
   @@index([createdBy], map: "ix_estate_amenity_created_by")
   @@map("estate_amenity")
+}
+
+// ---- P1.16 Notifications (P3 §28.5, P1 §4.3, §7.1) -------------------------------------------------
+
+/// When to tell whom about what (P3 §28.5). The trigger types are the system's (core/notify); each rule
+/// says who hears of it, how far ahead, and whether by email too. Seeded active with conservative
+/// defaults (P3 Table 31.2); never deleted, deactivated instead.
+model NotificationRule {
+  id            BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code          String    @db.VarChar(40)
+  name          String    @db.VarChar(150)
+  description   String?   @db.VarChar(500)
+  /// approval_pending | approval_unresolved | document_expiry | access_review | budget_threshold |
+  /// payment_due | abnormal_yield | low_stock | contract_expiry | lease_due
+  triggerType   String    @map("trigger_type") @db.VarChar(40)
+  /// Rule parameters of the trigger (P3 §6: JSON only for rule parameters), e.g. which document types.
+  conditionJson Json?     @map("condition_json")
+  /// Days ahead of a due or expiry date. NULL for triggers without one.
+  leadDays      Int?      @map("lead_days") @db.SmallInt
+  /// approvers | by_role | by_scope | by_named_user
+  recipientRule String    @map("recipient_rule") @db.VarChar(30)
+  roleId        BigInt?   @map("role_id") @db.UnsignedBigInt
+  /// by_named_user: who. (P3 lists role_id only; a named user needs its own column.)
+  userId        BigInt?   @map("user_id") @db.UnsignedBigInt
+  /// in_app | email. Every notification is in-app; email also sends it.
+  channel       String    @default("in_app") @db.VarChar(20)
+  /// info | warning | critical
+  severity      String    @default("info") @db.VarChar(20)
+  isActive      Boolean   @default(true) @map("is_active")
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy     BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt     DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy     BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  role          Role?          @relation(fields: [roleId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_notification_rule_role")
+  user          User?          @relation("NotificationRuleUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_notification_rule_user")
+  creator       User           @relation("NotificationRuleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_notification_rule_created_by")
+  updater       User?          @relation("NotificationRuleUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_notification_rule_updated_by")
+  notifications Notification[]
+
+  @@unique([code], map: "ux_notification_rule_code")
+  @@index([triggerType, isActive], map: "ix_notification_rule_trigger")
+  @@index([roleId], map: "ix_notification_rule_role")
+  @@index([userId], map: "ix_notification_rule_user")
+  @@index([createdBy], map: "ix_notification_rule_created_by")
+  @@index([updatedBy], map: "ix_notification_rule_updated_by")
+  @@map("notification_rule")
+}
+
+/// One message to one user (P3 §28.5). Written by jobs, never inside a business transaction (P1 §4.3).
+/// The dedupe key makes a re-run of the same evaluation, or of the nightly job, write nothing new.
+model Notification {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  notificationRuleId BigInt    @map("notification_rule_id") @db.UnsignedBigInt
+  userId             BigInt    @map("user_id") @db.UnsignedBigInt
+  subject            String    @db.VarChar(200)
+  body               String    @db.VarChar(2000)
+  /// What it is about (polymorphic): approval_request, document_file, job, approval_queue.<type>.
+  linkType           String    @map("link_type") @db.VarChar(50)
+  linkId             BigInt    @map("link_id") @db.UnsignedBigInt
+  /// info | warning | critical
+  severity           String    @db.VarChar(20)
+  /// The day of the occurrence it reports (the expiry date, the day the step started): the dedupe
+  /// key's date, so the same occurrence is never reported twice.
+  generationDate     DateTime  @map("generation_date") @db.Date
+  readAt             DateTime? @map("read_at") @db.DateTime(0)
+  dismissedAt        DateTime? @map("dismissed_at") @db.DateTime(0)
+  /// not_required (in-app only) | pending | sending | sent | failed | skipped (no email address)
+  deliveryState      String    @map("delivery_state") @db.VarChar(20)
+  deliveryAttempts   Int       @default(0) @map("delivery_attempts") @db.SmallInt
+  /// When the last send was started; a send that never finished is found by it.
+  deliveryStartedAt  DateTime? @map("delivery_started_at") @db.DateTime(0)
+  deliveredAt        DateTime? @map("delivered_at") @db.DateTime(0)
+  deliveryError      String?   @map("delivery_error") @db.VarChar(500)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+
+  rule NotificationRule @relation(fields: [notificationRuleId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_notification_rule")
+  user User             @relation("NotificationUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_notification_user")
+
+  @@unique([notificationRuleId, userId, linkType, linkId, generationDate], map: "ux_notification_dedupe")
+  @@index([userId, dismissedAt, id], map: "ix_notification_user")
+  @@index([deliveryState, id], map: "ix_notification_delivery")
+  @@index([createdAt], map: "ix_notification_created_at")
+  @@map("notification")
 }

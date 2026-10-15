@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import type { Database } from '../../core/db/prisma.js';
 import { defineJob, type ScheduleDefinition } from '../../core/jobs/registry.js';
+import { activeRules, emit, recipients } from '../../core/notify/notify.js';
+import { todayIn } from '../../core/time/dates.js';
 import { accessService } from './access.service.js';
 
 /** Scheduled work of the identity module (P1.02 D-1.02-2, P1.04 D-1.04-7). */
@@ -38,9 +40,10 @@ export function purgeTokensJob(db: Database) {
 
 /**
  * The scheduled access review (P6 §9.1): the concentration report, run weekly, its findings kept on the
- * job. Telling the administrator arrives with notifications (P1.16).
+ * job. When it finds something to act on, the access_review rule's recipients are told (P1.16), once per
+ * day it runs.
  */
-export function concentrationReviewJob(db: Database) {
+export function concentrationReviewJob(db: Database, timezone: string) {
   const access = accessService(db);
   return defineJob({
     type: 'role.concentration_review',
@@ -48,6 +51,26 @@ export function concentrationReviewJob(db: Database) {
     payload: z.object({}),
     async run() {
       const r = await access.concentrationReport();
+      const lapsed = r.active_overrides.filter((o) => !o.still_held).length;
+      let notified = 0;
+      if (r.unauthorised.length > 0 || lapsed > 0) {
+        const parts = [
+          r.unauthorised.length > 0
+            ? `${String(r.unauthorised.length)} user(s) hold conflicting or sensitive permissions without a written authorisation`
+            : null,
+          lapsed > 0 ? `${String(lapsed)} authorisation(s) cover permissions no longer held` : null,
+        ].filter(Boolean);
+        for (const rule of await activeRules(db, 'access_review')) {
+          const users = await recipients(db, rule, { place: null, viewPermission: 'user.view' });
+          notified += await emit(db, rule, users, {
+            subject: 'Access review: permissions to look at',
+            body: `The weekly access review found: ${parts.join('; ')}. Open the concentration report to review them.`,
+            linkType: 'access_review',
+            linkId: 0n,
+            occurredOn: todayIn(timezone),
+          });
+        }
+      }
       return {
         result: {
           generated_at: r.generated_at,
@@ -62,6 +85,7 @@ export function concentrationReviewJob(db: Database) {
             requirements: u.requirements.length,
           })),
           report: '/api/v1/access/concentration-report',
+          notifications_created: notified,
         },
       };
     },
