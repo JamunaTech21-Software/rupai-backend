@@ -12,7 +12,7 @@ import { registerJob, type ScheduleDefinition } from '../core/jobs/registry.js';
 import type { Mailer } from '../core/mail/mailer.js';
 import type { Platform } from '../core/platform.js';
 import type { FileStorage } from '../core/storage/storage.js';
-import { APPROVAL_SCHEDULES, recheckUnresolvedJob } from './approvals/approvals.jobs.js';
+import { APPROVAL_SCHEDULES, approvalNotifyJob, recheckUnresolvedJob } from './approvals/approvals.jobs.js';
 import { approvalsModule } from './approvals/approvals.routes.js';
 import { auditModule } from './audit/audit.routes.js';
 import { concentrationReviewJob, IDENTITY_SCHEDULES, purgeTokensJob } from './identity/identity.jobs.js';
@@ -21,8 +21,15 @@ import { JOB_SCHEDULES, purgeJobsJob, selfTestJob } from './jobs/jobs.jobs.js';
 import { jobsModules } from './jobs/jobs.routes.js';
 import { lookupModules } from './lookups/lookup.routes.js';
 import { calendarModules } from './calendar/calendar.routes.js';
+import { DOCUMENT_SCHEDULES, documentExpiryJob } from './documents/documents.jobs.js';
 import { documentsModule } from './documents/documents.routes.js';
 import { facilitiesModules } from './facilities/facilities.routes.js';
+import {
+  deliverJob,
+  NOTIFICATION_SCHEDULES,
+  purgeNotificationsJob,
+} from './notifications/notifications.jobs.js';
+import { notificationsModules } from './notifications/notifications.routes.js';
 import { organisationModules } from './organisation/organisation.routes.js';
 import { systemModules } from './system/system.routes.js';
 import { workflowsModule } from './workflows/workflows.routes.js';
@@ -47,7 +54,7 @@ export interface ModuleDeps {
 
 /**
  * The application's modules, in mount order. Each epic adds its module here, starting with P1.01
- * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments), P1.13 (approval workflow definitions), P1.14 (approval runtime and queue) and P1.15 (jobs and schedules). server.ts mounts them, and the OpenAPI document is
+ * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments), P1.13 (approval workflow definitions), P1.14 (approval runtime and queue), P1.15 (jobs and schedules) and P1.16 (notifications). server.ts mounts them, and the OpenAPI document is
  * generated from them.
  */
 export function buildModules(deps: ModuleDeps): ApiModule[] {
@@ -65,6 +72,7 @@ export function buildModules(deps: ModuleDeps): ApiModule[] {
     workflowsModule(deps),
     approvalsModule(deps),
     ...jobsModules({ ...deps, schedules: JOB_CATALOGUE_SCHEDULES }),
+    ...notificationsModules(deps),
   ];
 }
 
@@ -73,16 +81,27 @@ export const JOB_CATALOGUE_SCHEDULES: readonly ScheduleDefinition[] = [
   ...JOB_SCHEDULES,
   ...IDENTITY_SCHEDULES,
   ...APPROVAL_SCHEDULES,
+  ...DOCUMENT_SCHEDULES,
+  ...NOTIFICATION_SCHEDULES,
 ];
 
 /**
  * Every job the modules define, registered so a worker can run them (and the API can create them).
  * Each module adds its jobs here, as it adds its routes to buildModules. Call once per process.
  */
-export function registerJobs(deps: Pick<ModuleDeps, 'db'>): void {
-  registerJob(selfTestJob(deps.db));
-  registerJob(purgeJobsJob(deps.db));
-  registerJob(purgeTokensJob(deps.db));
-  registerJob(concentrationReviewJob(deps.db));
-  registerJob(recheckUnresolvedJob(deps.db));
+export function registerJobs(deps: {
+  readonly db: Database;
+  readonly config: Pick<Config, 'timezone' | 'app'>;
+  readonly mailer: Mailer;
+}): void {
+  const { db, config, mailer } = deps;
+  registerJob(selfTestJob(db));
+  registerJob(purgeJobsJob(db));
+  registerJob(purgeTokensJob(db));
+  registerJob(concentrationReviewJob(db, config.timezone));
+  registerJob(recheckUnresolvedJob(db));
+  registerJob(approvalNotifyJob(db, config.timezone));
+  registerJob(documentExpiryJob(db, config.timezone));
+  registerJob(deliverJob(db, mailer, config.app.publicUrl));
+  registerJob(purgeNotificationsJob(db));
 }

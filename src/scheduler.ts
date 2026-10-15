@@ -9,6 +9,7 @@ import {
   syncSchedules,
 } from './core/jobs/scheduler.js';
 import { createLogger } from './core/logging/logger.js';
+import { createMailer } from './core/mail/mailer.js';
 import { JOB_CATALOGUE_SCHEDULES, registerJobs } from './modules/index.js';
 import { exitOnFatal, loadProcessConfig, onShutdown } from './process.js';
 
@@ -25,7 +26,8 @@ const logger = createLogger(config).child({ process: 'scheduler' });
 exitOnFatal(logger);
 
 const db = createDatabase(config);
-registerJobs({ db });
+// The scheduler only creates jobs; the mailer is for the definitions' sake and is never used here.
+registerJobs({ db, config, mailer: createMailer(config, logger) });
 const problems = checkSchedules(JOB_CATALOGUE_SCHEDULES, config.timezone);
 if (problems.length > 0) {
   logger.fatal({ problems }, 'the schedule definitions are invalid');
