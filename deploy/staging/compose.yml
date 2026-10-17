@@ -128,6 +128,9 @@ services:
       redis: { condition: service_healthy }
     command: [node, dist/worker.js]
     environment: *app-env
+    # Import jobs read the uploaded files (P1.17): the same volume as the API.
+    volumes:
+      - uploads:/var/lib/rupai/uploads
     stop_grace_period: 45s
     # The image's health check probes the API's port, which a worker does not open. Workers report
     # through GET /api/v1/system/processes instead.

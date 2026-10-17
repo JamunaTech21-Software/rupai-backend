@@ -389,7 +389,7 @@ export function lookupService(db: Database, type: LookupType, accessLog: AccessL
       { code: 'SYSTEM_RECORD', message: 'The application depends on it. It may be renamed.' },
     ]);
 
-  return {
+  const service = {
     type,
 
     async list(q: ListQuery): Promise<{ items: LookupRow[]; total: number }> {
@@ -430,29 +430,40 @@ export function lookupService(db: Database, type: LookupType, accessLog: AccessL
     },
 
     async create(body: Readonly<Record<string, unknown>>, actorId: bigint): Promise<LookupRow> {
-      return withTransaction(db, async (tx) => {
-        const values: Record<string, unknown> = {};
-        for (const f of type.fields) {
-          if (f.readOnly) values[f.name] = f.type.kind === 'bool' ? false : null;
-          else values[f.name] = toDb(f, body[f.name] === undefined ? (f.default ?? null) : body[f.name]);
-        }
-        if (type.estateColumn) await assertWritable(values[type.estateColumn], null, 'create');
-        await hooks.beforeSave?.(tx, values, null);
-        await assertReferences(tx, values, new Set(type.fields.map((f) => f.name)));
-        await assertKeyFree(tx, values[type.keyField], null);
-        const data = { ...values, status: 'active', created_by: actorId };
-        const cols = Object.keys(data);
-        await tx
-          .$executeRaw(
-            Prisma.sql`INSERT INTO ${table} (${Prisma.join(cols.map(col))}) VALUES (${Prisma.join(cols.map((k) => (data as Record<string, unknown>)[k]))})`,
-          )
-          .catch(onConflict);
-        const [inserted] = await tx.$queryRaw<{ id: bigint }[]>`SELECT LAST_INSERT_ID() AS id`;
-        const out = await orNotFound(tx, BigInt(inserted?.id ?? 0));
-        await auditCreate(tx, audit, out.id, out, { actorId });
-        await recordStatusChange(tx, type.key, out.id, null, 'active', { actorId });
-        return out;
-      });
+      return withTransaction(db, (tx) => service.createIn(tx, body, actorId));
+    },
+
+    /** create, in the caller's transaction (the import commit, P1.17). `body` is already validated. */
+    async createIn(tx: Tx, body: Readonly<Record<string, unknown>>, actorId: bigint): Promise<LookupRow> {
+      const values: Record<string, unknown> = {};
+      for (const f of type.fields) {
+        if (f.readOnly) values[f.name] = f.type.kind === 'bool' ? false : null;
+        else values[f.name] = toDb(f, body[f.name] === undefined ? (f.default ?? null) : body[f.name]);
+      }
+      if (type.estateColumn) await assertWritable(values[type.estateColumn], null, 'create');
+      await hooks.beforeSave?.(tx, values, null);
+      await assertReferences(tx, values, new Set(type.fields.map((f) => f.name)));
+      await assertKeyFree(tx, values[type.keyField], null);
+      const data = { ...values, status: 'active', created_by: actorId };
+      const cols = Object.keys(data);
+      await tx
+        .$executeRaw(
+          Prisma.sql`INSERT INTO ${table} (${Prisma.join(cols.map(col))}) VALUES (${Prisma.join(cols.map((k) => (data as Record<string, unknown>)[k]))})`,
+        )
+        .catch(onConflict);
+      const [inserted] = await tx.$queryRaw<{ id: bigint }[]>`SELECT LAST_INSERT_ID() AS id`;
+      const out = await orNotFound(tx, BigInt(inserted?.id ?? 0));
+      await auditCreate(tx, audit, out.id, out, { actorId });
+      await recordStatusChange(tx, type.key, out.id, null, 'active', { actorId });
+      return out;
+    },
+
+    /** Whether a row with this business key exists (the import's check, P1.17). */
+    async keyTaken(tx: Database | Tx, key: string): Promise<boolean> {
+      const rows = await tx.$queryRaw<unknown[]>(
+        Prisma.sql`SELECT 1 FROM ${table} WHERE ${col(type.keyField)} = ${key} LIMIT 1`,
+      );
+      return rows.length > 0;
     },
 
     async update(
@@ -554,6 +565,7 @@ export function lookupService(db: Database, type: LookupType, accessLog: AccessL
       });
     },
   };
+  return service;
 }
 
 export type LookupService = ReturnType<typeof lookupService>;

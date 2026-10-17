@@ -1,9 +1,11 @@
+import { dbAccessLog } from './core/audit/access-log.js';
 import { createDatabase } from './core/db/prisma.js';
 import { startHeartbeat } from './core/jobs/heartbeat.js';
 import { noQueue, redisConsumer, redisQueue } from './core/jobs/queue.js';
 import { startWorker } from './core/jobs/worker.js';
 import { createLogger } from './core/logging/logger.js';
 import { createMailer } from './core/mail/mailer.js';
+import { localFileStorage } from './core/storage/storage.js';
 import { registerJobs } from './modules/index.js';
 import { exitOnFatal, loadProcessConfig, onShutdown } from './process.js';
 
@@ -20,7 +22,13 @@ const logger = createLogger(config).child({ process: 'worker' });
 exitOnFatal(logger);
 
 const db = createDatabase(config);
-registerJobs({ db, config, mailer: createMailer(config, logger) });
+registerJobs({
+  db,
+  config,
+  mailer: createMailer(config, logger),
+  storage: localFileStorage(config.storage.dir),
+  accessLog: dbAccessLog(db, logger),
+});
 const queue = config.redis.url ? redisQueue(config.redis.url, logger) : noQueue();
 const worker = startWorker({
   db,

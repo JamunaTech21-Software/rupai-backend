@@ -25,6 +25,9 @@ import { dashboardModule } from './dashboard/dashboard.routes.js';
 import { DOCUMENT_SCHEDULES, documentExpiryJob } from './documents/documents.jobs.js';
 import { documentsModule } from './documents/documents.routes.js';
 import { facilitiesModules } from './facilities/facilities.routes.js';
+import { commitImportJob, validateImportJob } from './imports/imports.jobs.js';
+import { importsModule } from './imports/imports.routes.js';
+import { registerLookupImports } from './lookups/lookup.import.js';
 import {
   deliverJob,
   NOTIFICATION_SCHEDULES,
@@ -55,7 +58,7 @@ export interface ModuleDeps {
 
 /**
  * The application's modules, in mount order. Each epic adds its module here, starting with P1.01
- * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments), P1.13 (approval workflow definitions), P1.14 (approval runtime and queue), P1.15 (jobs and schedules), P1.16 (notifications) and R.5 (dashboards). server.ts mounts them, and the OpenAPI document is
+ * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments), P1.13 (approval workflow definitions), P1.14 (approval runtime and queue), P1.15 (jobs and schedules), P1.16 (notifications), R.5 (dashboards) and P1.17 (imports). server.ts mounts them, and the OpenAPI document is
  * generated from them.
  */
 export function buildModules(deps: ModuleDeps): ApiModule[] {
@@ -75,6 +78,7 @@ export function buildModules(deps: ModuleDeps): ApiModule[] {
     ...jobsModules({ ...deps, schedules: JOB_CATALOGUE_SCHEDULES }),
     ...notificationsModules(deps),
     dashboardModule(deps),
+    importsModule(deps),
   ];
 }
 
@@ -95,8 +99,14 @@ export function registerJobs(deps: {
   readonly db: Database;
   readonly config: Pick<Config, 'timezone' | 'app'>;
   readonly mailer: Mailer;
+  readonly storage: FileStorage;
+  readonly accessLog: AccessLog;
 }): void {
-  const { db, config, mailer } = deps;
+  const { db, config, mailer, storage, accessLog } = deps;
+  // Import types first: the import jobs look them up (P1.17).
+  registerLookupImports(db, accessLog);
+  registerJob(validateImportJob(db, storage));
+  registerJob(commitImportJob(db));
   registerJob(selfTestJob(db));
   registerJob(purgeJobsJob(db));
   registerJob(purgeTokensJob(db));

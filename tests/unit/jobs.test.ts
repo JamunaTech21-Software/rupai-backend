@@ -9,6 +9,12 @@ import { checkSchedules, schedulerLockName } from '../../src/core/jobs/scheduler
 import { memoryMailer } from '../../src/core/mail/mailer.js';
 import { JOB_CATALOGUE_SCHEDULES, registerJobs } from '../../src/modules/index.js';
 import { TEST_ENV } from '../helpers/test-app.js';
+import { localFileStorage } from '../../src/core/storage/storage.js';
+import { dbAccessLog } from '../../src/core/audit/access-log.js';
+import { tmpdir } from 'node:os';
+import pino from 'pino';
+
+const silent = pino({ level: 'silent' });
 
 /** P1.15 — the pure parts of the job system: timetables, backoff, definitions. */
 
@@ -33,7 +39,14 @@ describe('schedules', () => {
 
   it('every schedule of the catalogue is valid and names a registered job', () => {
     const config = loadConfig({ ...TEST_ENV });
-    registerJobs({ db: createDatabase(config), config, mailer: memoryMailer() });
+    const db = createDatabase(config);
+    registerJobs({
+      db,
+      config,
+      mailer: memoryMailer(),
+      storage: localFileStorage(tmpdir()),
+      accessLog: dbAccessLog(db, silent),
+    });
     expect(checkSchedules(JOB_CATALOGUE_SCHEDULES, 'Asia/Dhaka')).toEqual([]);
     expect(
       checkSchedules(
