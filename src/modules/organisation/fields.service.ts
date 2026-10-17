@@ -16,6 +16,8 @@ import {
   day,
   denyWrite,
   duplicate,
+  idIn,
+  idOut,
   inactiveParent,
   iso,
   referenced,
@@ -44,17 +46,52 @@ import type {
  */
 
 type FieldOutT = z.infer<typeof FieldOut>;
-type FieldRow = Field & { section: { divisionId: bigint } };
-const include = { section: { select: { divisionId: true } } } as const;
+interface Ref {
+  id: bigint;
+  code: string;
+  name: string;
+}
+type FieldRow = Field & {
+  section: { divisionId: bigint };
+  parent: { id: bigint; fieldNumber: string; name: string | null } | null;
+  teaVariety: Ref | null;
+  irrigationSource: Ref | null;
+  soilType: Ref | null;
+  drainageClass: Ref | null;
+  creator: { id: bigint; username: string };
+};
+const ref = { select: { id: true, code: true, name: true } } as const;
+const include = {
+  section: { select: { divisionId: true } },
+  parent: { select: { id: true, fieldNumber: true, name: true } },
+  teaVariety: ref,
+  irrigationSource: ref,
+  soilType: ref,
+  drainageClass: ref,
+  creator: { select: { id: true, username: true } },
+} as const satisfies Prisma.FieldInclude;
+
+/** The R.3 reference lists a field names, by body key. */
+const FIELD_LOOKUPS = [
+  ['tea_variety_id', 'teaVariety', 'tea variety'],
+  ['irrigation_source_id', 'irrigationSource', 'irrigation source'],
+  ['soil_type_id', 'soilType', 'soil type'],
+  ['drainage_class_id', 'drainageClass', 'drainage class'],
+] as const;
 
 export const FIELD_LIST_FIELDS: ListFieldMap = {
   estate_id: { field: 'estateId', convert: (v) => BigInt(String(v)) },
   section_id: { field: 'sectionId', convert: (v) => BigInt(String(v)) },
   field_status: { field: 'fieldStatus' },
+  field_type: { field: 'fieldType' },
+  parent_field_id: { field: 'parentFieldId', convert: (v) => BigInt(String(v)) },
   status: { field: 'status' },
   field_number: { field: 'fieldNumber' },
   gross_area: { field: 'grossArea' },
+  name: { field: 'name' },
 };
+
+const refOut = (r: Ref | null) => (r ? { id: r.id.toString(), code: r.code, name: r.name } : null);
 
 export function toFieldOut(f: FieldRow): FieldOutT {
   return {
@@ -70,6 +107,24 @@ export function toFieldOut(f: FieldRow): FieldOutT {
     section_effective_from: day(f.sectionEffectiveFrom),
     status: f.status as Status,
     remarks: f.remarks,
+    field_type: f.fieldType as FieldOutT['field_type'],
+    parent_field_id: idOut(f.parentFieldId),
+    parent_field: f.parent
+      ? { id: f.parent.id.toString(), field_number: f.parent.fieldNumber, name: f.parent.name }
+      : null,
+    planting_year: f.plantingYear,
+    tea_variety_id: idOut(f.teaVarietyId),
+    tea_variety: refOut(f.teaVariety),
+    spacing: f.spacing,
+    altitude: f.altitude === null ? null : f.altitude.toFixed(2),
+    average_slope: f.averageSlope === null ? null : f.averageSlope.toFixed(2),
+    irrigation_source_id: idOut(f.irrigationSourceId),
+    irrigation_source: refOut(f.irrigationSource),
+    soil_type_id: idOut(f.soilTypeId),
+    soil_type: refOut(f.soilType),
+    drainage_class_id: idOut(f.drainageClassId),
+    drainage_class: refOut(f.drainageClass),
+    created_by: { id: f.creator.id.toString(), username: f.creator.username },
     version: f.version,
     created_at: f.createdAt.toISOString(),
     updated_at: iso(f.updatedAt),
@@ -86,6 +141,79 @@ function assertAreas(gross: Prisma.Decimal, planted: Prisma.Decimal | null): voi
   if (planted !== null && dec(planted).gt(dec(gross))) {
     throw Errors.validation([invalid('planted_area', 'cannot exceed gross_area')]);
   }
+}
+
+type Details = Partial<
+  Readonly<Record<(typeof FIELD_LOOKUPS)[number][0] | 'parent_field_id', bigint | null | undefined>>
+> & { readonly planting_year?: number | null | undefined };
+
+/**
+ * The R.3 details a CHECK cannot judge, as field errors: planting year not in the future; the parent
+ * field in the same estate, not the field itself and not one of its own blocks (no cycles); each
+ * reference list entry exists and is active (an inactive one the field already has may stay).
+ */
+async function checkDetails(
+  tx: Tx,
+  b: Details,
+  estateId: bigint,
+  timezone: string,
+  current?: FieldRow,
+): Promise<void> {
+  const problems: ErrorDetail[] = [];
+  if (
+    b.planting_year !== undefined &&
+    b.planting_year !== null &&
+    b.planting_year > Number(todayIn(timezone).slice(0, 4))
+  ) {
+    problems.push(invalid('planting_year', 'cannot be in the future'));
+  }
+  const parentId = b.parent_field_id;
+  if (parentId !== undefined && parentId !== null) {
+    const parent = await tx.field.findUnique({ where: { id: parentId }, select: { estateId: true } });
+    if (!parent) problems.push(invalid('parent_field_id', 'No such field.'));
+    else if (parent.estateId !== estateId)
+      problems.push(invalid('parent_field_id', 'The parent field must be in the same estate.'));
+    else if (current && (await isWithin(tx, parentId, current.id)))
+      problems.push(invalid('parent_field_id', 'A field cannot sit inside itself or one of its own blocks.'));
+  }
+  for (const [key, relation, label] of FIELD_LOOKUPS) {
+    const id = b[key];
+    if (id === undefined || id === null) continue;
+    if (current?.[`${relation}Id` as const] === id) continue;
+    const row = await lookupRow(tx, relation, id);
+    if (row?.status !== 'active') problems.push(invalid(key, `No such active ${label}.`));
+  }
+  if (problems.length > 0) throw Errors.validation(problems);
+}
+
+function lookupRow(tx: Tx, relation: (typeof FIELD_LOOKUPS)[number][1], id: bigint) {
+  const where = { where: { id }, select: { status: true } };
+  switch (relation) {
+    case 'teaVariety':
+      return tx.teaVariety.findUnique(where);
+    case 'irrigationSource':
+      return tx.irrigationSource.findUnique(where);
+    case 'soilType':
+      return tx.soilType.findUnique(where);
+    case 'drainageClass':
+      return tx.drainageClass.findUnique(where);
+  }
+}
+
+/** Whether `candidate` is `self` or lies under it (walking up candidate's parents). */
+async function isWithin(tx: Tx, candidate: bigint, self: bigint): Promise<boolean> {
+  const seen = new Set<bigint>();
+  for (let at: bigint | null = candidate; at !== null;) {
+    if (at === self) return true;
+    if (seen.has(at)) return true; // a cycle already in the data: refuse rather than loop
+    seen.add(at);
+    const row: { parentFieldId: bigint | null } | null = await tx.field.findUnique({
+      where: { id: at },
+      select: { parentFieldId: true },
+    });
+    at = row?.parentFieldId ?? null;
+  }
+  return false;
 }
 
 export function fieldsService(db: Database, accessLog: AccessLog, timezone: string) {
@@ -120,6 +248,16 @@ export function fieldsService(db: Database, accessLog: AccessLog, timezone: stri
     ...(b.planted_area !== undefined ? { plantedArea: b.planted_area } : {}),
     ...(b.field_status !== undefined ? { fieldStatus: b.field_status } : {}),
     ...(b.remarks !== undefined ? { remarks: b.remarks } : {}),
+    ...(b.field_type !== undefined ? { fieldType: b.field_type } : {}),
+    ...(b.parent_field_id !== undefined ? { parentFieldId: idIn(b.parent_field_id) } : {}),
+    ...(b.planting_year !== undefined ? { plantingYear: b.planting_year } : {}),
+    ...(b.tea_variety_id !== undefined ? { teaVarietyId: idIn(b.tea_variety_id) } : {}),
+    ...(b.spacing !== undefined ? { spacing: b.spacing } : {}),
+    ...(b.altitude !== undefined ? { altitude: b.altitude } : {}),
+    ...(b.average_slope !== undefined ? { averageSlope: b.average_slope } : {}),
+    ...(b.irrigation_source_id !== undefined ? { irrigationSourceId: idIn(b.irrigation_source_id) } : {}),
+    ...(b.soil_type_id !== undefined ? { soilTypeId: idIn(b.soil_type_id) } : {}),
+    ...(b.drainage_class_id !== undefined ? { drainageClassId: idIn(b.drainage_class_id) } : {}),
   });
 
   return {
@@ -159,9 +297,11 @@ export function fieldsService(db: Database, accessLog: AccessLog, timezone: stri
         }
         if (section.status !== 'active') throw inactiveParent('section_id', 'section');
         assertAreas(body.gross_area, body.planted_area ?? null);
+        await checkDetails(tx, body, estateId, timezone);
         const { id } = await tx.field
           .create({
             data: {
+              ...(data(body) as Prisma.FieldUncheckedCreateInput),
               sectionId: section.id,
               estateId,
               fieldNumber: body.field_number,
@@ -199,6 +339,7 @@ export function fieldsService(db: Database, accessLog: AccessLog, timezone: stri
           changes.gross_area ?? before.grossArea,
           changes.planted_area === undefined ? before.plantedArea : changes.planted_area,
         );
+        await checkDetails(tx, changes, before.estateId, timezone, before);
         const { count } = await tx.field
           .updateMany({
             where: { id, version: expectedVersion },

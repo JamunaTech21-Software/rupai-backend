@@ -537,7 +537,8 @@ describe('demo data for the manager check (P0.08 demo seed, P1.07)', () => {
     expect(
       await runUnscoped('test', () => mdb.db.field.count({ where: { fieldNumber: { startsWith: 'A-' } } })),
     ).toBe(fieldsBefore);
-    expect(fieldsBefore).toBe(12);
+    // 12 of P1.07, then R.3: a nursery, an extension, a road reserve, a drain and a block inside A-N1-1.
+    expect(fieldsBefore).toBe(17);
 
     const user = async (username: string) =>
       (await mdb.db.user.findUniqueOrThrow({ where: { username }, select: { id: true } })).id.toString();
