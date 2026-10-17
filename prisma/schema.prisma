@@ -190,6 +190,8 @@ model User {
   updatedPaymentMethods       PaymentMethod[]       @relation("PaymentMethodUpdatedBy")
   createdLandTypes            LandType[]            @relation("LandTypeCreatedBy")
   createdAmenities            Amenity[]             @relation("AmenityCreatedBy")
+  createdImportBatches        ImportBatch[]         @relation("ImportBatchCreatedBy")
+  updatedImportBatches        ImportBatch[]         @relation("ImportBatchUpdatedBy")
   createdIrrigationSources    IrrigationSource[]    @relation("IrrigationSourceCreatedBy")
   updatedIrrigationSources    IrrigationSource[]    @relation("IrrigationSourceUpdatedBy")
   createdSoilTypes            SoilType[]            @relation("SoilTypeCreatedBy")
@@ -721,11 +723,11 @@ model Section {
   updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  division Division @relation(fields: [divisionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_division")
+  division Division  @relation(fields: [divisionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_division")
   parent   Section?  @relation("SectionParent", fields: [parentSectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_parent")
   children Section[] @relation("SectionParent")
-  creator  User     @relation("SectionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_created_by")
-  updater  User?    @relation("SectionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_updated_by")
+  creator  User      @relation("SectionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_created_by")
+  updater  User?     @relation("SectionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_updated_by")
   fields   Field[]
 
   @@unique([divisionId, code], map: "ux_section_code")
@@ -788,9 +790,9 @@ model Field {
   irrigationSource IrrigationSource? @relation(fields: [irrigationSourceId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_irrigation_source")
   soilType         SoilType?         @relation(fields: [soilTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_soil_type")
   drainageClass    DrainageClass?    @relation(fields: [drainageClassId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_drainage_class")
-  estate  Estate  @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_estate")
-  creator User    @relation("FieldCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_created_by")
-  updater User?   @relation("FieldUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_updated_by")
+  estate           Estate            @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_estate")
+  creator          User              @relation("FieldCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_created_by")
+  updater          User?             @relation("FieldUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_updated_by")
 
   @@unique([estateId, fieldNumber], map: "ux_field_number")
   @@index([sectionId], map: "ix_field_section")
@@ -1647,8 +1649,8 @@ model TeaVariety {
   updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
 
   fields  Field[]
-  creator User  @relation("TeaVarietyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_variety_created_by")
-  updater User? @relation("TeaVarietyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_variety_updated_by")
+  creator User    @relation("TeaVarietyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_variety_created_by")
+  updater User?   @relation("TeaVarietyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_variety_updated_by")
 
   @@unique([code], map: "ux_tea_variety_code")
   @@index([status], map: "ix_tea_variety_status")
@@ -2170,7 +2172,9 @@ model Job {
   createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
   updatedAt     DateTime? @map("updated_at") @db.DateTime(0)
 
-  requester User? @relation("JobRequestedBy", fields: [requestedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_job_requested_by")
+  importValidations ImportBatch[] @relation("ImportValidateJob")
+  importCommits     ImportBatch[] @relation("ImportCommitJob")
+  requester         User?         @relation("JobRequestedBy", fields: [requestedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_job_requested_by")
 
   @@unique([activeKey], map: "ux_job_active")
   @@index([state, availableAt], map: "ix_job_due")
@@ -2451,4 +2455,80 @@ model Notification {
   @@index([deliveryState, id], map: "ix_notification_delivery")
   @@index([createdAt], map: "ix_notification_created_at")
   @@map("notification")
+}
+
+// ---- P1.17 import framework (Spec P2 §11.4, P3 §32.5, P4 §6.7, P5 §7.6) ------------------------------
+
+/// One uploaded file of one import type: template → upload → validation (a job) → error report →
+/// correct and re-upload (a new batch) → commit (a job) → result. Kept after commit, so an import can be
+/// audited (P3 §32.5).
+model ImportBatch {
+  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// The registered import type, e.g. lookup.amenity (core/imports/registry.ts).
+  importType     String    @map("import_type") @db.VarChar(60)
+  /// validating | validated | rejected | committing | committed | cancelled
+  state          String    @default("validating") @db.VarChar(20)
+  /// As uploaded: metadata only (the stored file has a generated key).
+  fileName       String    @map("file_name") @db.VarChar(255)
+  /// xlsx | csv
+  fileFormat     String    @map("file_format") @db.VarChar(10)
+  fileKey        String?   @map("file_key") @db.VarChar(100)
+  fileSha256     String    @map("file_sha256") @db.Char(64)
+  fileSize       Int       @map("file_size")
+  rowCount       Int       @default(0) @map("row_count")
+  validCount     Int       @default(0) @map("valid_count")
+  errorCount     Int       @default(0) @map("error_count")
+  committedCount Int       @default(0) @map("committed_count")
+  /// Valid at validation, refused at commit (e.g. the code was taken meanwhile).
+  failedCount    Int       @default(0) @map("failed_count")
+  /// rejected: why the file could not be read at all (no header, unknown columns, too many rows).
+  problems       Json?
+  validateJobId  BigInt?   @map("validate_job_id") @db.UnsignedBigInt
+  commitJobId    BigInt?   @map("commit_job_id") @db.UnsignedBigInt
+  validatedAt    DateTime? @map("validated_at") @db.DateTime(0)
+  committedAt    DateTime? @map("committed_at") @db.DateTime(0)
+  cancelledAt    DateTime? @map("cancelled_at") @db.DateTime(0)
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy      BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt      DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy      BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  rows        ImportRow[]
+  validateJob Job?        @relation("ImportValidateJob", fields: [validateJobId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_import_batch_validate_job")
+  commitJob   Job?        @relation("ImportCommitJob", fields: [commitJobId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_import_batch_commit_job")
+  creator     User        @relation("ImportBatchCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_import_batch_created_by")
+  updater     User?       @relation("ImportBatchUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_import_batch_updated_by")
+
+  @@index([importType, createdAt], map: "ix_import_batch_type")
+  @@index([state], map: "ix_import_batch_state")
+  @@index([createdBy, createdAt], map: "ix_import_batch_created_by")
+  @@index([updatedBy], map: "ix_import_batch_updated_by")
+  @@index([validateJobId], map: "ix_import_batch_validate_job")
+  @@index([commitJobId], map: "ix_import_batch_commit_job")
+  @@map("import_batch")
+}
+
+/// The staging row: one data row of the file as read (column → text), its errors, and what commit made
+/// of it. One table for every import type (BACKLOG D-1.17-2).
+model ImportRow {
+  id            BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  importBatchId BigInt    @map("import_batch_id") @db.UnsignedBigInt
+  /// The row number in the file (the header is row 1), as the error report names it.
+  rowNumber     Int       @map("row_number")
+  /// The row as read: { column: text }.
+  data          Json
+  /// valid | invalid | committed | failed
+  state         String    @db.VarChar(20)
+  /// [{ column, code, message }] when invalid or failed.
+  errors        Json?
+  /// The record the row became, e.g. the new amenity's id.
+  targetId      String?   @map("target_id") @db.VarChar(26)
+  committedAt   DateTime? @map("committed_at") @db.DateTime(0)
+
+  batch ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_import_row_batch")
+
+  @@unique([importBatchId, rowNumber], map: "ux_import_row")
+  @@index([importBatchId, state], map: "ix_import_row_state")
+  @@map("import_row")
 }

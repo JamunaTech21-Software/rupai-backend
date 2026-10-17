@@ -59,6 +59,7 @@
     "busboy": "1.6.0",
     "cors": "2.8.6",
     "cron-parser": "5.10.1",
+    "exceljs": "4.4.0",
     "express": "5.2.1",
     "express-rate-limit": "8.7.0",
     "helmet": "8.3.0",
@@ -112,6 +113,9 @@
   },
   "overrides": {
     "mariadb": "3.4.7",
-    "mysql2": "3.24.5"
+    "mysql2": "3.24.5",
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
   }
 }

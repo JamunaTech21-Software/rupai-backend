@@ -1,3 +1,4 @@
+import { dbAccessLog } from './core/audit/access-log.js';
 import { createDatabase } from './core/db/prisma.js';
 import { startHeartbeat } from './core/jobs/heartbeat.js';
 import { noQueue, redisQueue } from './core/jobs/queue.js';
@@ -10,6 +11,7 @@ import {
 } from './core/jobs/scheduler.js';
 import { createLogger } from './core/logging/logger.js';
 import { createMailer } from './core/mail/mailer.js';
+import { localFileStorage } from './core/storage/storage.js';
 import { JOB_CATALOGUE_SCHEDULES, registerJobs } from './modules/index.js';
 import { exitOnFatal, loadProcessConfig, onShutdown } from './process.js';
 
@@ -27,7 +29,13 @@ exitOnFatal(logger);
 
 const db = createDatabase(config);
 // The scheduler only creates jobs; the mailer is for the definitions' sake and is never used here.
-registerJobs({ db, config, mailer: createMailer(config, logger) });
+registerJobs({
+  db,
+  config,
+  mailer: createMailer(config, logger),
+  storage: localFileStorage(config.storage.dir),
+  accessLog: dbAccessLog(db, logger),
+});
 const problems = checkSchedules(JOB_CATALOGUE_SCHEDULES, config.timezone);
 if (problems.length > 0) {
   logger.fatal({ problems }, 'the schedule definitions are invalid');
