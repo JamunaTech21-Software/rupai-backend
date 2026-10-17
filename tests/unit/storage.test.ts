@@ -173,17 +173,20 @@ describe('storage configuration', () => {
       dir: './storage',
       maxUploadBytes: 10 * 1024 * 1024,
       downloadUrlSeconds: 300,
+      backupDir: null,
     });
     const c = loadConfig({
       ...TEST_ENV,
       STORAGE_DIR: '/srv/uploads',
       UPLOAD_MAX_MB: '25',
       DOWNLOAD_URL_SECONDS: '60',
+      BACKUP_DIR: '/srv/backups',
     });
     expect(c.storage).toEqual({
       dir: '/srv/uploads',
       maxUploadBytes: 25 * 1024 * 1024,
       downloadUrlSeconds: 60,
+      backupDir: '/srv/backups',
     });
   });
 

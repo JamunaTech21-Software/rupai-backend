@@ -58,6 +58,7 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['shift', 'view'],
   ['currency', 'view'],
   ['country', 'view'],
+  ['person', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -84,6 +85,7 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     'shift',
     'currency',
     'country',
+    'person',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
   ['accounting_period', 'view'],
   ['accounting_period', 'edit'],
@@ -236,8 +238,136 @@ export function demoSeeders(password: string): Seeder[] {
     demoLookupSeeder,
     demoWorkflowSeeder,
     demoFieldDetailsSeeder,
+    demoPersonsSeeder,
   ];
 }
+
+/**
+ * P2.01: five people registered by DEMO-A (the design's worker and employee forms), with dependents, and
+ * one by DEMO-B that the viewer must not see. Numbered by the person format; added once.
+ */
+const DEMO_PERSONS = [
+  {
+    nid: '1990123456789',
+    first: 'Rahim',
+    last: 'Uddin',
+    father: 'Karim Uddin',
+    gender: 'male',
+    dob: '1988-04-12',
+    estate: 'DEMO-A',
+    phone: '+8801711000001',
+    kids: 2,
+  },
+  {
+    nid: '1990123456790',
+    first: 'Salma',
+    last: 'Begum',
+    father: 'Abdul Haque',
+    gender: 'female',
+    dob: '1992-09-03',
+    estate: 'DEMO-A',
+    phone: '+8801711000002',
+    kids: 1,
+  },
+  {
+    nid: '1990123456791',
+    first: 'Jalal',
+    last: 'Mia',
+    father: 'Rashid Mia',
+    gender: 'male',
+    dob: '1979-01-25',
+    estate: 'DEMO-A',
+    phone: '+8801711000003',
+    kids: 3,
+  },
+  {
+    nid: '1990123456792',
+    first: 'Md. Faruk',
+    last: 'Hossain',
+    father: 'Ali Hossain',
+    gender: 'male',
+    dob: '1983-06-30',
+    estate: 'DEMO-A',
+    phone: '+8801711000004',
+    kids: 0,
+  },
+  {
+    nid: '1990123456793',
+    first: 'Rubina',
+    last: 'Akter',
+    father: 'Nur Islam',
+    gender: 'female',
+    dob: '1995-11-17',
+    estate: 'DEMO-A',
+    phone: '+8801711000005',
+    kids: 1,
+  },
+  {
+    nid: '1990123456794',
+    first: 'Tariqul',
+    last: 'Islam',
+    father: 'Abul Kalam',
+    gender: 'male',
+    dob: '1986-02-08',
+    estate: 'DEMO-B',
+    phone: '+8801711000006',
+    kids: 2,
+  },
+] as const;
+
+const demoPersonsSeeder: Seeder = {
+  name: 'demo: people of DEMO-A (and one of DEMO-B), with dependents',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const bd = await tx.country.findFirst({ where: { iso2: 'BD' }, select: { id: true } });
+      const islam = await tx.religion.findUnique({ where: { code: 'ISLAM' }, select: { id: true } });
+      for (const [i, p] of DEMO_PERSONS.entries()) {
+        if (await tx.person.findUnique({ where: { nationalId: p.nid }, select: { id: true } })) continue;
+        const estate = await tx.estate.findFirst({ where: { code: p.estate }, select: { id: true } });
+        const person = await tx.person.create({
+          data: {
+            personCode: `PRS-DEMO-${String(i + 1)}`,
+            registeredEstateId: estate?.id ?? null,
+            title: p.gender === 'female' ? 'ms' : 'mr',
+            firstName: p.first,
+            lastName: p.last,
+            fullName: `${p.first} ${p.last}`,
+            fatherName: p.father,
+            gender: p.gender,
+            maritalStatus: p.kids > 0 ? 'married' : 'single',
+            dateOfBirth: businessDateToDb(p.dob as BusinessDate),
+            nationalId: p.nid,
+            nationalityCountryId: bd?.id ?? null,
+            religionId: islam?.id ?? null,
+            phone: p.phone,
+            presentAddress: 'Line 4, Labour Quarter',
+            presentDistrict: 'Moulvibazar',
+            presentUpazila: 'Sreemangal',
+            paymentMethod: 'mobile_banking',
+            mobileBankingProvider: 'bkash',
+            mobileBankingNumber: p.phone,
+            createdBy: by,
+          },
+        });
+        inserted += 1;
+        for (let k = 0; k < p.kids; k += 1) {
+          await tx.personDependent.create({
+            data: {
+              personId: person.id,
+              name: `${p.first} child ${String(k + 1)}`,
+              relation: k % 2 === 0 ? 'son' : 'daughter',
+              occupation: 'Student',
+              createdBy: by,
+            },
+          });
+          inserted += 1;
+        }
+      }
+      return { inserted, updated: 0 };
+    }),
+};
 
 /**
  * R.3: the Field / Block page's details on DEMO-A (the manager's design): the design's bush types as tea

@@ -84,8 +84,9 @@ function common(
 }
 
 /**
- * The 20 tables that use the common shape unchanged (P3 §5.1; amenity from R.2, the estate profile;
- * irrigation_source, soil_type and drainage_class from R.3, the Field / Block page).
+ * The 24 tables that use the common shape unchanged (P3 §5.1; amenity from R.2, the estate profile;
+ * irrigation_source, soil_type and drainage_class from R.3, the Field / Block page; religion,
+ * education_level, skill and language from P2.01, the person form).
  */
 const PLAIN: readonly (readonly [string, string])[] = [
   ['department', 'department'],
@@ -108,6 +109,10 @@ const PLAIN: readonly (readonly [string, string])[] = [
   ['irrigation_source', 'irrigation source'],
   ['soil_type', 'soil type'],
   ['drainage_class', 'drainage class'],
+  ['religion', 'religion'],
+  ['education_level', 'education level'],
+  ['skill', 'skill'],
+  ['language', 'language'],
 ];
 
 export const MANUFACTURE_PROCESSES = ['ctc', 'orthodox', 'green', 'oolong', 'white', 'other'] as const;

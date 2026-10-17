@@ -113,8 +113,11 @@ services:
       # Uploaded documents live in the `uploads` volume, so a redeploy keeps them.
       STORAGE_DIR: /var/lib/rupai/uploads
       UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-10}
+      # The nightly backups, read-only: GET /system/health reports their age and size (P1.18).
+      BACKUP_DIR: /var/lib/rupai/backups
     volumes:
       - uploads:/var/lib/rupai/uploads
+      - ./backups:/var/lib/rupai/backups:ro
     # No `ports:`. Only cloudflared (same Docker network) reaches it.
 
   # Background jobs (P1.15, P14 §2.1): same image, its own process. Deferred and scheduled work runs here,

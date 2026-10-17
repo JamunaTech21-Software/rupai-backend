@@ -4,7 +4,9 @@ import type { ApiModule } from '../../app.js';
 import { ACCESS_EVENTS } from '../../core/audit/access-log.js';
 import { AUDIT_ACTIONS } from '../../core/audit/audit.js';
 import { idCursorPage, toWhere, type ListFieldMap } from '../../core/db/list.js';
-import { Errors } from '../../core/errors/app-error.js';
+import type { AccessLog } from '../../core/audit/access-log.js';
+import { AppError, Errors } from '../../core/errors/app-error.js';
+import { scopeToCheck } from '../../core/scope/scope.js';
 import { getListQuery, type ListQuery } from '../../core/http/list-query.js';
 import { sendCursorPage } from '../../core/http/response.js';
 import { defineModule } from '../../core/http/route.js';
@@ -19,6 +21,27 @@ import type { IdentityDeps } from '../identity/identity.routes.js';
  */
 
 const MAX_RANGE_DAYS = 366;
+
+/**
+ * The audit trail is read across estates (P1.19, D-1.19-2): its rows carry no estate, so a reader limited to
+ * some estates would see the others' records, names and values. audit.view therefore needs access to all
+ * estates too; an estate-scoped holder is refused (and the refusal logged).
+ */
+async function assertAllEstates(accessLog: AccessLog): Promise<void> {
+  const scope = await scopeToCheck();
+  if (scope === null || scope.allEstates) return;
+  await accessLog
+    .record({
+      eventType: 'scope_denied',
+      module: 'audit',
+      recordReference: null,
+      detail: { operation: 'read' },
+    })
+    .catch(() => undefined);
+  throw new AppError('SCOPE_DENIED', 'The audit trail covers every estate: it needs access to all estates.', [
+    { code: 'SCOPE_DENIED', message: 'Ask an administrator for access to all estates.' },
+  ]);
+}
 const toBigInt = (v: string | number | boolean) => BigInt(String(v));
 const toDate = (v: string | number | boolean) => new Date(String(v));
 
@@ -141,8 +164,9 @@ export function auditModule({ db, platform, authz, accessLog }: IdentityDeps): A
       maxPageSize: 200,
     },
     success: { status: 200, description: 'A page of changes', schema: AuditChangeOut },
-    errors: [],
+    errors: ['SCOPE_DENIED'],
     handler: async (_req, res) => {
+      await assertAllEstates(accessLog);
       const q = getListQuery(res);
       assertRange(q, 'changed_at', 'record_id');
       const { rows, nextCursor, limit } = await wrapCursor(() =>
@@ -197,8 +221,9 @@ export function auditModule({ db, platform, authz, accessLog }: IdentityDeps): A
       maxPageSize: 200,
     },
     success: { status: 200, description: 'A page of transitions', schema: StatusHistoryOut },
-    errors: [],
+    errors: ['SCOPE_DENIED'],
     handler: async (_req, res) => {
+      await assertAllEstates(accessLog);
       const q = getListQuery(res);
       assertRange(q, 'changed_at', 'record_id');
       const { rows, nextCursor, limit } = await wrapCursor(() =>
@@ -250,8 +275,9 @@ export function auditModule({ db, platform, authz, accessLog }: IdentityDeps): A
       maxPageSize: 200,
     },
     success: { status: 200, description: 'A page of access events', schema: AccessLogOut },
-    errors: [],
+    errors: ['SCOPE_DENIED'],
     handler: async (_req, res) => {
+      await assertAllEstates(accessLog);
       const q = getListQuery(res);
       assertRange(q, 'occurred_at');
       const { rows, nextCursor, limit } = await wrapCursor(() =>

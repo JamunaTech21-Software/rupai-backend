@@ -166,6 +166,11 @@ const envSchema = z.object({
   UPLOAD_MAX_MB: positiveInt(1, 100, 10),
   /** How long a signed download link works (P4 §6.6: "short-lived"). */
   DOWNLOAD_URL_SECONDS: positiveInt(30, 3600, 300),
+  /**
+   * Where the nightly backups are written (rupai-*.sql.gz), read-only, so GET /system/health can report
+   * their age and size (P14 §9.5). Unset: the health page says it cannot see them.
+   */
+  BACKUP_DIR: z.string().min(1).optional(),
 
   // ---- Background jobs (P1.15, Spec P4 §5.3, P14 §2.1) ------------------------------------------
 
@@ -289,6 +294,7 @@ export interface Config {
     readonly dir: string;
     readonly maxUploadBytes: number;
     readonly downloadUrlSeconds: number;
+    readonly backupDir: string | null;
   };
   readonly jobs: {
     readonly concurrency: number;
@@ -414,6 +420,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       dir: e.STORAGE_DIR,
       maxUploadBytes: e.UPLOAD_MAX_MB * 1024 * 1024,
       downloadUrlSeconds: e.DOWNLOAD_URL_SECONDS,
+      backupDir: e.BACKUP_DIR ?? null,
     }),
     jobs: Object.freeze({
       concurrency: e.JOB_CONCURRENCY,

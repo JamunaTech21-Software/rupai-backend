@@ -2,6 +2,7 @@ import type { Database } from '../../core/db/prisma.js';
 import type { Tx } from '../../core/db/transaction.js';
 import type { ItemPlace } from '../../core/notify/notify.js';
 import { writable } from '../organisation/common.js';
+import { personWritable } from '../workforce/person.access.js';
 
 /**
  * What a document can be attached to (Spec P2 §6.2: a polymorphic owner). The OWNER decides who may see
@@ -13,8 +14,8 @@ import { writable } from '../organisation/common.js';
  *     outside the caller's scope is 404, like the estate itself
  *
  * Adding an owner: one entry here. Its `/{path}/{id}/documents` endpoints then exist, and its documents
- * appear on the expiring-documents list. person, employment profile, land parcel, lease, supplier and
- * buyer join as their modules arrive.
+ * appear on the expiring-documents list. person (P2.01); employment profile, land parcel, lease,
+ * supplier and buyer join as their modules arrive.
  */
 export interface DocumentOwner {
   /** owner_type as stored: the table name. */
@@ -106,6 +107,32 @@ export const DOCUMENT_OWNERS: readonly DocumentOwner[] = [
     writable: always,
     // Organisation level: no estate scope applies.
     places: (_db, ids) => Promise.resolve(new Map(ids.map((id) => [id, {}]))),
+  },
+  {
+    // P2.01: a person's identity papers and photo (personal data: person.view to read).
+    type: 'person',
+    path: '/persons',
+    module: 'person',
+    label: 'person',
+    find: async (db, ids) => {
+      const rows = await db.person.findMany({
+        where: { id: { in: [...ids] } },
+        select: { id: true, personCode: true, fullName: true },
+      });
+      return new Map(rows.map((p) => [p.id, `${p.personCode} · ${p.fullName}`]));
+    },
+    writable: async (db, id) => {
+      const p = await db.person.findFirst({ where: { id }, select: { registeredEstateId: true } });
+      return p !== null && (await personWritable(p.registeredEstateId));
+    },
+    places: async (db, ids) =>
+      byId(
+        await db.person.findMany({
+          where: { id: { in: [...ids] } },
+          select: { id: true, registeredEstateId: true },
+        }),
+        (p) => ({ estateId: p.registeredEstateId }),
+      ),
   },
 ];
 

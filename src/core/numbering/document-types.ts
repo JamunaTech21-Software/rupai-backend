@@ -65,6 +65,7 @@ export const DOCUMENT_TYPES: readonly DocumentType[] = [
   fin('supplier_invoice', 'Supplier invoice', 'BILL', ESTATE_FY),
   fin('payment', 'Payment', 'PV', ESTATE_FY),
   // Workforce and payroll
+  op('person', 'Person', 'PRS', []),
   op('leave', 'Leave', 'LV', ESTATE_FY),
   fin('payroll_run', 'Payroll run', 'PAY', ESTATE_FY),
   fin('payroll_payment', 'Payroll payment', 'PP', ESTATE_FY),
