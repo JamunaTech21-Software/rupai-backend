@@ -86,6 +86,36 @@ const COMMON_SEEDS: Readonly<Record<string, Row[]>> = {
     ['AVERAGE', 'Average'],
     ['POOR', 'Poor'],
   ]),
+  // P2.01: the person form's dropdowns (the manager's design, Add New Worker / Employee).
+  religion: plain([
+    ['ISLAM', 'Islam'],
+    ['HINDUISM', 'Hinduism'],
+    ['CHRISTIANITY', 'Christianity'],
+    ['BUDDHISM', 'Buddhism'],
+    ['OTHER', 'Other'],
+  ]),
+  education_level: plain([
+    ['NONE', 'No formal education'],
+    ['PRIMARY', 'Primary'],
+    ['SECONDARY', 'Secondary'],
+    ['HIGHER_SECONDARY', 'Higher secondary'],
+    ['GRADUATE', 'Graduate'],
+    ['POST_GRADUATE', 'Post graduate'],
+  ]),
+  skill: plain([
+    ['MACHINE_OPERATION', 'Machine operation'],
+    ['GARDENING', 'Gardening'],
+    ['DRIVING', 'Driving'],
+    ['ELECTRICAL', 'Electrical work'],
+    ['MECHANICAL', 'Mechanical work'],
+    ['PLUCKING', 'Tea plucking'],
+    ['PRUNING', 'Pruning'],
+  ]),
+  language: plain([
+    ['BN', 'Bangla'],
+    ['EN', 'English'],
+    ['HI', 'Hindi'],
+  ]),
   land_type: plain([
     ['TEA', 'Tea'],
     ['SHADE', 'Shade'],
@@ -127,6 +157,14 @@ const COMMON_SEEDS: Readonly<Record<string, Row[]>> = {
   ]),
   document_type: plain([
     ['NID', 'National ID'],
+    // P2.01: a person's papers (the manager's design, the worker and employee forms).
+    ['NID_FRONT', 'National ID (front)'],
+    ['NID_BACK', 'National ID (back)'],
+    ['BIRTH_CERTIFICATE', 'Birth certificate'],
+    ['NOMINEE_ID', 'Nominee ID card'],
+    ['EDUCATION_CERT', 'Educational certificate'],
+    ['EXPERIENCE_CERT', 'Experience certificate'],
+    ['TRAINING_CERT', 'Training certificate'],
     ['LICENCE', 'Licence'],
     ['AGREEMENT', 'Agreement'],
     ['OWNERSHIP_DEED', 'Ownership deed'],

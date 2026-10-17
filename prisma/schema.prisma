@@ -191,6 +191,18 @@ model User {
   createdLandTypes            LandType[]            @relation("LandTypeCreatedBy")
   createdAmenities            Amenity[]             @relation("AmenityCreatedBy")
   createdImportBatches        ImportBatch[]         @relation("ImportBatchCreatedBy")
+  createdPersons              Person[]              @relation("PersonCreatedBy")
+  updatedPersons              Person[]              @relation("PersonUpdatedBy")
+  createdPersonDependents     PersonDependent[]     @relation("PersonDependentCreatedBy")
+  updatedPersonDependents     PersonDependent[]     @relation("PersonDependentUpdatedBy")
+  createdReligions            Religion[]            @relation("ReligionCreatedBy")
+  updatedReligions            Religion[]            @relation("ReligionUpdatedBy")
+  createdEducationLevels      EducationLevel[]      @relation("EducationLevelCreatedBy")
+  updatedEducationLevels      EducationLevel[]      @relation("EducationLevelUpdatedBy")
+  createdSkills               Skill[]               @relation("SkillCreatedBy")
+  updatedSkills               Skill[]               @relation("SkillUpdatedBy")
+  createdLanguages            Language[]            @relation("LanguageCreatedBy")
+  updatedLanguages            Language[]            @relation("LanguageUpdatedBy")
   updatedImportBatches        ImportBatch[]         @relation("ImportBatchUpdatedBy")
   createdIrrigationSources    IrrigationSource[]    @relation("IrrigationSourceCreatedBy")
   updatedIrrigationSources    IrrigationSource[]    @relation("IrrigationSourceUpdatedBy")
@@ -657,6 +669,7 @@ model Estate {
   amenityLinks EstateAmenity[]
   factories    Factory[]
   seasons      Season[]
+  persons      Person[]
   shifts       Shift[]         @relation("ShiftEstate")
 
   workflows Workflow[]
@@ -1740,6 +1753,7 @@ model Country {
   updater       User?          @relation("CountryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_country_updated_by")
   organisations Organisation[]
   estates       Estate[]
+  persons       Person[]
 
   @@unique([iso2], map: "ux_country_iso2")
   @@unique([iso3], map: "ux_country_iso3")
@@ -2531,4 +2545,264 @@ model ImportRow {
   @@unique([importBatchId, rowNumber], map: "ux_import_row")
   @@index([importBatchId, state], map: "ix_import_row_state")
   @@map("import_row")
+}
+
+// ---- P2.01 person registry (Spec P3 §8.1, P1 §5.5; the manager's design, BACKLOG D-2-1) ------------
+
+/// A person exists once (P1 §5.5): identity, contact and payment details. NO employment attribute: those
+/// are the employment profile's (P2.02).
+model Person {
+  id                         BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// Permanent identity reference, numbered by the `person` number format (PRS-000001).
+  personCode                 String    @map("person_code") @db.VarChar(20)
+  /// The estate that registered the person: decides who sees them until a profile places them (D-2.01-2).
+  registeredEstateId         BigInt?   @map("registered_estate_id") @db.UnsignedBigInt
+  /// mr | mrs | ms | other
+  title                      String?   @db.VarChar(10)
+  firstName                  String    @map("first_name") @db.VarChar(100)
+  middleName                 String?   @map("middle_name") @db.VarChar(100)
+  lastName                   String?   @map("last_name") @db.VarChar(100)
+  /// Maintained by the application from the name parts, for search and printing.
+  fullName                   String    @map("full_name") @db.VarChar(200)
+  fatherName                 String?   @map("father_name") @db.VarChar(150)
+  motherName                 String?   @map("mother_name") @db.VarChar(150)
+  spouseName                 String?   @map("spouse_name") @db.VarChar(150)
+  dateOfBirth                DateTime? @map("date_of_birth") @db.Date
+  /// male | female | other
+  gender                     String?   @db.VarChar(30)
+  /// single | married | widowed | divorced
+  maritalStatus              String?   @map("marital_status") @db.VarChar(30)
+  bloodGroup                 String?   @map("blood_group") @db.VarChar(10)
+  nationalityCountryId       BigInt?   @map("nationality_country_id") @db.UnsignedBigInt
+  religionId                 BigInt?   @map("religion_id") @db.UnsignedBigInt
+  /// Unique where present (several NULLs allowed).
+  nationalId                 String?   @map("national_id") @db.VarChar(30)
+  birthCertificateNo         String?   @map("birth_certificate_no") @db.VarChar(30)
+  passportNo                 String?   @map("passport_no") @db.VarChar(30)
+  drivingLicenseNo           String?   @map("driving_license_no") @db.VarChar(30)
+  tin                        String?   @db.VarChar(30)
+  phone                      String?   @db.VarChar(30)
+  alternatePhone             String?   @map("alternate_phone") @db.VarChar(30)
+  personalEmail              String?   @map("personal_email") @db.VarChar(150)
+  presentAddress             String?   @map("present_address") @db.VarChar(300)
+  presentDistrict            String?   @map("present_district") @db.VarChar(100)
+  presentUpazila             String?   @map("present_upazila") @db.VarChar(100)
+  presentPostalCode          String?   @map("present_postal_code") @db.VarChar(20)
+  permanentAddress           String?   @map("permanent_address") @db.VarChar(300)
+  permanentDistrict          String?   @map("permanent_district") @db.VarChar(100)
+  permanentUpazila           String?   @map("permanent_upazila") @db.VarChar(100)
+  permanentPostalCode        String?   @map("permanent_postal_code") @db.VarChar(20)
+  educationLevelId           BigInt?   @map("education_level_id") @db.UnsignedBigInt
+  experienceYears            Int?      @map("experience_years")
+  emergencyContactName       String?   @map("emergency_contact_name") @db.VarChar(150)
+  emergencyContactPhone      String?   @map("emergency_contact_phone") @db.VarChar(30)
+  emergencyContactAltPhone   String?   @map("emergency_contact_alt_phone") @db.VarChar(30)
+  emergencyContactRelation   String?   @map("emergency_contact_relation") @db.VarChar(30)
+  emergencyContactAddress    String?   @map("emergency_contact_address") @db.VarChar(300)
+  /// bank | cash | mobile_banking
+  paymentMethod              String?   @map("payment_method") @db.VarChar(30)
+  bankName                   String?   @map("bank_name") @db.VarChar(150)
+  bankBranch                 String?   @map("bank_branch") @db.VarChar(150)
+  /// Payment details belong to the person, not the profile (P3 §8.1).
+  bankAccountNumber          String?   @map("bank_account_number") @db.VarChar(40)
+  /// bkash | nagad | rocket | upay | other
+  mobileBankingProvider      String?   @map("mobile_banking_provider") @db.VarChar(30)
+  mobileBankingNumber        String?   @map("mobile_banking_number") @db.VarChar(30)
+  remarks                    String?   @db.VarChar(500)
+  /// active | inactive
+  status                     String    @default("active") @db.VarChar(30)
+  version                    Int       @default(1)
+  createdAt                  DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy                  BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt                  DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy                  BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  registeredEstate Estate?          @relation(fields: [registeredEstateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_registered_estate")
+  nationality      Country?         @relation(fields: [nationalityCountryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_nationality")
+  religion         Religion?        @relation(fields: [religionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_religion")
+  educationLevel   EducationLevel?  @relation(fields: [educationLevelId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_education_level")
+  dependents       PersonDependent[]
+  skillLinks       PersonSkill[]
+  languageLinks    PersonLanguage[]
+  creator          User             @relation("PersonCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_created_by")
+  updater          User?            @relation("PersonUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_updated_by")
+
+  @@unique([personCode], map: "ux_person_code")
+  @@unique([nationalId], map: "ux_person_nid")
+  @@index([firstName], map: "ix_person_first_name")
+  @@index([fullName], map: "ix_person_full_name")
+  @@index([phone], map: "ix_person_phone")
+  @@index([registeredEstateId], map: "ix_person_registered_estate")
+  @@index([nationalityCountryId], map: "ix_person_nationality")
+  @@index([religionId], map: "ix_person_religion")
+  @@index([educationLevelId], map: "ix_person_education_level")
+  @@index([status], map: "ix_person_status")
+  @@index([createdBy], map: "ix_person_created_by")
+  @@index([updatedBy], map: "ix_person_updated_by")
+  @@map("person")
+}
+
+/// The design's Dependents tab (D-2-1): the person's family. Counts the estate's families (P2.02).
+model PersonDependent {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  personId    BigInt    @map("person_id") @db.UnsignedBigInt
+  name        String    @db.VarChar(150)
+  /// father | mother | spouse | son | daughter | brother | sister | other
+  relation    String    @db.VarChar(30)
+  occupation  String?   @db.VarChar(100)
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
+  /// male | female | other
+  gender      String?   @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  person  Person @relation(fields: [personId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_dependent_person")
+  creator User   @relation("PersonDependentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_dependent_created_by")
+  updater User?  @relation("PersonDependentUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_dependent_updated_by")
+
+  @@index([personId], map: "ix_person_dependent_person")
+  @@index([createdBy], map: "ix_person_dependent_created_by")
+  @@index([updatedBy], map: "ix_person_dependent_updated_by")
+  @@map("person_dependent")
+}
+
+/// A person's skills (the design's Skill / Training), replaced as a set.
+model PersonSkill {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  personId  BigInt   @map("person_id") @db.UnsignedBigInt
+  skillId   BigInt   @map("skill_id") @db.UnsignedBigInt
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_skill_person")
+  skill  Skill  @relation(fields: [skillId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_skill_skill")
+
+  @@unique([personId, skillId], map: "ux_person_skill")
+  @@index([skillId], map: "ix_person_skill_skill")
+  @@map("person_skill")
+}
+
+/// A person's languages (the design's Language Known), replaced as a set.
+model PersonLanguage {
+  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  personId   BigInt   @map("person_id") @db.UnsignedBigInt
+  languageId BigInt   @map("language_id") @db.UnsignedBigInt
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  person   Person   @relation(fields: [personId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_language_person")
+  language Language @relation(fields: [languageId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_language_language")
+
+  @@unique([personId, languageId], map: "ux_person_language")
+  @@index([languageId], map: "ix_person_language_language")
+  @@map("person_language")
+}
+
+/// P2.01 (the manager's design): a person-form dropdown. Common lookup shape (P3 §5.1), client-editable.
+model Religion {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  persons Person[]
+  creator User    @relation("ReligionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_religion_created_by")
+  updater User?   @relation("ReligionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_religion_updated_by")
+
+  @@unique([code], map: "ux_religion_code")
+  @@index([status], map: "ix_religion_status")
+  @@index([createdBy], map: "ix_religion_created_by")
+  @@index([updatedBy], map: "ix_religion_updated_by")
+  @@map("religion")
+}
+
+/// P2.01 (the manager's design): a person-form dropdown. Common lookup shape (P3 §5.1), client-editable.
+model EducationLevel {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  persons Person[]
+  creator User    @relation("EducationLevelCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_education_level_created_by")
+  updater User?   @relation("EducationLevelUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_education_level_updated_by")
+
+  @@unique([code], map: "ux_education_level_code")
+  @@index([status], map: "ix_education_level_status")
+  @@index([createdBy], map: "ix_education_level_created_by")
+  @@index([updatedBy], map: "ix_education_level_updated_by")
+  @@map("education_level")
+}
+
+/// P2.01 (the manager's design): a person-form dropdown. Common lookup shape (P3 §5.1), client-editable.
+model Skill {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  personLinks PersonSkill[]
+  creator User    @relation("SkillCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_skill_created_by")
+  updater User?   @relation("SkillUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_skill_updated_by")
+
+  @@unique([code], map: "ux_skill_code")
+  @@index([status], map: "ix_skill_status")
+  @@index([createdBy], map: "ix_skill_created_by")
+  @@index([updatedBy], map: "ix_skill_updated_by")
+  @@map("skill")
+}
+
+/// P2.01 (the manager's design): a person-form dropdown. Common lookup shape (P3 §5.1), client-editable.
+model Language {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  personLinks PersonLanguage[]
+  creator User    @relation("LanguageCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_language_created_by")
+  updater User?   @relation("LanguageUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_language_updated_by")
+
+  @@unique([code], map: "ux_language_code")
+  @@index([status], map: "ix_language_status")
+  @@index([createdBy], map: "ix_language_created_by")
+  @@index([updatedBy], map: "ix_language_updated_by")
+  @@map("language")
 }

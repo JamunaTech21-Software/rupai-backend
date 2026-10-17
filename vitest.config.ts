@@ -16,6 +16,7 @@ export default defineConfig({
           environment: 'node',
           include: ['tests/**/*.test.ts', 'src/**/*.test.ts'],
           exclude: ['tests/db/**', 'tests/fixtures/**', 'node_modules/**'],
+          setupFiles: ['tests/setup/loopback.ts'],
         },
       },
       {
@@ -25,6 +26,8 @@ export default defineConfig({
           include: ['tests/db/**/*.test.ts'],
           // Starts a throwaway MySQL 8.4 with Testcontainers unless TEST_DB_HOST names a running server.
           globalSetup: ['tests/db/global-setup.ts'],
+          // Test servers on 127.0.0.1 only: see tests/setup/loopback.ts.
+          setupFiles: ['tests/setup/loopback.ts'],
           // Database tests share one MySQL server. Run files one at a time for predictable grants.
           fileParallelism: false,
           testTimeout: 60_000,
