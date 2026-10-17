@@ -33,6 +33,8 @@ import {
 
 export const DEMO_VIEWER_ROLE = 'DEMO_VIEWER';
 const DEMO_VIEWER_PERMISSIONS = [
+  // R.5: the home dashboard's layout, including the panels waiting for their phase.
+  ['dashboard', 'view'],
   ['workflow', 'view'],
   ['document', 'view'],
   ['user', 'view'],
@@ -60,6 +62,7 @@ const DEMO_VIEWER_PERMISSIONS = [
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
 const DEMO_ESTATE_ADMIN_PERMISSIONS = [
+  ['dashboard', 'view'],
   ['document', 'view'],
   ['organisation', 'view'],
   ['organisation', 'edit'],
@@ -89,6 +92,7 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
 /** P1.13: approves workflow changes and, as an approver role, purchase orders (the demo ladder). */
 export const DEMO_APPROVER_ROLE = 'DEMO_APPROVER';
 const DEMO_APPROVER_PERMISSIONS = [
+  ['dashboard', 'view'],
   ['workflow', 'view'],
   ['workflow', 'approve'],
   ['purchase_order', 'view'],
@@ -231,8 +235,146 @@ export function demoSeeders(password: string): Seeder[] {
     demoCalendarSeeder,
     demoLookupSeeder,
     demoWorkflowSeeder,
+    demoFieldDetailsSeeder,
   ];
 }
+
+/**
+ * R.3: the Field / Block page's details on DEMO-A (the manager's design): the design's bush types as tea
+ * varieties, the details on each field, a nursery, an extension, a road reserve and a drain, a block
+ * inside a field, division descriptions. Fills only what is empty, so a reviewer's edits stay.
+ */
+const demoFieldDetailsSeeder: Seeder = {
+  name: 'demo: R.3 field / block details on DEMO-A',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      let updated = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      for (const [i, [code, name, varietyType]] of (
+        [
+          ['TV-1', 'TV-1', 'clonal'],
+          ['TV-18', 'TV-18', 'clonal'],
+          ['BT-2', 'BT-2', 'clonal'],
+          ['CLONE-6', 'Clone 6', 'clonal'],
+          ['SEEDLING', 'Seedling', 'seedling'],
+        ] as const
+      ).entries()) {
+        if (await tx.teaVariety.findUnique({ where: { code }, select: { id: true } })) continue;
+        await tx.teaVariety.create({
+          data: { code, name, varietyType, sortOrder: (i + 1) * 10, createdBy: by },
+        });
+        inserted += 1;
+      }
+      const estate = await tx.estate.findFirst({ where: { code: 'DEMO-A' }, select: { id: true } });
+      if (!estate) return { inserted, updated };
+      const one = { select: { id: true } } as const;
+      const id = async (table: 'irrigationSource' | 'soilType' | 'drainageClass', code: string) =>
+        (table === 'irrigationSource'
+          ? await tx.irrigationSource.findUnique({ where: { code }, ...one })
+          : table === 'soilType'
+            ? await tx.soilType.findUnique({ where: { code }, ...one })
+            : await tx.drainageClass.findUnique({ where: { code }, ...one })
+        )?.id ?? null;
+      const variety = async (code: string) =>
+        (await tx.teaVariety.findUnique({ where: { code }, select: { id: true } }))?.id ?? null;
+      const details = {
+        irrigationSourceId: await id('irrigationSource', 'NATURAL_RAIN'),
+        soilTypeId: await id('soilType', 'LOAMY'),
+        drainageClassId: await id('drainageClass', 'GOOD'),
+      };
+      const fields = await tx.field.findMany({
+        where: { estateId: estate.id, plantingYear: null, fieldType: 'tea_field' },
+        orderBy: { fieldNumber: 'asc' },
+      });
+      const clones = ['TV-1', 'TV-18', 'BT-2', 'CLONE-6'];
+      for (const [i, f] of fields.entries()) {
+        await tx.field.update({
+          where: { id: f.id },
+          data: {
+            ...details,
+            plantingYear: f.fieldStatus === 'young' ? 2022 : 2008 + i,
+            teaVarietyId: await variety(clones[i % clones.length] ?? 'TV-1'),
+            spacing: '4ft × 2.5ft',
+            altitude: String(220 + i * 5),
+            averageSlope: String(3 + (i % 4)),
+          },
+        });
+        updated += 1;
+      }
+      const section = await tx.section.findFirst({
+        where: { division: { estateId: estate.id }, code: 'N1' },
+        select: { id: true },
+      });
+      if (section) {
+        const extra = [
+          ['A-NUR-01', 'Nursery Block', 'nursery', '2.500', '2.500', 'nursery'],
+          ['A-EXT-01', 'Extension Field', 'extension', '12.400', null, 'young'],
+          ['A-RD-01', 'Road Reserve', 'infrastructure', '3.200', null, 'fallow'],
+          ['A-DR-01', 'Drain Area', 'drain', '1.800', null, 'fallow'],
+        ] as const;
+        for (const [fieldNumber, name, fieldType, gross, planted, fieldStatus] of extra) {
+          if (await tx.field.findFirst({ where: { estateId: estate.id, fieldNumber }, select: { id: true } }))
+            continue;
+          await tx.field.create({
+            data: {
+              sectionId: section.id,
+              estateId: estate.id,
+              fieldNumber,
+              name,
+              fieldType,
+              grossArea: gross,
+              plantedArea: planted,
+              fieldStatus,
+              createdBy: by,
+            },
+          });
+          inserted += 1;
+        }
+        // A block inside a field: A-N1-1 holds block A-N1-1B.
+        const parent = await tx.field.findFirst({
+          where: { estateId: estate.id, fieldNumber: 'A-N1-1' },
+          select: { id: true },
+        });
+        if (
+          parent &&
+          !(await tx.field.findFirst({
+            where: { estateId: estate.id, fieldNumber: 'A-N1-1B' },
+            select: { id: true },
+          }))
+        ) {
+          await tx.field.create({
+            data: {
+              sectionId: section.id,
+              estateId: estate.id,
+              fieldNumber: 'A-N1-1B',
+              name: 'Block 1B',
+              parentFieldId: parent.id,
+              grossArea: '4.000',
+              plantedArea: '3.800',
+              fieldStatus: 'producing',
+              plantingYear: 2015,
+              teaVarietyId: await variety('BT-2'),
+              ...details,
+              createdBy: by,
+            },
+          });
+          inserted += 1;
+        }
+      }
+      for (const [code, description] of [
+        ['NORTH', 'Hill slopes north of the factory road.'],
+        ['SOUTH', 'Low-lying fields along the river.'],
+      ] as const) {
+        const { count } = await tx.division.updateMany({
+          where: { estateId: estate.id, code, description: null },
+          data: { description },
+        });
+        updated += count;
+      }
+      return { inserted, updated };
+    }),
+};
 
 /** Two demo estates, each with two divisions of two sections of three fields (P1.07). */
 const DEMO_ESTATES = [

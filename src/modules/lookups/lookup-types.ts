@@ -83,7 +83,10 @@ function common(
   };
 }
 
-/** The 17 tables that use the common shape unchanged (P3 §5.1; amenity from R.2, the estate profile). */
+/**
+ * The 20 tables that use the common shape unchanged (P3 §5.1; amenity from R.2, the estate profile;
+ * irrigation_source, soil_type and drainage_class from R.3, the Field / Block page).
+ */
 const PLAIN: readonly (readonly [string, string])[] = [
   ['department', 'department'],
   ['designation', 'designation'],
@@ -102,6 +105,9 @@ const PLAIN: readonly (readonly [string, string])[] = [
   ['quality_grade', 'quality grade'],
   ['collection_point_type', 'collection point type'],
   ['amenity', 'estate facility'],
+  ['irrigation_source', 'irrigation source'],
+  ['soil_type', 'soil type'],
+  ['drainage_class', 'drainage class'],
 ];
 
 export const MANUFACTURE_PROCESSES = ['ctc', 'orthodox', 'green', 'oolong', 'white', 'other'] as const;

@@ -21,6 +21,7 @@ import { JOB_SCHEDULES, purgeJobsJob, selfTestJob } from './jobs/jobs.jobs.js';
 import { jobsModules } from './jobs/jobs.routes.js';
 import { lookupModules } from './lookups/lookup.routes.js';
 import { calendarModules } from './calendar/calendar.routes.js';
+import { dashboardModule } from './dashboard/dashboard.routes.js';
 import { DOCUMENT_SCHEDULES, documentExpiryJob } from './documents/documents.jobs.js';
 import { documentsModule } from './documents/documents.routes.js';
 import { facilitiesModules } from './facilities/facilities.routes.js';
@@ -54,7 +55,7 @@ export interface ModuleDeps {
 
 /**
  * The application's modules, in mount order. Each epic adds its module here, starting with P1.01
- * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments), P1.13 (approval workflow definitions), P1.14 (approval runtime and queue), P1.15 (jobs and schedules) and P1.16 (notifications). server.ts mounts them, and the OpenAPI document is
+ * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments), P1.13 (approval workflow definitions), P1.14 (approval runtime and queue), P1.15 (jobs and schedules), P1.16 (notifications) and R.5 (dashboards). server.ts mounts them, and the OpenAPI document is
  * generated from them.
  */
 export function buildModules(deps: ModuleDeps): ApiModule[] {
@@ -73,6 +74,7 @@ export function buildModules(deps: ModuleDeps): ApiModule[] {
     approvalsModule(deps),
     ...jobsModules({ ...deps, schedules: JOB_CATALOGUE_SCHEDULES }),
     ...notificationsModules(deps),
+    dashboardModule(deps),
   ];
 }
 

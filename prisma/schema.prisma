@@ -190,6 +190,12 @@ model User {
   updatedPaymentMethods       PaymentMethod[]       @relation("PaymentMethodUpdatedBy")
   createdLandTypes            LandType[]            @relation("LandTypeCreatedBy")
   createdAmenities            Amenity[]             @relation("AmenityCreatedBy")
+  createdIrrigationSources    IrrigationSource[]    @relation("IrrigationSourceCreatedBy")
+  updatedIrrigationSources    IrrigationSource[]    @relation("IrrigationSourceUpdatedBy")
+  createdSoilTypes            SoilType[]            @relation("SoilTypeCreatedBy")
+  updatedSoilTypes            SoilType[]            @relation("SoilTypeUpdatedBy")
+  createdDrainageClasses      DrainageClass[]       @relation("DrainageClassCreatedBy")
+  updatedDrainageClasses      DrainageClass[]       @relation("DrainageClassUpdatedBy")
   updatedAmenities            Amenity[]             @relation("AmenityUpdatedBy")
   createdEstateAmenities      EstateAmenity[]       @relation("EstateAmenityCreatedBy")
   updatedLandTypes            LandType[]            @relation("LandTypeUpdatedBy")
@@ -621,6 +627,16 @@ model Estate {
   description      String?   @db.Text
   /// Facilities that are not on the amenity list ("Other").
   otherAmenities   String?   @map("other_amenities") @db.VarChar(300)
+  // ---- Estate Overview figures as entered (RUP-625). NULL: not entered, the computed one is shown ----
+  /// Acres.
+  teaArea          Decimal?  @map("tea_area") @db.Decimal(14, 3)
+  /// Acres.
+  nonTeaArea       Decimal?  @map("non_tea_area") @db.Decimal(14, 3)
+  divisionCount    Int?      @map("division_count")
+  sectionCount     Int?      @map("section_count")
+  fieldCount       Int?      @map("field_count")
+  workerCount      Int?      @map("worker_count")
+  familyCount      Int?      @map("family_count")
   /// active | inactive
   status           String    @default("active") @db.VarChar(30)
   remarks          String?   @db.VarChar(500)
@@ -662,6 +678,8 @@ model Division {
   managerProfileId BigInt?   @map("manager_profile_id") @db.UnsignedBigInt
   /// Acres.
   area             Decimal?  @db.Decimal(14, 3)
+  /// R.3 (the manager's design).
+  description      String?   @db.VarChar(1000)
   /// active | inactive
   status           String    @default("active") @db.VarChar(30)
   version          Int       @default(1)
@@ -692,6 +710,9 @@ model Section {
   name                String    @db.VarChar(150)
   supervisorProfileId BigInt?   @map("supervisor_profile_id") @db.UnsignedBigInt
   area                Decimal?  @db.Decimal(14, 3)
+  /// R.3: a section inside another section of the same division.
+  parentSectionId     BigInt?   @map("parent_section_id") @db.UnsignedBigInt
+  description         String?   @db.VarChar(1000)
   /// active | inactive
   status              String    @default("active") @db.VarChar(30)
   version             Int       @default(1)
@@ -701,6 +722,8 @@ model Section {
   updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
 
   division Division @relation(fields: [divisionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_division")
+  parent   Section?  @relation("SectionParent", fields: [parentSectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_parent")
+  children Section[] @relation("SectionParent")
   creator  User     @relation("SectionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_created_by")
   updater  User?    @relation("SectionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_updated_by")
   fields   Field[]
@@ -708,6 +731,7 @@ model Section {
   @@unique([divisionId, code], map: "ux_section_code")
   @@index([status], map: "ix_section_status")
   @@index([supervisorProfileId], map: "ix_section_supervisor")
+  @@index([parentSectionId], map: "ix_section_parent")
   @@index([createdBy], map: "ix_section_created_by")
   @@index([updatedBy], map: "ix_section_updated_by")
   @@map("section")
@@ -733,13 +757,37 @@ model Field {
   /// active | inactive
   status               String    @default("active") @db.VarChar(30)
   remarks              String?   @db.VarChar(500)
+  // ---- R.3 Field / Block details (the manager's design) ----
+  /// tea_field | nursery | extension | infrastructure | drain | road_reserve | shade_area | road_side | water_body
+  fieldType            String    @default("tea_field") @map("field_type") @db.VarChar(30)
+  /// A block inside another field of the same estate.
+  parentFieldId        BigInt?   @map("parent_field_id") @db.UnsignedBigInt
+  /// Set here until plantation_record holds it (as planted_area, D-1.07-6).
+  plantingYear         Int?      @map("planting_year") @db.SmallInt
+  /// Bush type / clone. Set here until plantation_record holds it.
+  teaVarietyId         BigInt?   @map("tea_variety_id") @db.UnsignedBigInt
+  /// Free text as the estate writes it, e.g. "4ft × 2.5ft".
+  spacing              String?   @db.VarChar(50)
+  /// Feet above sea level.
+  altitude             Decimal?  @db.Decimal(8, 2)
+  /// Degrees.
+  averageSlope         Decimal?  @map("average_slope") @db.Decimal(5, 2)
+  irrigationSourceId   BigInt?   @map("irrigation_source_id") @db.UnsignedBigInt
+  soilTypeId           BigInt?   @map("soil_type_id") @db.UnsignedBigInt
+  drainageClassId      BigInt?   @map("drainage_class_id") @db.UnsignedBigInt
   version              Int       @default(1)
   createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(0)
   createdBy            BigInt    @map("created_by") @db.UnsignedBigInt
   updatedAt            DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy            BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  section Section @relation(fields: [sectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_section")
+  section          Section           @relation(fields: [sectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_section")
+  parent           Field?            @relation("FieldParent", fields: [parentFieldId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_parent")
+  children         Field[]           @relation("FieldParent")
+  teaVariety       TeaVariety?       @relation(fields: [teaVarietyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_tea_variety")
+  irrigationSource IrrigationSource? @relation(fields: [irrigationSourceId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_irrigation_source")
+  soilType         SoilType?         @relation(fields: [soilTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_soil_type")
+  drainageClass    DrainageClass?    @relation(fields: [drainageClassId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_drainage_class")
   estate  Estate  @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_estate")
   creator User    @relation("FieldCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_created_by")
   updater User?   @relation("FieldUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_field_updated_by")
@@ -747,6 +795,12 @@ model Field {
   @@unique([estateId, fieldNumber], map: "ux_field_number")
   @@index([sectionId], map: "ix_field_section")
   @@index([fieldStatus], map: "ix_field_status")
+  @@index([fieldType], map: "ix_field_type")
+  @@index([parentFieldId], map: "ix_field_parent")
+  @@index([teaVarietyId], map: "ix_field_tea_variety")
+  @@index([irrigationSourceId], map: "ix_field_irrigation_source")
+  @@index([soilTypeId], map: "ix_field_soil_type")
+  @@index([drainageClassId], map: "ix_field_drainage_class")
   @@index([createdBy], map: "ix_field_created_by")
   @@index([updatedBy], map: "ix_field_updated_by")
   @@map("field")
@@ -1592,6 +1646,7 @@ model TeaVariety {
   updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
 
+  fields  Field[]
   creator User  @relation("TeaVarietyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_variety_created_by")
   updater User? @relation("TeaVarietyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_variety_updated_by")
 
@@ -2215,6 +2270,87 @@ model Amenity {
 }
 
 /// Which amenities an estate has. The set is replaced as a whole when the estate is saved.
+/// R.3: a Field / Block dropdown of the manager's design. Common lookup shape (P3 §5.1), client-editable.
+model IrrigationSource {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  fields  Field[]
+  creator User    @relation("IrrigationSourceCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_irrigation_source_created_by")
+  updater User?   @relation("IrrigationSourceUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_irrigation_source_updated_by")
+
+  @@unique([code], map: "ux_irrigation_source_code")
+  @@index([status], map: "ix_irrigation_source_status")
+  @@index([createdBy], map: "ix_irrigation_source_created_by")
+  @@index([updatedBy], map: "ix_irrigation_source_updated_by")
+  @@map("irrigation_source")
+}
+
+/// R.3: a Field / Block dropdown of the manager's design. Common lookup shape (P3 §5.1), client-editable.
+model SoilType {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  fields  Field[]
+  creator User    @relation("SoilTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_soil_type_created_by")
+  updater User?   @relation("SoilTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_soil_type_updated_by")
+
+  @@unique([code], map: "ux_soil_type_code")
+  @@index([status], map: "ix_soil_type_status")
+  @@index([createdBy], map: "ix_soil_type_created_by")
+  @@index([updatedBy], map: "ix_soil_type_updated_by")
+  @@map("soil_type")
+}
+
+/// R.3: a Field / Block dropdown of the manager's design. Common lookup shape (P3 §5.1), client-editable.
+model DrainageClass {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  fields  Field[]
+  creator User    @relation("DrainageClassCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_drainage_class_created_by")
+  updater User?   @relation("DrainageClassUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_drainage_class_updated_by")
+
+  @@unique([code], map: "ux_drainage_class_code")
+  @@index([status], map: "ix_drainage_class_status")
+  @@index([createdBy], map: "ix_drainage_class_created_by")
+  @@index([updatedBy], map: "ix_drainage_class_updated_by")
+  @@map("drainage_class")
+}
+
 model EstateAmenity {
   id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
   estateId  BigInt   @map("estate_id") @db.UnsignedBigInt

@@ -21,6 +21,7 @@ import {
   EstateOut,
   EstateSummaryOut,
   FIELD_STATUSES,
+  FIELD_TYPES,
   FieldOut,
   IdParams,
   OrganisationOut,
@@ -163,9 +164,12 @@ function estatesModule(deps: OrganisationDeps, h: ReturnType<typeof hierarchySer
     path: '/:id/summary',
     summary: 'The estate overview',
     description:
-      'Computed, never entered: the declared total land area, the tea area (planted area of fields that ' +
-      'carry tea), the non-tea area, and counts of divisions, sections, fields, factories and photographs. ' +
-      'Areas in acres. Workers and families are 0 until HR exists (workforce_available: false).',
+      'The Estate Overview and the figures under the Division & Section and Field / Block lists. Each overview ' +
+      'figure (tea and non-tea area, division, section, field, worker and family counts) is the value entered ' +
+      'on the estate when there is one, otherwise computed from the records; `source` says which and ' +
+      '`computed` always has the records’ figure. Tea area = planted area of active tea_field and extension ' +
+      'fields still carrying tea; non-tea = total − tea, never below 0. `hierarchy` is always computed. ' +
+      'Areas in acres. Workers and families come from HR (Phase 2).',
     auth: { permission: 'estate.view' },
     ...byId,
     success: { status: 200, description: 'The overview', schema: EstateSummaryOut },
@@ -290,6 +294,38 @@ function divisionsModule(deps: OrganisationDeps, h: ReturnType<typeof hierarchyS
 function sectionsModule(deps: OrganisationDeps, h: ReturnType<typeof hierarchyService>): ApiModule {
   const { platform, authz, accessLog } = deps;
   const m = defineModule({ name: 'sections', path: '/sections', tag: 'Estates', platform, authz, accessLog });
+
+  m.route({
+    method: 'get',
+    path: '/',
+    summary: 'List sections',
+    description:
+      'Only sections in your data scope. filter[estate_id] gives every section of an estate in one request ' +
+      '(R.3); also by division and parent section.',
+    auth: { permission: 'section.view' },
+    list: {
+      ...nodeList,
+      filters: {
+        ...nodeList.filters,
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        division_id: { type: 'id', ops: ['eq', 'in'] },
+        parent_section_id: { type: 'id', ops: ['eq', 'in'] },
+      },
+      maxPageSize: 1000,
+    },
+    success: { status: 200, description: 'A page of sections', schema: SectionOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await h.sections.list(q);
+      sendPage(req, res, items, {
+        pagination: q.page ?? { page: 1, perPage: 25 },
+        total,
+        appliedScope: await appliedScope(),
+      });
+    },
+  });
+
   itemRoutes(m, {
     module: 'section',
     label: 'section',
@@ -311,7 +347,9 @@ function fieldsModule(deps: OrganisationDeps): ApiModule {
     method: 'get',
     path: '/',
     summary: 'List fields',
-    description: 'Only fields in your data scope. Filter by estate, division, section and field status.',
+    description:
+      'Only fields in your data scope. Filter by estate, division, section, field type, parent field and ' +
+      'status; per_page up to 1000, so an estate’s fields come in one request.',
     auth: { permission: 'field.view' },
     list: {
       ...PAGE,
@@ -320,11 +358,15 @@ function fieldsModule(deps: OrganisationDeps): ApiModule {
         division_id: { type: 'id', ops: ['eq', 'in'] },
         section_id: { type: 'id', ops: ['eq', 'in'] },
         field_status: { type: { enum: FIELD_STATUSES } },
+        field_type: { type: { enum: FIELD_TYPES }, ops: ['eq', 'in'] },
+        parent_field_id: { type: 'id', ops: ['eq', 'in'] },
         status: { type: { enum: STATUSES } },
         field_number: { type: 'string', ops: ['eq', 'like'] },
+        name: { type: 'string', ops: ['like'] },
       },
-      sorts: ['field_number', 'gross_area'],
+      sorts: ['field_number', 'gross_area', 'name'],
       defaultSort: ['field_number'],
+      maxPageSize: 1000,
     },
     success: { status: 200, description: 'A page of fields', schema: FieldOut },
     errors: [],

@@ -26,6 +26,7 @@ import {
   writable,
 } from './common.js';
 import { DIVISION_AUDIT, ESTATE_AUDIT, SECTION_AUDIT } from './organisation.audit.js';
+import { FIELD_TYPES, TEA_FIELD_TYPES, type FieldType } from './organisation.schema.js';
 import type {
   CreateDivisionBody,
   CreateEstateBody,
@@ -54,7 +55,11 @@ import type {
 type EstateOutT = z.infer<typeof EstateOut>;
 type DivisionOutT = z.infer<typeof DivisionOut>;
 type SectionOutT = z.infer<typeof SectionOut>;
-type SectionRow = Section & { division: { estateId: bigint } };
+type SectionRow = Section & {
+  division: { estateId: bigint };
+  parent: { id: bigint; code: string; name: string } | null;
+};
+type DivisionRow = Division & { _count: { sections: number } };
 
 export const ESTATE_LIST_FIELDS: ListFieldMap = {
   status: { field: 'status' },
@@ -124,13 +129,20 @@ export function toEstateOut(e: EstateRow): EstateOutT {
       name: l.amenity.name,
     })),
     other_amenities: e.otherAmenities,
+    tea_area: area(e.teaArea),
+    non_tea_area: area(e.nonTeaArea),
+    division_count: e.divisionCount,
+    section_count: e.sectionCount,
+    field_count: e.fieldCount,
+    worker_count: e.workerCount,
+    family_count: e.familyCount,
     version: e.version,
     created_at: e.createdAt.toISOString(),
     updated_at: iso(e.updatedAt),
   };
 }
 
-export function toDivisionOut(d: Division): DivisionOutT {
+export function toDivisionOut(d: DivisionRow): DivisionOutT {
   return {
     id: d.id.toString(),
     estate_id: d.estateId.toString(),
@@ -138,6 +150,8 @@ export function toDivisionOut(d: Division): DivisionOutT {
     name: d.name,
     manager_profile_id: idOut(d.managerProfileId),
     area: area(d.area),
+    description: d.description,
+    section_count: d._count.sections,
     status: d.status as Status,
     version: d.version,
     created_at: d.createdAt.toISOString(),
@@ -154,6 +168,11 @@ export function toSectionOut(s: SectionRow): SectionOutT {
     name: s.name,
     supervisor_profile_id: idOut(s.supervisorProfileId),
     area: area(s.area),
+    parent_section_id: idOut(s.parentSectionId),
+    parent_section: s.parent
+      ? { id: s.parent.id.toString(), code: s.parent.code, name: s.parent.name }
+      : null,
+    description: s.description,
     status: s.status as Status,
     version: s.version,
     created_at: s.createdAt.toISOString(),
@@ -161,7 +180,20 @@ export function toSectionOut(s: SectionRow): SectionOutT {
   };
 }
 
-const sectionInclude = { division: { select: { estateId: true } } } as const;
+const sectionInclude = {
+  division: { select: { estateId: true } },
+  parent: { select: { id: true, code: true, name: true } },
+} as const satisfies Prisma.SectionInclude;
+/** "Total Section" of a division: its active sections. */
+const divisionInclude = {
+  _count: { select: { sections: { where: { status: 'active' } } } },
+} as const satisfies Prisma.DivisionInclude;
+
+export const SECTION_LIST_FIELDS: ListFieldMap = {
+  ...NODE_LIST_FIELDS,
+  division_id: { field: 'divisionId', convert: (v) => BigInt(String(v)) },
+  parent_section_id: { field: 'parentSectionId', convert: (v) => BigInt(String(v)) },
+};
 
 /** The singleton organisation's id (P3 §4.1). The API refuses to start without it, so this is a guard. */
 async function organisationId(tx: Tx): Promise<bigint> {
@@ -177,8 +209,8 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
     if (!e) throw Errors.notFound('Estate not found.');
     return e;
   }
-  async function divisionOrNotFound(tx: Database | Tx, id: bigint): Promise<Division> {
-    const d = await tx.division.findUnique({ where: { id } });
+  async function divisionOrNotFound(tx: Database | Tx, id: bigint): Promise<DivisionRow> {
+    const d = await tx.division.findUnique({ where: { id }, include: divisionInclude });
     if (!d) throw Errors.notFound('Division not found.');
     return d;
   }
@@ -225,6 +257,13 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
     ...(b.longitude !== undefined ? { longitude: b.longitude } : {}),
     ...(b.description !== undefined ? { description: b.description } : {}),
     ...(b.other_amenities !== undefined ? { otherAmenities: b.other_amenities } : {}),
+    ...(b.tea_area !== undefined ? { teaArea: b.tea_area } : {}),
+    ...(b.non_tea_area !== undefined ? { nonTeaArea: b.non_tea_area } : {}),
+    ...(b.division_count !== undefined ? { divisionCount: b.division_count } : {}),
+    ...(b.section_count !== undefined ? { sectionCount: b.section_count } : {}),
+    ...(b.field_count !== undefined ? { fieldCount: b.field_count } : {}),
+    ...(b.worker_count !== undefined ? { workerCount: b.worker_count } : {}),
+    ...(b.family_count !== undefined ? { familyCount: b.family_count } : {}),
   });
 
   /** The checks a CHECK constraint cannot make, as field errors the form can show. */
@@ -278,6 +317,30 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
         }
       });
     }
+    // Entered overview areas (RUP-625) fit inside the total land area, alone and together.
+    const pick = (v: Prisma.Decimal | null | undefined, now: Prisma.Decimal | null | undefined) =>
+      v !== undefined ? v : (now ?? null);
+    const total = pick(b.total_area, current?.totalArea);
+    const tea = pick(b.tea_area, current?.teaArea);
+    const nonTea = pick(b.non_tea_area, current?.nonTeaArea);
+    if (total !== null) {
+      for (const [field, v] of [
+        ['tea_area', tea],
+        ['non_tea_area', nonTea],
+      ] as const) {
+        if (v !== null && dec(v).gt(dec(total))) {
+          problems.push({ field, code: 'VALIDATION_FAILED', message: 'Cannot exceed the total land area.' });
+        }
+      }
+      if (tea !== null && nonTea !== null && dec(tea).plus(dec(nonTea)).gt(dec(total))) {
+        const field = b.non_tea_area !== undefined ? 'non_tea_area' : 'tea_area';
+        problems.push({
+          field,
+          code: 'VALIDATION_FAILED',
+          message: 'Tea and non-tea area together cannot exceed the total land area.',
+        });
+      }
+    }
     if (problems.length > 0) throw Errors.validation(problems);
   }
 
@@ -303,13 +366,45 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
     ...(b.name !== undefined ? { name: b.name } : {}),
     ...(b.manager_profile_id !== undefined ? { managerProfileId: idIn(b.manager_profile_id) } : {}),
     ...(b.area !== undefined ? { area: b.area } : {}),
+    ...(b.description !== undefined ? { description: b.description } : {}),
   });
   const sectionData = (b: z.infer<typeof PatchSectionBody>): Prisma.SectionUncheckedUpdateManyInput => ({
     ...(b.code !== undefined ? { code: b.code } : {}),
     ...(b.name !== undefined ? { name: b.name } : {}),
     ...(b.supervisor_profile_id !== undefined ? { supervisorProfileId: idIn(b.supervisor_profile_id) } : {}),
     ...(b.area !== undefined ? { area: b.area } : {}),
+    ...(b.parent_section_id !== undefined ? { parentSectionId: idIn(b.parent_section_id) } : {}),
+    ...(b.description !== undefined ? { description: b.description } : {}),
   });
+
+  /**
+   * A parent section: of the same division, not the section itself and not one of its own children
+   * (no cycles). A CHECK cannot judge any of it.
+   */
+  async function checkParentSection(
+    tx: Tx,
+    parentId: bigint | null | undefined,
+    divisionId: bigint,
+    self?: bigint,
+  ) {
+    if (parentId === undefined || parentId === null) return;
+    const bad = (message: string) =>
+      Errors.validation([{ field: 'parent_section_id', code: 'VALIDATION_FAILED', message }]);
+    const parent = await tx.section.findUnique({ where: { id: parentId }, select: { divisionId: true } });
+    if (!parent) throw bad('No such section.');
+    if (parent.divisionId !== divisionId) throw bad('The parent section must be in the same division.');
+    if (self === undefined) return;
+    const seen = new Set<bigint>();
+    for (let at: bigint | null = parentId; at !== null;) {
+      if (at === self || seen.has(at)) throw bad('A section cannot sit inside itself or one of its own.');
+      seen.add(at);
+      const row: { parentSectionId: bigint | null } | null = await tx.section.findUnique({
+        where: { id: at },
+        select: { parentSectionId: true },
+      });
+      at = row?.parentSectionId ?? null;
+    }
+  }
   const stamp = (actorId: bigint) => ({
     version: { increment: 1 },
     updatedAt: new Date(),
@@ -413,54 +508,130 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
   };
 
   /**
-   * The Estate Overview (R.2): computed from the records, never entered. Counts follow the caller's
-   * scope like every read. Areas in acres.
+   * The Estate Overview (R.2, RUP-625) and the figures under the Division & Section and Field / Block
+   * lists (R.3). Each overview figure is the entered one when the estate has it, otherwise computed from
+   * the records. Counts follow the caller's scope like every read. Areas in acres.
    */
   async function estateSummary(id: bigint): Promise<z.infer<typeof EstateSummaryOut>> {
     const e = await estateOrNotFound(db, id);
     const activeFields = { estateId: id, status: 'active' };
-    const [divisionCount, sectionCount, fieldCount, sums, teaSum, factoryCount, photoCount] =
-      await Promise.all([
-        db.division.count({ where: { estateId: id, status: 'active' } }),
-        db.section.count({ where: { division: { estateId: id }, status: 'active' } }),
-        db.field.count({ where: activeFields }),
-        db.field.aggregate({ where: activeFields, _sum: { grossArea: true } }),
-        // Fields that carry tea: not uprooted, fallow or abandoned.
-        db.field.aggregate({
-          where: { ...activeFields, fieldStatus: { notIn: ['uprooted', 'fallow', 'abandoned'] } },
-          _sum: { plantedArea: true },
-        }),
-        // Factories are scoped by factory, not estate: count those of this (visible) estate regardless.
-        runUnscoped('estate overview: the factories of an estate the caller can see', () =>
-          db.factory.count({ where: { primaryEstateId: id, status: 'active' } }),
-        ),
-        db.documentFile.count({
-          where: {
-            ownerType: 'estate',
-            ownerId: id,
-            status: 'active',
-            isCurrent: true,
-            documentType: { code: 'PHOTOGRAPH' },
-          },
-        }),
-      ]);
-    const tea = dec(teaSum._sum.plantedArea?.toString() ?? '0');
+    const [
+      divisions,
+      sections,
+      fields,
+      byType,
+      sums,
+      teaSum,
+      divisionArea,
+      sectionArea,
+      factoryCount,
+      photoCount,
+    ] = await Promise.all([
+      db.division.groupBy({ by: ['status'], where: { estateId: id }, _count: { _all: true } }),
+      db.section.groupBy({ by: ['status'], where: { division: { estateId: id } }, _count: { _all: true } }),
+      db.field.groupBy({ by: ['status'], where: { estateId: id }, _count: { _all: true } }),
+      db.field.groupBy({ by: ['fieldType'], where: activeFields, _count: { _all: true } }),
+      db.field.aggregate({ where: activeFields, _sum: { grossArea: true, plantedArea: true } }),
+      // Tea area: tea fields still carrying tea (not uprooted, fallow or abandoned), D-R.3-3.
+      db.field.aggregate({
+        where: {
+          ...activeFields,
+          fieldType: { in: [...TEA_FIELD_TYPES] },
+          fieldStatus: { notIn: ['uprooted', 'fallow', 'abandoned'] },
+        },
+        _sum: { plantedArea: true },
+      }),
+      db.division.aggregate({ where: { estateId: id, status: 'active' }, _sum: { area: true } }),
+      db.section.aggregate({
+        where: { division: { estateId: id }, status: 'active', area: { not: null } },
+        _sum: { area: true },
+        _count: { _all: true },
+      }),
+      // Factories are scoped by factory, not estate: count those of this (visible) estate regardless.
+      runUnscoped('estate overview: the factories of an estate the caller can see', () =>
+        db.factory.count({ where: { primaryEstateId: id, status: 'active' } }),
+      ),
+      db.documentFile.count({
+        where: {
+          ownerType: 'estate',
+          ownerId: id,
+          status: 'active',
+          isCurrent: true,
+          documentType: { code: 'PHOTOGRAPH' },
+        },
+      }),
+    ]);
+    const counts = (rows: { status: string; _count: { _all: number } }[]) => {
+      const active = rows.find((r) => r.status === 'active')?._count._all ?? 0;
+      const total = rows.reduce((n, r) => n + r._count._all, 0);
+      return { total, active, inactive: total - active };
+    };
+    const acres = (v: Prisma.Decimal | null | undefined) => dec(v?.toString() ?? '0').toFixed(3);
+    const d = counts(divisions);
+    const sc = counts(sections);
+    const f = counts(fields);
+
+    const computedTea = dec(teaSum._sum.plantedArea?.toString() ?? '0');
     const total = e.totalArea === null ? null : dec(e.totalArea.toString());
-    const nonTea = total === null ? null : total.minus(tea);
+    const tea = e.teaArea === null ? computedTea : dec(e.teaArea.toString());
+    const remainder = (t: ReturnType<typeof dec>) => {
+      if (total === null) return null;
+      const r = total.minus(t);
+      return (r.isNegative() ? dec('0') : r).toFixed(3);
+    };
+    const computed = {
+      tea_area: computedTea.toFixed(3),
+      non_tea_area: remainder(computedTea),
+      division_count: d.active,
+      section_count: sc.active,
+      field_count: f.active,
+      worker_count: null,
+      family_count: null,
+    };
+    const src = (v: unknown) => (v === null ? ('computed' as const) : ('entered' as const));
+    const fieldTypes = Object.fromEntries(FIELD_TYPES.map((t) => [t, 0])) as Record<FieldType, number>;
+    for (const r of byType) fieldTypes[r.fieldType as FieldType] = r._count._all;
+    const sectionsWithArea = sectionArea._count._all;
     return {
       estate_id: id.toString(),
       total_land_area: area(e.totalArea),
       tea_area: tea.toFixed(3),
-      non_tea_area: nonTea === null ? null : (nonTea.isNegative() ? dec('0') : nonTea).toFixed(3),
-      field_area: dec(sums._sum.grossArea?.toString() ?? '0').toFixed(3),
-      division_count: divisionCount,
-      section_count: sectionCount,
-      field_count: fieldCount,
+      non_tea_area: e.nonTeaArea === null ? remainder(tea) : acres(e.nonTeaArea),
+      field_area: acres(sums._sum.grossArea),
+      division_count: e.divisionCount ?? d.active,
+      section_count: e.sectionCount ?? sc.active,
+      field_count: e.fieldCount ?? f.active,
       factory_count: factoryCount,
-      worker_count: 0,
-      family_count: 0,
+      worker_count: e.workerCount ?? 0,
+      family_count: e.familyCount ?? 0,
       workforce_available: false,
       photo_count: photoCount,
+      source: {
+        tea_area: src(e.teaArea),
+        non_tea_area: src(e.nonTeaArea),
+        division_count: src(e.divisionCount),
+        section_count: src(e.sectionCount),
+        field_count: src(e.fieldCount),
+        worker_count: src(e.workerCount),
+        family_count: src(e.familyCount),
+      },
+      computed,
+      hierarchy: {
+        divisions: d,
+        sections: sc,
+        fields: f,
+        field_types: fieldTypes,
+        division_area: acres(divisionArea._sum.area),
+        section_area: acres(sectionArea._sum.area),
+        average_section_area:
+          sectionsWithArea === 0
+            ? null
+            : dec(sectionArea._sum.area?.toString() ?? '0')
+                .div(sectionsWithArea)
+                .toFixed(2),
+        field_area: acres(sums._sum.grossArea),
+        planted_area: acres(sums._sum.plantedArea),
+      },
     };
   }
 
@@ -471,6 +642,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
       const [rows, total] = await Promise.all([
         db.division.findMany({
           where,
+          include: divisionInclude,
           orderBy: [...toOrderBy(q.sort, NODE_LIST_FIELDS), { id: 'asc' }],
           ...toPaging(q),
         }),
@@ -563,6 +735,29 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
   };
 
   const sections = {
+    /** GET /sections (R.3): every section of an estate in one request; estate_id is reached through the division. */
+    async list(q: ListQuery) {
+      const estateFilter = q.filters.find((f) => f.field === 'estate_id');
+      const rest = { ...q, filters: q.filters.filter((f) => f.field !== 'estate_id') };
+      const where = toWhere(rest, SECTION_LIST_FIELDS) as Prisma.SectionWhereInput;
+      if (estateFilter) {
+        const ids = (Array.isArray(estateFilter.value) ? estateFilter.value : [estateFilter.value]).map((v) =>
+          BigInt(String(v)),
+        );
+        where.division = { estateId: { in: ids } };
+      }
+      const [rows, total] = await Promise.all([
+        db.section.findMany({
+          where,
+          include: sectionInclude,
+          orderBy: [...toOrderBy(q.sort, SECTION_LIST_FIELDS), { id: 'asc' }],
+          ...toPaging(q),
+        }),
+        db.section.count({ where }),
+      ]);
+      return { items: rows.map(toSectionOut), total };
+    },
+
     async listFor(divisionId: bigint, q: ListQuery) {
       await divisionOrNotFound(db, divisionId);
       const where: Prisma.SectionWhereInput = { AND: [{ divisionId }, toWhere(q, NODE_LIST_FIELDS)] };
@@ -588,6 +783,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
         const division = await divisionOrNotFound(tx, divisionId);
         if (!(await canWriteDivision(division))) await denyWrite(accessLog, 'section', null, 'create');
         if (division.status !== 'active') throw inactiveParent('division_id', 'division');
+        await checkParentSection(tx, body.parent_section_id, divisionId);
         const { id } = await tx.section
           .create({
             data: {
@@ -617,6 +813,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
       return withTransaction(db, async (tx) => {
         const before = await sectionOrNotFound(tx, id);
         if (!(await canWriteSection(before))) await denyWrite(accessLog, 'section', id, 'update');
+        await checkParentSection(tx, changes.parent_section_id, before.divisionId, id);
         const { count } = await tx.section
           .updateMany({
             where: { id, version: expectedVersion },

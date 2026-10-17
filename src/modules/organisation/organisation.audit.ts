@@ -59,19 +59,35 @@ export const ESTATE_AUDIT: AuditedRecord = {
     'description',
     'amenities',
     'other_amenities',
+    'tea_area',
+    'non_tea_area',
+    'division_count',
+    'section_count',
+    'field_count',
+    'worker_count',
+    'family_count',
   ],
 };
 
 export const DIVISION_AUDIT: AuditedRecord = {
   type: 'division',
   class: 'master',
-  fields: ['estate_id', 'code', 'name', 'manager_profile_id', 'area', 'status'],
+  fields: ['estate_id', 'code', 'name', 'manager_profile_id', 'area', 'description', 'status'],
 };
 
 export const SECTION_AUDIT: AuditedRecord = {
   type: 'section',
   class: 'master',
-  fields: ['division_id', 'code', 'name', 'supervisor_profile_id', 'area', 'status'],
+  fields: [
+    'division_id',
+    'code',
+    'name',
+    'supervisor_profile_id',
+    'area',
+    'parent_section_id',
+    'description',
+    'status',
+  ],
 };
 
 /** section_id and section_effective_from are tracked: the audit chain IS the field's section history. */
@@ -89,5 +105,15 @@ export const FIELD_AUDIT: AuditedRecord = {
     'field_status',
     'status',
     'remarks',
+    'field_type',
+    'parent_field_id',
+    'planting_year',
+    'tea_variety_id',
+    'spacing',
+    'altitude',
+    'average_slope',
+    'irrigation_source_id',
+    'soil_type_id',
+    'drainage_class_id',
   ],
 };

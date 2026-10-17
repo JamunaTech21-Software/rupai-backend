@@ -68,6 +68,24 @@ const COMMON_SEEDS: Readonly<Record<string, Row[]>> = {
     ['CANTEEN', 'Canteen'],
     ['CLUB_LIBRARY', 'Club & library'],
   ]),
+  // R.3: the Field / Block page's dropdowns (the manager's design).
+  irrigation_source: plain([
+    ['NATURAL_RAIN', 'Natural rain'],
+    ['TUBE_WELL', 'Tube well'],
+    ['RIVER', 'River'],
+    ['CANAL', 'Canal'],
+  ]),
+  soil_type: plain([
+    ['LOAMY', 'Loamy'],
+    ['CLAY', 'Clay'],
+    ['SANDY', 'Sandy'],
+    ['MIXED', 'Mixed'],
+  ]),
+  drainage_class: plain([
+    ['GOOD', 'Good'],
+    ['AVERAGE', 'Average'],
+    ['POOR', 'Poor'],
+  ]),
   land_type: plain([
     ['TEA', 'Tea'],
     ['SHADE', 'Shade'],
