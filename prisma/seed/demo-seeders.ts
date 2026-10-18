@@ -59,6 +59,7 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['currency', 'view'],
   ['country', 'view'],
   ['person', 'view'],
+  ['employment', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -86,6 +87,7 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     'currency',
     'country',
     'person',
+    'employment',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
   ['accounting_period', 'view'],
   ['accounting_period', 'edit'],
@@ -95,6 +97,10 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
 export const DEMO_APPROVER_ROLE = 'DEMO_APPROVER';
 const DEMO_APPROVER_PERMISSIONS = [
   ['dashboard', 'view'],
+  // P2.02: separations are approved by someone other than whoever opens profiles (SOD-1).
+  ['employment', 'view'],
+  ['employment', 'approve'],
+  ['person', 'view'],
   ['workflow', 'view'],
   ['workflow', 'approve'],
   ['purchase_order', 'view'],
@@ -239,6 +245,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoWorkflowSeeder,
     demoFieldDetailsSeeder,
     demoPersonsSeeder,
+    demoProfilesSeeder,
   ];
 }
 
@@ -364,6 +371,92 @@ const demoPersonsSeeder: Seeder = {
           });
           inserted += 1;
         }
+      }
+      return { inserted, updated: 0 };
+    }),
+};
+
+/**
+ * P2.02: the design's worker categories, an employee category, and a profile for each demo person: four
+ * workers and an employee (the field manager) at DEMO-A, one separated worker at DEMO-B.
+ */
+const demoProfilesSeeder: Seeder = {
+  name: 'demo: worker categories and employment profiles of the demo people',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const cats = new Map<string, bigint>();
+      for (const [i, [code, name]] of (
+        [
+          ['GENERAL', 'General worker'],
+          ['SKILLED', 'Skilled worker'],
+          ['SEMI_SKILLED', 'Semi skilled worker'],
+          ['TECHNICAL', 'Technical worker'],
+        ] as const
+      ).entries()) {
+        const found = await tx.workerCategory.findUnique({ where: { code }, select: { id: true } });
+        const row =
+          found ??
+          (await tx.workerCategory.create({ data: { code, name, sortOrder: (i + 1) * 10, createdBy: by } }));
+        if (!found) inserted += 1;
+        cats.set(code, row.id);
+      }
+      const officer =
+        (await tx.employeeCategory.findFirst({ where: { code: 'OFFICER' }, select: { id: true } })) ??
+        (await tx.employeeCategory.create({ data: { code: 'OFFICER', name: 'Officer', createdBy: by } }));
+      const grade = await tx.jobGrade.findUnique({ where: { code: 'GRADE_2' }, select: { id: true } });
+      // The employee first: the workers report to them.
+      const plan = [
+        ['1990123456792', 'employee', 'EMP-A-0001', null, 'permanent', '2010-05-01'],
+        ['1990123456789', 'worker', 'WRK-A-0001', 'GENERAL', 'permanent', '2012-03-01'],
+        ['1990123456790', 'worker', 'WRK-A-0002', 'SKILLED', 'permanent', '2016-07-15'],
+        ['1990123456791', 'worker', 'WRK-A-0003', 'GENERAL', 'seasonal', '2026-10-01'],
+        ['1990123456793', 'worker', 'WRK-A-0004', 'SEMI_SKILLED', 'casual', '2021-01-10'],
+        ['1990123456794', 'worker', 'WRK-B-0001', 'GENERAL', 'permanent', '2015-02-01'],
+      ] as const;
+      let supervisor: bigint | null = null;
+      for (const [nid, type, number, cat, engagement, joined] of plan) {
+        const person = await tx.person.findUnique({
+          where: { nationalId: nid },
+          select: { id: true, registeredEstateId: true },
+        });
+        if (!person?.registeredEstateId) continue;
+        const exists = await tx.employmentProfile.findFirst({
+          where: { estateId: person.registeredEstateId, profileNumber: number },
+          select: { id: true },
+        });
+        if (exists) {
+          if (type === 'employee') supervisor = exists.id;
+          continue;
+        }
+        const separated = number === 'WRK-B-0001';
+        const created = await tx.employmentProfile.create({
+          data: {
+            personId: person.id,
+            estateId: person.registeredEstateId,
+            employmentType: type,
+            profileNumber: number,
+            workerCategoryId: type === 'worker' ? (cats.get(cat) ?? null) : null,
+            employeeCategoryId: type === 'employee' ? officer.id : null,
+            engagementType: engagement,
+            employmentBasis: 'full_time',
+            jobNature: type === 'employee' ? 'supervisory' : 'field',
+            workingLocation: type === 'employee' ? 'office' : 'field',
+            jobGradeId: type === 'employee' ? (grade?.id ?? null) : null,
+            joiningDate: businessDateToDb(joined as BusinessDate),
+            supervisorProfileId: type === 'worker' && !separated ? supervisor : null,
+            nomineeName: type === 'employee' ? 'Nasrin Hossain' : null,
+            nomineeRelation: type === 'employee' ? 'spouse' : null,
+            status: separated ? 'separated' : 'active',
+            separationDate: separated ? businessDateToDb('2026-06-30' as BusinessDate) : null,
+            separationType: separated ? 'resignation' : null,
+            separationReason: separated ? 'Moved to another estate' : null,
+            createdBy: by,
+          },
+        });
+        if (type === 'employee') supervisor = created.id;
+        inserted += 1;
       }
       return { inserted, updated: 0 };
     }),

@@ -98,7 +98,8 @@ export const MODULES: readonly CatalogueModule[] = [
   ...m('Plantation', 'operational', [['field_activity', 'Field activities']]),
   ...m('Workforce', 'master', [
     ['person', 'People'],
-    ['employment', 'Employment profiles'],
+    // Separating an employment is approved (P4 §8.3: POST /employment-profiles/{id}/separate).
+    ['employment', 'Employment profiles', ['approve']],
     ['team', 'Teams'],
     ['contractor', 'Contractors'],
   ]),

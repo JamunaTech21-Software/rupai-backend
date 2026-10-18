@@ -255,7 +255,7 @@ export const EstateSummaryOut = z.object({
   section_count: z.number().int(),
   field_count: z.number().int(),
   factory_count: z.number().int(),
-  /** Entered, or 0 until HR exists (Phase 2); `workforce_available` says whether HR does. */
+  /** Entered, or the estate's current workers (P2.02) and their family members (dependents). */
   worker_count: z.number().int(),
   family_count: z.number().int(),
   workforce_available: z.boolean(),
@@ -277,8 +277,8 @@ export const EstateSummaryOut = z.object({
     division_count: z.number().int(),
     section_count: z.number().int(),
     field_count: z.number().int(),
-    worker_count: z.number().int().nullable(),
-    family_count: z.number().int().nullable(),
+    worker_count: z.number().int(),
+    family_count: z.number().int(),
   }),
   /** R.3: the figures under the Division & Section and Field / Block lists. Always computed. */
   hierarchy: z.object({

@@ -66,6 +66,9 @@ export const DOCUMENT_TYPES: readonly DocumentType[] = [
   fin('payment', 'Payment', 'PV', ESTATE_FY),
   // Workforce and payroll
   op('person', 'Person', 'PRS', []),
+  // P2.02: the design's Worker ID and Employee ID, per estate.
+  op('worker_profile', 'Worker ID', 'WRK', ['estate']),
+  op('employee_profile', 'Employee ID', 'EMP', ['estate']),
   op('leave', 'Leave', 'LV', ESTATE_FY),
   fin('payroll_run', 'Payroll run', 'PAY', ESTATE_FY),
   fin('payroll_payment', 'Payroll payment', 'PP', ESTATE_FY),

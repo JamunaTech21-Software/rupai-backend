@@ -111,6 +111,13 @@ const COMMON_SEEDS: Readonly<Record<string, Row[]>> = {
     ['PLUCKING', 'Tea plucking'],
     ['PRUNING', 'Pruning'],
   ]),
+  // P2.02: the employee form's Job Grade (the manager's design).
+  job_grade: plain([
+    ['GRADE_1', 'Grade 1'],
+    ['GRADE_2', 'Grade 2'],
+    ['GRADE_3', 'Grade 3'],
+    ['GRADE_4', 'Grade 4'],
+  ]),
   language: plain([
     ['BN', 'Bangla'],
     ['EN', 'English'],

@@ -122,8 +122,17 @@ export const DOCUMENT_OWNERS: readonly DocumentOwner[] = [
       return new Map(rows.map((p) => [p.id, `${p.personCode} · ${p.fullName}`]));
     },
     writable: async (db, id) => {
-      const p = await db.person.findFirst({ where: { id }, select: { registeredEstateId: true } });
-      return p !== null && (await personWritable(p.registeredEstateId));
+      const p = await db.person.findFirst({
+        where: { id },
+        select: { registeredEstateId: true, profiles: { select: { estateId: true } } },
+      });
+      return (
+        p !== null &&
+        (await personWritable(
+          p.registeredEstateId,
+          p.profiles.map((x) => x.estateId),
+        ))
+      );
     },
     places: async (db, ids) =>
       byId(
