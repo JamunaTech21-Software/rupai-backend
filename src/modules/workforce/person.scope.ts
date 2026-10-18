@@ -1,13 +1,25 @@
-import { byColumn, SCOPED_MODELS } from '../../core/scope/scoped-models.js';
+import { SCOPED_MODELS } from '../../core/scope/scoped-models.js';
 
 /**
- * Data scope of the person registry (P2.01, BACKLOG D-2.01-2). A person has no estate of their own
- * (P3 §8.1): until an employment profile places them (P2.02), the estate that registered them decides who
- * sees them. An estate grant sees that estate's people. Division and section grants see no one yet: they
- * will see the people whose profiles are assigned to them (P2.03). Facility grants see no one.
+ * Data scope of the workforce (P2.01–P2.02, BACKLOG D-2.01-2, D-2.02-3).
  *
- * A person with no registering estate is seen only with access to all estates.
+ *   employment_profile  an estate grant sees the profiles of that estate; everyone sees their own (self).
+ *                       Division and section grants see the profiles assigned to them from P2.03.
+ *   person              a person is seen where they are registered OR hold a profile, and by themselves.
+ *
+ * Creates are checked by the services: a person's estate is not one column, and a profile is created
+ * under an estate the caller must be able to change.
  */
-SCOPED_MODELS.register('Person', {
-  estate: byColumn('registeredEstateId'),
+const inIds = (ids: readonly bigint[]) => ({ in: [...ids] });
+
+SCOPED_MODELS.register('EmploymentProfile', {
+  estate: (ids) => ({ estateId: inIds(ids) }),
+  self: (ids) => ({ id: inIds(ids) }),
+  createsCheckedBy: 'service',
+}).register('Person', {
+  estate: (ids) => ({
+    OR: [{ registeredEstateId: inIds(ids) }, { profiles: { some: { estateId: inIds(ids) } } }],
+  }),
+  self: (ids) => ({ profiles: { some: { id: inIds(ids) } } }),
+  createsCheckedBy: 'service',
 });

@@ -191,7 +191,7 @@ describe('the home dashboard (R.5)', () => {
     expect((await get('/dashboards/home/panels/nonsense')).status).toBe(404);
   });
 
-  it('counts estates, area and fields, and leaves workers to HR', async () => {
+  it('counts estates, area and fields; workers only with employment.view', async () => {
     const p = await panel('welcome');
     expect(p.available).toBe(true);
     expect(Date.parse(p.as_of)).toBeGreaterThan(0);
@@ -199,11 +199,8 @@ describe('the home dashboard (R.5)', () => {
     expect(m.estates).toMatchObject({ value: '2', unit: 'count', drill_down: { resource: 'estates' } });
     expect(m.total_area).toMatchObject({ value: '150.500', unit: 'acre' });
     expect(m.fields).toMatchObject({ value: '4', drill_down: { resource: 'fields' } });
-    expect(m.workers).toMatchObject({
-      value: null,
-      available: false,
-      available_from: expect.stringContaining('Phase 2'),
-    });
+    // Live since P2.02, and only with employment.view, which this user does not hold.
+    expect(m.workers).toBeUndefined();
     // Narrowed to one estate.
     const a = byKey(await panel('welcome', MANAGER, `?estate_id=${estateA}`));
     expect([a.estates?.value, a.total_area?.value, a.fields?.value]).toEqual(['1', '100.000', '3']);

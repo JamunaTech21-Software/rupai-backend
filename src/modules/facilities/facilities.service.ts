@@ -12,10 +12,12 @@ import type { Database } from '../../core/db/prisma.js';
 import { withTransaction, type Tx } from '../../core/db/transaction.js';
 import { Errors } from '../../core/errors/app-error.js';
 import type { ListQuery } from '../../core/http/list-query.js';
+import { runUnscoped } from '../../core/scope/scope.js';
 import { businessDateToDb } from '../../core/time/dates.js';
 import type { Factory, Party, Prisma, Warehouse } from '../../generated/prisma/client.js';
 import {
   area,
+  assertProfileRef,
   day,
   duplicate,
   idIn,
@@ -290,6 +292,10 @@ export function facilitiesService(db: Database) {
     async create(body: z.infer<typeof CreateFactoryBody>, actorId: bigint) {
       return withTransaction(db, async (tx) => {
         await assertEstate(tx, body.primary_estate_id);
+        // A factory belongs to the organisation: its manager may be employed at any estate (P2.02).
+        await runUnscoped('factory manager: a profile of any estate', () =>
+          assertProfileRef(tx, 'manager_profile_id', body.manager_profile_id, null),
+        );
         const { id } = await tx.factory
           .create({
             data: {
@@ -319,6 +325,9 @@ export function facilitiesService(db: Database) {
       return withTransaction(db, async (tx) => {
         const before = await factoryOrNotFound(tx, id);
         await assertEstate(tx, changes.primary_estate_id);
+        await runUnscoped('factory manager: a profile of any estate', () =>
+          assertProfileRef(tx, 'manager_profile_id', changes.manager_profile_id, null),
+        );
         const { count } = await tx.factory
           .updateMany({
             where: { id, version: expectedVersion },

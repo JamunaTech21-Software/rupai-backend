@@ -15,6 +15,7 @@ import { removeContactsOf } from '../facilities/contacts.service.js';
 import {
   area,
   assertNoScopeGrants,
+  assertProfileRef,
   denyWrite,
   duplicate,
   idIn,
@@ -434,6 +435,15 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
     async create(body: z.infer<typeof CreateEstateBody>, actorId: bigint) {
       return withTransaction(db, async (tx) => {
         await checkEstate(tx, body);
+        if (body.manager_profile_id) {
+          throw Errors.validation([
+            {
+              field: 'manager_profile_id',
+              code: 'VALIDATION_FAILED',
+              message: 'Name the manager once the estate exists and they are employed there.',
+            },
+          ]);
+        }
         const { id } = await tx.estate
           .create({
             data: {
@@ -465,6 +475,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
         const before = await estateOrNotFound(tx, id);
         if (!(await canWriteEstate(before))) await denyWrite(accessLog, 'estate', id, 'update');
         await checkEstate(tx, changes, before);
+        await assertProfileRef(tx, 'manager_profile_id', changes.manager_profile_id, id);
         const { count } = await tx.estate
           .updateMany({
             where: { id, version: expectedVersion },
@@ -561,6 +572,12 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
         },
       }),
     ]);
+    // The estate's workforce (P2.02): its current workers (not separated) and their family members.
+    const current = { estateId: id, employmentType: 'worker', status: { not: 'separated' } };
+    const [workers, families] = await Promise.all([
+      db.employmentProfile.count({ where: current }),
+      db.personDependent.count({ where: { person: { profiles: { some: current } } } }),
+    ]);
     const counts = (rows: { status: string; _count: { _all: number } }[]) => {
       const active = rows.find((r) => r.status === 'active')?._count._all ?? 0;
       const total = rows.reduce((n, r) => n + r._count._all, 0);
@@ -585,8 +602,8 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
       division_count: d.active,
       section_count: sc.active,
       field_count: f.active,
-      worker_count: null,
-      family_count: null,
+      worker_count: workers,
+      family_count: families,
     };
     const src = (v: unknown) => (v === null ? ('computed' as const) : ('entered' as const));
     const fieldTypes = Object.fromEntries(FIELD_TYPES.map((t) => [t, 0])) as Record<FieldType, number>;
@@ -602,9 +619,9 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
       section_count: e.sectionCount ?? sc.active,
       field_count: e.fieldCount ?? f.active,
       factory_count: factoryCount,
-      worker_count: e.workerCount ?? 0,
-      family_count: e.familyCount ?? 0,
-      workforce_available: false,
+      worker_count: e.workerCount ?? workers,
+      family_count: e.familyCount ?? families,
+      workforce_available: true,
       photo_count: photoCount,
       source: {
         tea_area: src(e.teaArea),
@@ -660,6 +677,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
         const estate = await estateOrNotFound(tx, estateId);
         if (!(await canWriteEstate(estate))) await denyWrite(accessLog, 'division', null, 'create');
         if (estate.status !== 'active') throw inactiveParent('estate_id', 'estate');
+        await assertProfileRef(tx, 'manager_profile_id', body.manager_profile_id, estateId);
         const { id } = await tx.division
           .create({
             data: {
@@ -689,6 +707,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
       return withTransaction(db, async (tx) => {
         const before = await divisionOrNotFound(tx, id);
         if (!(await canWriteDivision(before))) await denyWrite(accessLog, 'division', id, 'update');
+        await assertProfileRef(tx, 'manager_profile_id', changes.manager_profile_id, before.estateId);
         const { count } = await tx.division
           .updateMany({
             where: { id, version: expectedVersion },
@@ -784,6 +803,7 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
         if (!(await canWriteDivision(division))) await denyWrite(accessLog, 'section', null, 'create');
         if (division.status !== 'active') throw inactiveParent('division_id', 'division');
         await checkParentSection(tx, body.parent_section_id, divisionId);
+        await assertProfileRef(tx, 'supervisor_profile_id', body.supervisor_profile_id, division.estateId);
         const { id } = await tx.section
           .create({
             data: {
@@ -814,6 +834,12 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
         const before = await sectionOrNotFound(tx, id);
         if (!(await canWriteSection(before))) await denyWrite(accessLog, 'section', id, 'update');
         await checkParentSection(tx, changes.parent_section_id, before.divisionId, id);
+        await assertProfileRef(
+          tx,
+          'supervisor_profile_id',
+          changes.supervisor_profile_id,
+          before.division.estateId,
+        );
         const { count } = await tx.section
           .updateMany({
             where: { id, version: expectedVersion },

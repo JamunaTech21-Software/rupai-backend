@@ -97,3 +97,28 @@ export function inactiveParent(field: string, what: string): AppError {
 export function versionConflict(current: { version: number }, resource: unknown): never {
   throw Errors.versionConflict({ version: current.version, resource });
 }
+
+/**
+ * A manager / supervisor named on a hierarchy node or a facility (P2.02: real profiles now): it exists,
+ * is not separated, and — when `estateId` is given — is employed at that estate. Throws a field error.
+ */
+export async function assertProfileRef(
+  tx: Tx,
+  field: string,
+  id: bigint | null | undefined,
+  estateId: bigint | null,
+): Promise<void> {
+  if (id === undefined || id === null) return;
+  const p = await tx.employmentProfile.findUnique({
+    where: { id },
+    select: { estateId: true, status: true },
+  });
+  const message = !p
+    ? 'No such employment profile.'
+    : p.status === 'separated'
+      ? 'That profile is separated.'
+      : estateId !== null && p.estateId !== estateId
+        ? 'The profile must be employed at this estate.'
+        : null;
+  if (message) throw Errors.validation([{ field, code: 'VALIDATION_FAILED', message }]);
+}

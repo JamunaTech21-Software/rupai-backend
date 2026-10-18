@@ -192,6 +192,10 @@ model User {
   createdAmenities            Amenity[]             @relation("AmenityCreatedBy")
   createdImportBatches        ImportBatch[]         @relation("ImportBatchCreatedBy")
   createdPersons              Person[]              @relation("PersonCreatedBy")
+  createdProfiles             EmploymentProfile[]   @relation("EmploymentProfileCreatedBy")
+  updatedProfiles             EmploymentProfile[]   @relation("EmploymentProfileUpdatedBy")
+  createdJobGrades            JobGrade[]            @relation("JobGradeCreatedBy")
+  updatedJobGrades            JobGrade[]            @relation("JobGradeUpdatedBy")
   updatedPersons              Person[]              @relation("PersonUpdatedBy")
   createdPersonDependents     PersonDependent[]     @relation("PersonDependentCreatedBy")
   updatedPersonDependents     PersonDependent[]     @relation("PersonDependentUpdatedBy")
@@ -276,6 +280,8 @@ model User {
   @@unique([email], map: "ux_user_email")
   @@index([status], map: "ix_user_status")
   @@index([personId], map: "ix_user_person")
+  employmentProfile           EmploymentProfile?    @relation("UserProfile", fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_user_employment_profile")
+
   @@index([employmentProfileId], map: "ix_user_employment_profile")
   @@index([createdBy], map: "ix_user_created_by")
   @@index([updatedBy], map: "ix_user_updated_by")
@@ -670,6 +676,8 @@ model Estate {
   factories    Factory[]
   seasons      Season[]
   persons      Person[]
+  profiles     EmploymentProfile[] @relation("ProfileEstate")
+  manager      EmploymentProfile?  @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
   shifts       Shift[]         @relation("ShiftEstate")
 
   workflows Workflow[]
@@ -707,6 +715,7 @@ model Division {
   creator  User      @relation("DivisionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_created_by")
   updater  User?     @relation("DivisionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_updated_by")
   sections Section[]
+  manager  EmploymentProfile? @relation("DivisionManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_manager")
 
   @@unique([estateId, code], map: "ux_division_code")
   @@index([status], map: "ix_division_status")
@@ -739,6 +748,7 @@ model Section {
   division Division  @relation(fields: [divisionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_division")
   parent   Section?  @relation("SectionParent", fields: [parentSectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_parent")
   children Section[] @relation("SectionParent")
+  supervisor EmploymentProfile? @relation("SectionSupervisor", fields: [supervisorProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_supervisor")
   creator  User      @relation("SectionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_created_by")
   updater  User?     @relation("SectionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_updated_by")
   fields   Field[]
@@ -854,6 +864,7 @@ model Factory {
   creator       User         @relation("FactoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_factory_created_by")
   updater       User?        @relation("FactoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_factory_updated_by")
 
+  manager EmploymentProfile? @relation("FactoryManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_factory_manager")
   @@unique([organisationId, code], map: "ux_factory_code")
   @@index([primaryEstateId], map: "ix_factory_primary_estate")
   @@index([licenceExpiry], map: "ix_factory_licence_expiry")
@@ -1155,6 +1166,7 @@ model WorkerCategory {
   updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
+  profiles EmploymentProfile[]
   creator User  @relation("WorkerCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_worker_category_created_by")
   updater User? @relation("WorkerCategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_worker_category_updated_by")
 
@@ -1180,6 +1192,7 @@ model EmployeeCategory {
   updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
+  profiles EmploymentProfile[]
   creator User  @relation("EmployeeCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_employee_category_created_by")
   updater User? @relation("EmployeeCategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_employee_category_updated_by")
 
@@ -2622,6 +2635,7 @@ model Person {
   religion         Religion?        @relation(fields: [religionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_religion")
   educationLevel   EducationLevel?  @relation(fields: [educationLevelId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_education_level")
   dependents       PersonDependent[]
+  profiles         EmploymentProfile[]
   skillLinks       PersonSkill[]
   languageLinks    PersonLanguage[]
   creator          User             @relation("PersonCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_created_by")
@@ -2805,4 +2819,117 @@ model Language {
   @@index([createdBy], map: "ix_language_created_by")
   @@index([updatedBy], map: "ix_language_updated_by")
   @@map("language")
+}
+
+// ---- P2.02 employment profiles (Spec P3 §8.2, P1 §5.5; the manager's design, BACKLOG D-2-2) --------
+
+/// Employment of a person at an estate for a period (P1 §5.5): the subject of attendance, work and pay.
+/// A person may hold several over time (worker, then staff); one ACTIVE per type at once.
+model EmploymentProfile {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  personId            BigInt    @map("person_id") @db.UnsignedBigInt
+  estateId            BigInt    @map("estate_id") @db.UnsignedBigInt
+  /// worker | employee. Determines the wage model, not the lifecycle.
+  employmentType      String    @map("employment_type") @db.VarChar(30)
+  /// The Worker ID / Employee ID. Unique within the estate; numbered by the worker / employee format.
+  profileNumber       String    @map("profile_number") @db.VarChar(40)
+  /// One of the two by employment_type (P3 §8.2 category_id, split for a real foreign key each).
+  workerCategoryId    BigInt?   @map("worker_category_id") @db.UnsignedBigInt
+  employeeCategoryId  BigInt?   @map("employee_category_id") @db.UnsignedBigInt
+  /// permanent | temporary | seasonal | casual | probation | contractual (the design's Worker Type)
+  engagementType      String    @map("engagement_type") @db.VarChar(30)
+  /// full_time | part_time
+  employmentBasis     String?   @map("employment_basis") @db.VarChar(30)
+  /// field | factory | office | technical | supervisory | administrative | operational
+  jobNature           String?   @map("job_nature") @db.VarChar(30)
+  /// field | factory | office | warehouse | nursery | head_office
+  workingLocation     String?   @map("working_location") @db.VarChar(30)
+  jobGradeId          BigInt?   @map("job_grade_id") @db.UnsignedBigInt
+  workEmail           String?   @map("work_email") @db.VarChar(150)
+  joiningDate         DateTime  @map("joining_date") @db.Date
+  confirmationDate    DateTime? @map("confirmation_date") @db.Date
+  probationEndDate    DateTime? @map("probation_end_date") @db.Date
+  separationDate      DateTime? @map("separation_date") @db.Date
+  /// resignation | retirement | termination | death | end_of_contract
+  separationType      String?   @map("separation_type") @db.VarChar(30)
+  separationReason    String?   @map("separation_reason") @db.VarChar(500)
+  /// The reporting line (the approval engine's reporting-line resolution).
+  supervisorProfileId BigInt?   @map("supervisor_profile_id") @db.UnsignedBigInt
+  /// Service under this profile adds to the person's earlier profiles (gratuity, O-11).
+  isServiceContinuous Boolean   @default(true) @map("is_service_continuous")
+  // ---- nominee (the design's employee form; PF reads it in Phase 9) ----
+  nomineeName         String?   @map("nominee_name") @db.VarChar(150)
+  /// father | mother | spouse | son | daughter | brother | sister | other
+  nomineeRelation     String?   @map("nominee_relation") @db.VarChar(30)
+  nomineeDateOfBirth  DateTime? @map("nominee_date_of_birth") @db.Date
+  nomineeNationalId   String?   @map("nominee_national_id") @db.VarChar(30)
+  nomineePhone        String?   @map("nominee_phone") @db.VarChar(30)
+  nomineeAddress      String?   @map("nominee_address") @db.VarChar(300)
+  remarks             String?   @db.VarChar(500)
+  /// active | suspended | on_leave | separated
+  status              String    @default("active") @db.VarChar(30)
+  /// GENERATED (migration SQL): person_id + employment_type while active, else NULL. Unique.
+  activeKey           String?   @map("active_key") @db.VarChar(60)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy           BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  person           Person            @relation(fields: [personId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_person")
+  estate           Estate            @relation("ProfileEstate", fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_estate")
+  workerCategory   WorkerCategory?   @relation(fields: [workerCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_worker_category")
+  employeeCategory EmployeeCategory? @relation(fields: [employeeCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_employee_category")
+  jobGrade         JobGrade?         @relation(fields: [jobGradeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_job_grade")
+  supervisor       EmploymentProfile?  @relation("ProfileSupervisor", fields: [supervisorProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_supervisor")
+  reports          EmploymentProfile[] @relation("ProfileSupervisor")
+  users            User[]            @relation("UserProfile")
+  managedEstates   Estate[]          @relation("EstateManager")
+  managedDivisions Division[]        @relation("DivisionManager")
+  supervisedSections Section[]       @relation("SectionSupervisor")
+  managedFactories Factory[]         @relation("FactoryManager")
+  creator          User              @relation("EmploymentProfileCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_created_by")
+  updater          User?             @relation("EmploymentProfileUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_updated_by")
+
+  @@unique([estateId, profileNumber], map: "ux_profile_number")
+  @@unique([activeKey], map: "ux_profile_active")
+  @@index([personId], map: "ix_profile_person")
+  @@index([employmentType], map: "ix_profile_type")
+  @@index([joiningDate], map: "ix_profile_joining")
+  @@index([separationDate], map: "ix_profile_separation")
+  @@index([status], map: "ix_profile_status")
+  @@index([workerCategoryId], map: "ix_profile_worker_category")
+  @@index([employeeCategoryId], map: "ix_profile_employee_category")
+  @@index([jobGradeId], map: "ix_profile_job_grade")
+  @@index([supervisorProfileId], map: "ix_profile_supervisor")
+  @@index([createdBy], map: "ix_profile_created_by")
+  @@index([updatedBy], map: "ix_profile_updated_by")
+  @@map("employment_profile")
+}
+
+/// P2.02 (the manager's design, employee form): Job Grade. Common lookup shape, client-editable.
+model JobGrade {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  profiles EmploymentProfile[]
+  creator  User                @relation("JobGradeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_job_grade_created_by")
+  updater  User?               @relation("JobGradeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_job_grade_updated_by")
+
+  @@unique([code], map: "ux_job_grade_code")
+  @@index([status], map: "ix_job_grade_status")
+  @@index([createdBy], map: "ix_job_grade_created_by")
+  @@index([updatedBy], map: "ix_job_grade_updated_by")
+  @@map("job_grade")
 }

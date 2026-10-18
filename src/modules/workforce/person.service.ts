@@ -458,7 +458,16 @@ export function personService(db: Database, accessLog: AccessLog, timezone: stri
     p: { id: bigint | null; registeredEstateId: bigint | null },
     operation: string,
   ) {
-    if (!(await personWritable(p.registeredEstateId))) await denyWrite(accessLog, 'person', p.id, operation);
+    // Where the person is employed counts too (P2.02): the estate's HR keeps its people's records.
+    const employedAt =
+      p.id === null
+        ? []
+        : (
+            await db.employmentProfile.findMany({ where: { personId: p.id }, select: { estateId: true } })
+          ).map((r) => r.estateId);
+    if (!(await personWritable(p.registeredEstateId, employedAt))) {
+      await denyWrite(accessLog, 'person', p.id, operation);
+    }
   }
 
   async function dependentOrNotFound(tx: Database | Tx, personId: bigint, id: bigint) {

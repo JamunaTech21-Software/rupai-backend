@@ -168,6 +168,24 @@ function probeModule(db: Database, authz: ReturnType<typeof dbPermissionResolver
 beforeAll(async () => {
   mdb = await createMigratedDatabase();
   await ensureEstates(mdb.migrator, [ESTATE_A, ESTATE_B, 4n, 7n, 8n, 9n]);
+  // user.employment_profile_id is a real foreign key since P2.02: the stand-in profile must exist.
+  await runUnscoped('stand-in profile', async () => {
+    const person = await mdb.migrator.person.create({
+      data: { personCode: 'PRS-SCOPE-1', firstName: 'Self', fullName: 'Self', createdBy: 1n },
+    });
+    await mdb.migrator.employmentProfile.create({
+      data: {
+        id: SELF_PROFILE,
+        personId: person.id,
+        estateId: ESTATE_B,
+        employmentType: 'worker',
+        profileNumber: 'SELF-1',
+        engagementType: 'permanent',
+        joiningDate: new Date('2020-01-01'),
+        createdBy: 1n,
+      },
+    });
+  });
   const config = loadConfig({ ...TEST_ENV, DATABASE_URL: url('app', mdb.name), RATE_LIMIT_ENABLED: 'false' });
   const authz = dbPermissionResolver(mdb.db);
   standIn = createDatabase(

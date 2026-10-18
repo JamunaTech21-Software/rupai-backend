@@ -200,7 +200,8 @@ describe('the estate overview (computed, in acres)', () => {
       field_count: 0,
       worker_count: 0,
       family_count: 0,
-      workforce_available: false,
+      // Since P2.02 the counts come from employment profiles and dependents: none here yet.
+      workforce_available: true,
       photo_count: 0,
     });
     const d = await ok(send('post', `/estates/${e.id}/divisions`, { code: 'N', name: 'North' }), 201);

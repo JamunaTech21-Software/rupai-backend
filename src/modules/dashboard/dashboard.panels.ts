@@ -112,7 +112,26 @@ async function welcome(ctx: PanelContext): Promise<PanelDataT> {
       }),
     );
   }
-  metrics.push(later('workers', 'Total Workers', 'count', PHASE_HR));
+  // Live since P2.02: the current workers (not separated) of the estates in view.
+  if (ctx.permissions.has('employment.view')) {
+    const workers = await ctx.db.employmentProfile.count({
+      where: {
+        employmentType: 'worker',
+        status: { not: 'separated' },
+        ...(ctx.estateId === null ? {} : { estateId: ctx.estateId }),
+      },
+    });
+    metrics.push(
+      metric('workers', 'Total Workers', String(workers), 'count', {
+        resource: 'employment-profiles',
+        filter: {
+          employment_type: 'worker',
+          status: ['active', 'on_leave', 'suspended'],
+          ...estateFilter(ctx),
+        },
+      }),
+    );
+  }
   return { kind: 'metrics', metrics };
 }
 
@@ -424,7 +443,7 @@ export const HOME_PANELS: readonly PanelDefinition[] = [
     kind: 'metrics',
     row: 1,
     span: 8,
-    visible: (p) => can(p, 'estate.view', 'field.view'),
+    visible: (p) => can(p, 'estate.view', 'field.view', 'employment.view'),
     load: welcome,
   },
   {
