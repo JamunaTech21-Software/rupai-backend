@@ -1,7 +1,9 @@
 import { hashPassword } from '../../src/core/auth/password.js';
 import type { Seeder } from '../../src/core/db/seed.js';
 import type { Tx } from '../../src/core/db/transaction.js';
+import { figuresOf, parseGeometry, type Geometry } from '../../src/core/geo/geometry.js';
 import { runUnscoped } from '../../src/core/scope/scope.js';
+import type { Prisma } from '../../src/generated/prisma/client.js';
 import { businessDateToDb, type BusinessDate } from '../../src/core/time/dates.js';
 import { fiscalYearCode, fiscalYearDates, periodsOf } from '../../src/modules/calendar/fiscal.service.js';
 import { ADMINISTRATOR_ROLE_CODE } from '../../src/modules/identity/permission-catalogue.js';
@@ -246,6 +248,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoFieldDetailsSeeder,
     demoPersonsSeeder,
     demoProfilesSeeder,
+    demoShapesSeeder,
   ];
 }
 
@@ -373,6 +376,98 @@ const demoPersonsSeeder: Seeder = {
         }
       }
       return { inserted, updated: 0 };
+    }),
+};
+
+/**
+ * R.3 GIS (RUP-655): shapes for DEMO-A, so the Field / Block map shows something real: each section a row
+ * of fields east of the estate's position, its outline around them, the drain as a line. Measured by the
+ * same code as the API. Only fields and sections without a shape are drawn.
+ */
+const demoShapesSeeder: Seeder = {
+  name: 'demo: field and section shapes of DEMO-A',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let updated = 0;
+      const estate = await tx.estate.findFirst({
+        where: { code: 'DEMO-A' },
+        select: { id: true, latitude: true, longitude: true },
+      });
+      if (!estate) return { inserted: 0, updated };
+      const lat0 = estate.latitude ? Number(estate.latitude) : 26.3417;
+      const lng0 = estate.longitude ? Number(estate.longitude) : 88.0008;
+      const sections = await tx.section.findMany({
+        where: { division: { estateId: estate.id } },
+        orderBy: [{ divisionId: 'asc' }, { code: 'asc' }],
+        include: { fields: { orderBy: { fieldNumber: 'asc' } } },
+      });
+      const W = 0.0042; // ≈ 420 m
+      const H = 0.0032; // ≈ 355 m
+      const rect = (x: number, y: number, w: number, h: number): Geometry => ({
+        type: 'Polygon',
+        coordinates: [
+          [
+            [x, y],
+            [x + w, y],
+            [x + w, y + h],
+            [x, y + h],
+            [x, y],
+          ],
+        ],
+      });
+      const write = (g: Geometry) => {
+        const f = figuresOf(parseGeometry(g, g.type === 'LineString'));
+        return {
+          boundary: g as unknown as Prisma.InputJsonValue,
+          centroidLatitude: f.centroid.latitude.toFixed(6),
+          centroidLongitude: f.centroid.longitude.toFixed(6),
+          perimeterKm: f.perimeterKm.toFixed(3),
+          mappedAreaAcres: f.areaAcres === null ? null : f.areaAcres.toFixed(3),
+        };
+      };
+      for (const [row, section] of sections.entries()) {
+        const y = lat0 - 0.002 - row * (H + 0.0012);
+        const fields = section.fields.filter((f) => f.parentFieldId === null);
+        for (const [col, field] of fields.entries()) {
+          if (field.boundary !== null) continue;
+          const x = lng0 + 0.002 + col * (W + 0.0004);
+          const g: Geometry =
+            field.fieldType === 'drain'
+              ? {
+                  type: 'LineString',
+                  coordinates: [
+                    [x, y + H / 2],
+                    [x + W, y + H / 2],
+                  ],
+                }
+              : rect(x, y, W, H);
+          await tx.field.update({ where: { id: field.id }, data: write(g) });
+          updated += 1;
+        }
+        // A block inside its parent field: the parent's south-west quarter.
+        for (const block of section.fields.filter((f) => f.parentFieldId !== null && f.boundary === null)) {
+          const col = fields.findIndex((f) => f.id === block.parentFieldId);
+          if (col < 0) continue;
+          await tx.field.update({
+            where: { id: block.id },
+            data: write(rect(lng0 + 0.002 + col * (W + 0.0004) + 0.0003, y + 0.0003, W / 2.5, H / 2.5)),
+          });
+          updated += 1;
+        }
+        if (section.boundary === null && fields.length > 0) {
+          const o = rect(lng0 + 0.0018, y - 0.0002, fields.length * (W + 0.0004), H + 0.0004);
+          const fig = figuresOf(o);
+          await tx.section.update({
+            where: { id: section.id },
+            data: {
+              boundary: o as unknown as Prisma.InputJsonValue,
+              mappedAreaAcres: (fig.areaAcres ?? 0).toFixed(3),
+            },
+          });
+          updated += 1;
+        }
+      }
+      return { inserted: 0, updated };
     }),
 };
 

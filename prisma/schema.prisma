@@ -737,6 +737,10 @@ model Section {
   /// R.3: a section inside another section of the same division.
   parentSectionId     BigInt?   @map("parent_section_id") @db.UnsignedBigInt
   description         String?   @db.VarChar(1000)
+  /// R.3 GIS (RUP-655): the section's outline (GeoJSON Polygon), the design's "Section Boundary" layer.
+  boundary            Json?
+  /// Computed from the boundary, acres.
+  mappedAreaAcres     Decimal?  @map("mapped_area_acres") @db.Decimal(14, 3)
   /// active | inactive
   status              String    @default("active") @db.VarChar(30)
   version             Int       @default(1)
@@ -800,6 +804,16 @@ model Field {
   irrigationSourceId   BigInt?   @map("irrigation_source_id") @db.UnsignedBigInt
   soilTypeId           BigInt?   @map("soil_type_id") @db.UnsignedBigInt
   drainageClassId      BigInt?   @map("drainage_class_id") @db.UnsignedBigInt
+  // ---- R.3 GIS (RUP-655): the field's shape on the map, as the manager's design shows it ----
+  /// GeoJSON geometry, longitude/latitude (WGS 84): Polygon, or LineString for road and drain types.
+  boundary             Json?
+  /// Computed by the server from the boundary on every save; never sent.
+  centroidLatitude     Decimal?  @map("centroid_latitude") @db.Decimal(9, 6)
+  centroidLongitude    Decimal?  @map("centroid_longitude") @db.Decimal(9, 6)
+  /// Perimeter of a polygon, or length of a line, in km.
+  perimeterKm          Decimal?  @map("perimeter_km") @db.Decimal(10, 3)
+  /// Area enclosed by the boundary, acres (a check against the typed gross area). NULL for a line.
+  mappedAreaAcres      Decimal?  @map("mapped_area_acres") @db.Decimal(14, 3)
   version              Int       @default(1)
   createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(0)
   createdBy            BigInt    @map("created_by") @db.UnsignedBigInt
