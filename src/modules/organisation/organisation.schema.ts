@@ -364,6 +364,9 @@ export const SectionOut = z.object({
   parent_section_id: z.string().nullable(),
   parent_section: NodeRef.nullable(),
   description: z.string().nullable(),
+  /** R.3 GIS: the section has an outline (GET /sections/{id}/boundary), and its area. */
+  has_boundary: z.boolean(),
+  mapped_area_acres: z.string().nullable(),
   status: z.enum(STATUSES),
   version: z.number().int(),
   created_at: z.string(),
@@ -475,9 +478,110 @@ export const FieldOut = z.object({
   soil_type: LookupRef.nullable(),
   drainage_class_id: z.string().nullable(),
   drainage_class: LookupRef.nullable(),
+  // ---- R.3 GIS (RUP-655): the shape's figures; the shape itself at GET /fields/{id}/boundary ----
+  has_boundary: z.boolean(),
+  centroid: z.object({ latitude: z.string(), longitude: z.string() }).nullable(),
+  /** Perimeter of the boundary (or length of a road / drain line), km. */
+  perimeter_km: z.string().nullable(),
+  /** Area inside the boundary, acres: a check against gross_area. */
+  mapped_area_acres: z.string().nullable(),
+  /** (mapped − gross) ÷ gross, percent to 1 place. */
+  area_difference_pct: z.string().nullable(),
+  /** Set when the mapped area differs from the gross area by more than 10 % (check the shape or the area). */
+  boundary_warning: z.string().nullable(),
   /** Who added the field ("Created By"). */
   created_by: z.object({ id: z.string(), username: z.string() }),
   version: z.number().int(),
   created_at: z.string(),
   updated_at: z.string().nullable(),
+});
+
+// ---- R.3 GIS (RUP-655): boundaries and the estate map ----------------------------------------------
+
+const Position = z.tuple([z.number(), z.number()]).rest(z.number());
+const PolygonGeometry = z.object({ type: z.literal('Polygon'), coordinates: z.array(z.array(Position)) });
+const LineGeometry = z.object({ type: z.literal('LineString'), coordinates: z.array(Position) });
+export const GeometryOut = z.discriminatedUnion('type', [PolygonGeometry, LineGeometry]);
+
+/**
+ * PUT /fields/{id}/boundary and /sections/{id}/boundary: exactly one of
+ *   boundary  a GeoJSON Polygon (LineString for a road / drain field), or a Feature holding one; null clears
+ *   kml       the text of a KML file (Google Earth, a GPS app): its first Polygon / LineString
+ *   points    a GPS walk of [latitude, longitude] points, in order
+ * Positions are [longitude, latitude] in GeoJSON and KML (WGS 84).
+ */
+export const BoundaryBody = z
+  .strictObject({
+    boundary: z.unknown().optional(),
+    kml: z.string().min(1).max(900_000).optional(),
+    points: z
+      .array(z.strictObject({ latitude: z.number(), longitude: z.number() }))
+      .min(2)
+      .max(2000)
+      .optional(),
+  })
+  .refine(
+    (b) =>
+      [b.boundary !== undefined, b.kml !== undefined, b.points !== undefined].filter(Boolean).length === 1,
+    {
+      message: 'Send exactly one of boundary, kml or points.',
+    },
+  );
+
+export const FieldBoundaryOut = z.object({
+  field_id: z.string(),
+  boundary: GeometryOut.nullable(),
+  centroid: z.object({ latitude: z.string(), longitude: z.string() }).nullable(),
+  perimeter_km: z.string().nullable(),
+  mapped_area_acres: z.string().nullable(),
+  gross_area: z.string(),
+  area_difference_pct: z.string().nullable(),
+  boundary_warning: z.string().nullable(),
+  version: z.number().int(),
+});
+export const SectionBoundaryOut = z.object({
+  section_id: z.string(),
+  boundary: GeometryOut.nullable(),
+  mapped_area_acres: z.string().nullable(),
+  version: z.number().int(),
+});
+
+/** GET /estates/{id}/map: the design's map, one GeoJSON FeatureCollection. */
+export const EstateMapOut = z.object({
+  estate: z.object({
+    id: z.string(),
+    code: z.string(),
+    name: z.string(),
+    latitude: z.string().nullable(),
+    longitude: z.string().nullable(),
+  }),
+  /** [west, south, east, north] of every shape, to fit the map; null when nothing is mapped. */
+  bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]).nullable(),
+  type: z.literal('FeatureCollection'),
+  features: z.array(
+    z.object({
+      type: z.literal('Feature'),
+      id: z.string(),
+      geometry: GeometryOut,
+      properties: z.object({
+        /** field: a field or block · road · drain (line or polygon of those types) · section: an outline */
+        layer: z.enum(['field', 'road', 'drain', 'section']),
+        id: z.string(),
+        code: z.string(),
+        name: z.string().nullable(),
+        field_type: z.string().nullable(),
+        field_status: z.string().nullable(),
+        status: z.string(),
+        gross_area: z.string().nullable(),
+        planted_area: z.string().nullable(),
+        mapped_area_acres: z.string().nullable(),
+        section_id: z.string().nullable(),
+        section_name: z.string().nullable(),
+        division_id: z.string().nullable(),
+        division_name: z.string().nullable(),
+      }),
+    }),
+  ),
+  /** Fields of the estate with no boundary yet ("not mapped yet"). */
+  unmapped_field_ids: z.array(z.string()),
 });

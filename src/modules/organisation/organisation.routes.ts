@@ -13,6 +13,10 @@ import { fieldsService } from './fields.service.js';
 import { hierarchyService } from './hierarchy.service.js';
 import './organisation.scope.js';
 import {
+  BoundaryBody,
+  EstateMapOut,
+  FieldBoundaryOut,
+  SectionBoundaryOut,
   CreateDivisionBody,
   CreateEstateBody,
   CreateFieldBody,
@@ -180,6 +184,24 @@ function estatesModule(deps: OrganisationDeps, h: ReturnType<typeof hierarchySer
     },
   });
 
+  m.route({
+    method: 'get',
+    path: '/:id/map',
+    summary: 'The estate map',
+    description:
+      'Every mapped field, road, drain and section outline of the estate you can see, as one GeoJSON ' +
+      "FeatureCollection ([longitude, latitude], WGS 84) with the design legend's layer on each feature, " +
+      'the bbox to fit, the estate position, and the fields not mapped yet.',
+    auth: { permission: 'field.view' },
+    ...byId,
+    success: { status: 200, description: 'The map', schema: EstateMapOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      sendOne(res, await h.estateMap(params.id));
+    },
+  });
+
   itemRoutes(m, {
     module: 'estate',
     label: 'estate',
@@ -297,6 +319,40 @@ function sectionsModule(deps: OrganisationDeps, h: ReturnType<typeof hierarchySe
 
   m.route({
     method: 'get',
+    path: '/:id/boundary',
+    summary: 'A section’s outline',
+    auth: { permission: 'section.view' },
+    ...byId,
+    success: { status: 200, description: 'The outline', schema: SectionBoundaryOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const b = await h.sectionBoundaries.get(params.id);
+      sendOne(res, b, { version: b.version });
+    },
+  });
+
+  m.route({
+    method: 'put',
+    path: '/:id/boundary',
+    summary: 'Set a section’s outline',
+    description:
+      'Exactly one of boundary (GeoJSON Polygon, or null to clear), kml (a KML file’s text) or points (a GPS walk).',
+    auth: { permission: 'section.edit' },
+    ...byId,
+    body: BoundaryBody,
+    ifMatch: true,
+    success: { status: 200, description: 'The outline', schema: SectionBoundaryOut },
+    errors: ['SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: BoundaryBody });
+      const b = await h.sectionBoundaries.set(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, b, { version: b.version });
+    },
+  });
+
+  m.route({
+    method: 'get',
     path: '/',
     summary: 'List sections',
     description:
@@ -407,6 +463,46 @@ function fieldsModule(deps: OrganisationDeps): ApiModule {
     patch: PatchFieldBody,
     svc: fields,
     deleteHelp: 'Only a field nothing refers to yet. Otherwise deactivate it.',
+  });
+
+  m.route({
+    method: 'get',
+    path: '/:id/boundary',
+    summary: 'A field’s boundary',
+    description:
+      'The shape (GeoJSON, [longitude, latitude]) and its figures: centroid, perimeter, mapped area.',
+    auth: { permission: 'field.view' },
+    ...byId,
+    success: { status: 200, description: 'The boundary', schema: FieldBoundaryOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const b = await fields.getBoundary(params.id);
+      sendOne(res, b, { version: b.version });
+    },
+  });
+
+  m.route({
+    method: 'put',
+    path: '/:id/boundary',
+    summary: 'Set a field’s boundary',
+    description:
+      'Exactly one of: boundary — a GeoJSON Polygon (a LineString for a road_reserve, road_side or drain ' +
+      'field), or a Feature holding one, null to clear; kml — a KML file’s text (its first Polygon / ' +
+      'LineString); points — a GPS walk [{latitude, longitude}, …]. Validated (closed, not crossing itself, ' +
+      'inside Bangladesh) and measured by the server; boundary_warning when the mapped area differs from the ' +
+      'gross area by more than 10 %.',
+    auth: { permission: 'field.edit' },
+    ...byId,
+    body: BoundaryBody,
+    ifMatch: true,
+    success: { status: 200, description: 'The boundary', schema: FieldBoundaryOut },
+    errors: ['SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: BoundaryBody });
+      const b = await fields.setBoundary(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, b, { version: b.version });
+    },
   });
 
   m.route({

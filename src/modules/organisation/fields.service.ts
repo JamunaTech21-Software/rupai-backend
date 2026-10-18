@@ -9,7 +9,17 @@ import { Errors, type ErrorDetail } from '../../core/errors/app-error.js';
 import type { ListQuery } from '../../core/http/list-query.js';
 import { dec } from '../../core/money/decimal.js';
 import { businessDateFromDb, businessDateToDb, todayIn } from '../../core/time/dates.js';
-import type { Field, Prisma } from '../../generated/prisma/client.js';
+import {
+  figuresOf,
+  GeometryError,
+  geometryFromKml,
+  geometryFromPoints,
+  parseGeometry,
+  type Geometry,
+} from '../../core/geo/geometry.js';
+import { Prisma as P, type Field, type Prisma } from '../../generated/prisma/client.js';
+
+const DbNull = P.DbNull;
 import { archiveDocumentsOf } from '../documents/documents.service.js';
 import {
   area,
@@ -26,6 +36,7 @@ import {
 } from './common.js';
 import { FIELD_AUDIT } from './organisation.audit.js';
 import type {
+  BoundaryBody,
   CreateFieldBody,
   FieldOut,
   PatchFieldBody,
@@ -93,6 +104,36 @@ export const FIELD_LIST_FIELDS: ListFieldMap = {
 
 const refOut = (r: Ref | null) => (r ? { id: r.id.toString(), code: r.code, name: r.name } : null);
 
+/** Field types drawn as a line (a road or a drain) rather than an area (R.3 GIS). */
+export const LINE_FIELD_TYPES: readonly string[] = ['road_reserve', 'road_side', 'drain'];
+/** Mapped and typed areas further apart than this ask for a look (D-R.3-13). */
+export const AREA_TOLERANCE_PCT = 10;
+
+/** The boundary's figures as every field read shows them; the shape itself is GET /fields/{id}/boundary. */
+export function boundaryFigures(
+  f: Pick<
+    Field,
+    'boundary' | 'centroidLatitude' | 'centroidLongitude' | 'perimeterKm' | 'mappedAreaAcres' | 'grossArea'
+  >,
+) {
+  const mapped = f.mappedAreaAcres === null ? null : dec(f.mappedAreaAcres.toString());
+  const gross = dec(f.grossArea.toString());
+  const diff = mapped === null || gross.isZero() ? null : mapped.minus(gross).div(gross).times(100);
+  return {
+    has_boundary: f.boundary !== null,
+    centroid:
+      f.centroidLatitude === null || f.centroidLongitude === null
+        ? null
+        : { latitude: f.centroidLatitude.toFixed(6), longitude: f.centroidLongitude.toFixed(6) },
+    perimeter_km: f.perimeterKm === null ? null : f.perimeterKm.toFixed(3),
+    mapped_area_acres: mapped === null ? null : mapped.toFixed(3),
+    area_difference_pct: diff === null ? null : diff.toFixed(1),
+    boundary_warning: diff?.abs().gt(AREA_TOLERANCE_PCT)
+      ? `The mapped area (${mapped?.toFixed(3) ?? ''} acres) differs from the gross area by ${diff.toFixed(1)} %: check the boundary or the area.`
+      : null,
+  };
+}
+
 export function toFieldOut(f: FieldRow): FieldOutT {
   return {
     id: f.id.toString(),
@@ -124,6 +165,7 @@ export function toFieldOut(f: FieldRow): FieldOutT {
     soil_type: refOut(f.soilType),
     drainage_class_id: idOut(f.drainageClassId),
     drainage_class: refOut(f.drainageClass),
+    ...boundaryFigures(f),
     created_by: { id: f.creator.id.toString(), username: f.creator.username },
     version: f.version,
     created_at: f.createdAt.toISOString(),
@@ -214,6 +256,21 @@ async function isWithin(tx: Tx, candidate: bigint, self: bigint): Promise<boolea
     at = row?.parentFieldId ?? null;
   }
   return false;
+}
+
+function boundaryOut(f: FieldRow) {
+  const fig = boundaryFigures(f);
+  return {
+    field_id: f.id.toString(),
+    boundary: (f.boundary as unknown as Geometry | null) ?? null,
+    centroid: fig.centroid,
+    perimeter_km: fig.perimeter_km,
+    mapped_area_acres: fig.mapped_area_acres,
+    gross_area: area(f.grossArea) ?? '0.000',
+    area_difference_pct: fig.area_difference_pct,
+    boundary_warning: fig.boundary_warning,
+    version: f.version,
+  };
 }
 
 export function fieldsService(db: Database, accessLog: AccessLog, timezone: string) {
@@ -409,6 +466,65 @@ export function fieldsService(db: Database, accessLog: AccessLog, timezone: stri
           reason: body.reason ?? null,
         });
         return after;
+      });
+    },
+
+    /** GET /fields/{id}/boundary: the shape and its figures. */
+    async getBoundary(id: bigint) {
+      const f = await fieldOrNotFound(db, id);
+      return boundaryOut(f);
+    },
+
+    /**
+     * PUT /fields/{id}/boundary (R.3 GIS): a GeoJSON geometry, a KML file's text or a GPS walk; null clears.
+     * Validated and measured here (core/geo); the figures are stored with the shape and audited with it.
+     */
+    async setBoundary(
+      id: bigint,
+      expectedVersion: number,
+      body: z.infer<typeof BoundaryBody>,
+      actorId: bigint,
+    ) {
+      return withTransaction(db, async (tx) => {
+        const before = await fieldOrNotFound(tx, id);
+        if (!(await canWrite(before))) await denyWrite(accessLog, 'field', id, 'boundary');
+        if (before.version !== expectedVersion) versionConflict(before, toFieldOut(before));
+        const line = LINE_FIELD_TYPES.includes(before.fieldType);
+        let geometry: Geometry | null;
+        try {
+          geometry =
+            body.kml !== undefined
+              ? geometryFromKml(body.kml, line)
+              : body.points !== undefined
+                ? geometryFromPoints(body.points, line)
+                : body.boundary === null
+                  ? null
+                  : parseGeometry(body.boundary, line);
+        } catch (err) {
+          if (err instanceof GeometryError) {
+            const field = body.kml !== undefined ? 'kml' : body.points !== undefined ? 'points' : 'boundary';
+            throw Errors.validation([invalid(field, err.message)]);
+          }
+          throw err;
+        }
+        const figures = geometry === null ? null : figuresOf(geometry);
+        await tx.field.update({
+          where: { id },
+          data: {
+            boundary: geometry === null ? DbNull : (geometry as unknown as Prisma.InputJsonValue),
+            centroidLatitude: figures ? figures.centroid.latitude.toFixed(6) : null,
+            centroidLongitude: figures ? figures.centroid.longitude.toFixed(6) : null,
+            perimeterKm: figures ? figures.perimeterKm.toFixed(3) : null,
+            mappedAreaAcres:
+              figures?.areaAcres === undefined || figures.areaAcres === null
+                ? null
+                : figures.areaAcres.toFixed(3),
+            ...stamp(actorId),
+          },
+        });
+        const after = await fieldOrNotFound(tx, id);
+        await auditUpdate(tx, FIELD_AUDIT, id, toFieldOut(before), toFieldOut(after), { actorId });
+        return boundaryOut(after);
       });
     },
 

@@ -115,5 +115,9 @@ export const FIELD_AUDIT: AuditedRecord = {
     'irrigation_source_id',
     'soil_type_id',
     'drainage_class_id',
+    // R.3 GIS: the shape's figures (the shape itself is too large to audit field by field).
+    'centroid',
+    'perimeter_km',
+    'mapped_area_acres',
   ],
 };

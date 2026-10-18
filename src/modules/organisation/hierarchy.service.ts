@@ -26,9 +26,20 @@ import {
   versionConflict,
   writable,
 } from './common.js';
+import {
+  figuresOf,
+  GeometryError,
+  geometryFromKml,
+  geometryFromPoints,
+  parseGeometry,
+  type Geometry,
+} from '../../core/geo/geometry.js';
+import { Prisma as P } from '../../generated/prisma/client.js';
 import { DIVISION_AUDIT, ESTATE_AUDIT, SECTION_AUDIT } from './organisation.audit.js';
 import { FIELD_TYPES, TEA_FIELD_TYPES, type FieldType } from './organisation.schema.js';
 import type {
+  BoundaryBody,
+  EstateMapOut,
   CreateDivisionBody,
   CreateEstateBody,
   CreateSectionBody,
@@ -174,6 +185,8 @@ export function toSectionOut(s: SectionRow): SectionOutT {
       ? { id: s.parent.id.toString(), code: s.parent.code, name: s.parent.name }
       : null,
     description: s.description,
+    has_boundary: s.boundary !== null,
+    mapped_area_acres: area(s.mappedAreaAcres),
     status: s.status as Status,
     version: s.version,
     created_at: s.createdAt.toISOString(),
@@ -885,7 +898,160 @@ export function hierarchyService(db: Database, accessLog: AccessLog) {
     },
   };
 
-  return { estates, divisions, sections, sectionOrNotFound, estateSummary };
+  /** GET/PUT /sections/{id}/boundary (R.3 GIS): the section's outline, a Polygon. */
+  const sectionBoundaryOut = (sec: SectionRow) => ({
+    section_id: sec.id.toString(),
+    boundary: (sec.boundary as unknown as Geometry | null) ?? null,
+    mapped_area_acres: area(sec.mappedAreaAcres),
+    version: sec.version,
+  });
+  const sectionBoundaries = {
+    async get(id: bigint) {
+      return sectionBoundaryOut(await sectionOrNotFound(db, id));
+    },
+    async set(id: bigint, expectedVersion: number, body: z.infer<typeof BoundaryBody>, actorId: bigint) {
+      return withTransaction(db, async (tx) => {
+        const before = await sectionOrNotFound(tx, id);
+        if (!(await canWriteSection(before))) await denyWrite(accessLog, 'section', id, 'boundary');
+        if (before.version !== expectedVersion) versionConflict(before, toSectionOut(before));
+        let g: Geometry | null;
+        try {
+          g =
+            body.kml !== undefined
+              ? geometryFromKml(body.kml, false)
+              : body.points !== undefined
+                ? geometryFromPoints(body.points, false)
+                : body.boundary === null
+                  ? null
+                  : parseGeometry(body.boundary, false);
+        } catch (err) {
+          if (err instanceof GeometryError) {
+            const field = body.kml !== undefined ? 'kml' : body.points !== undefined ? 'points' : 'boundary';
+            throw Errors.validation([{ field, code: 'VALIDATION_FAILED', message: err.message }]);
+          }
+          throw err;
+        }
+        const fig = g === null ? null : figuresOf(g);
+        await tx.section.update({
+          where: { id },
+          data: {
+            boundary: g === null ? P.DbNull : (g as unknown as Prisma.InputJsonValue),
+            mappedAreaAcres:
+              fig?.areaAcres === undefined || fig.areaAcres === null ? null : fig.areaAcres.toFixed(3),
+            ...stamp(actorId),
+          },
+        });
+        const after = await sectionOrNotFound(tx, id);
+        await auditUpdate(tx, SECTION_AUDIT, id, toSectionOut(before), toSectionOut(after), { actorId });
+        return sectionBoundaryOut(after);
+      });
+    },
+  };
+
+  /**
+   * GET /estates/{id}/map (R.3 GIS): every shape of the estate the caller can see, as one GeoJSON
+   * FeatureCollection, layered as the design's legend (field, road, drain, section boundary).
+   */
+  async function estateMap(id: bigint): Promise<z.infer<typeof EstateMapOut>> {
+    const e = await estateOrNotFound(db, id);
+    const [fields, sections] = await Promise.all([
+      db.field.findMany({
+        where: { estateId: id },
+        include: {
+          section: { select: { id: true, name: true, division: { select: { id: true, name: true } } } },
+        },
+        orderBy: { fieldNumber: 'asc' },
+      }),
+      db.section.findMany({
+        where: { division: { estateId: id }, boundary: { not: P.DbNull } },
+        include: { division: { select: { id: true, name: true } } },
+        orderBy: { code: 'asc' },
+      }),
+    ]);
+    const features: z.infer<typeof EstateMapOut>['features'] = [];
+    let box: [number, number, number, number] | null = null;
+    const grow = (g: Geometry) => {
+      const pts = g.type === 'Polygon' ? g.coordinates.flat() : g.coordinates;
+      for (const [lng, lat] of pts) {
+        box =
+          box === null
+            ? [lng, lat, lng, lat]
+            : [Math.min(box[0], lng), Math.min(box[1], lat), Math.max(box[2], lng), Math.max(box[3], lat)];
+      }
+    };
+    for (const f of fields) {
+      if (f.boundary === null) continue;
+      const g = f.boundary as unknown as Geometry;
+      grow(g);
+      const layer =
+        f.fieldType === 'drain'
+          ? 'drain'
+          : f.fieldType === 'road_reserve' || f.fieldType === 'road_side'
+            ? 'road'
+            : 'field';
+      features.push({
+        type: 'Feature',
+        id: `field-${f.id.toString()}`,
+        geometry: g as unknown as z.infer<typeof EstateMapOut>['features'][number]['geometry'],
+        properties: {
+          layer,
+          id: f.id.toString(),
+          code: f.fieldNumber,
+          name: f.name,
+          field_type: f.fieldType,
+          field_status: f.fieldStatus,
+          status: f.status,
+          gross_area: area(f.grossArea),
+          planted_area: area(f.plantedArea),
+          mapped_area_acres: area(f.mappedAreaAcres),
+          section_id: f.section.id.toString(),
+          section_name: f.section.name,
+          division_id: f.section.division.id.toString(),
+          division_name: f.section.division.name,
+        },
+      });
+    }
+    for (const sec of sections) {
+      const g = sec.boundary as unknown as Geometry;
+      grow(g);
+      features.push({
+        type: 'Feature',
+        id: `section-${sec.id.toString()}`,
+        geometry: g as unknown as z.infer<typeof EstateMapOut>['features'][number]['geometry'],
+        properties: {
+          layer: 'section',
+          id: sec.id.toString(),
+          code: sec.code,
+          name: sec.name,
+          field_type: null,
+          field_status: null,
+          status: sec.status,
+          gross_area: area(sec.area),
+          planted_area: null,
+          mapped_area_acres: area(sec.mappedAreaAcres),
+          section_id: sec.id.toString(),
+          section_name: sec.name,
+          division_id: sec.division.id.toString(),
+          division_name: sec.division.name,
+        },
+      });
+    }
+    return {
+      estate: {
+        id: e.id.toString(),
+        code: e.code,
+        name: e.name,
+        latitude: e.latitude === null ? null : e.latitude.toFixed(6),
+        longitude: e.longitude === null ? null : e.longitude.toFixed(6),
+      },
+      bbox: box,
+      type: 'FeatureCollection',
+      features,
+      unmapped_field_ids: fields.filter((f) => f.boundary === null).map((f) => f.id.toString()),
+    };
+  }
+
+  return { estates, divisions, sections, sectionOrNotFound, estateSummary, sectionBoundaries, estateMap };
 }
 
 export type HierarchyService = ReturnType<typeof hierarchyService>;
