@@ -52,6 +52,19 @@ import {
   WORK_TYPES,
 } from './contractor.schema.js';
 import { contractorService } from './contractor.service.js';
+import {
+  AdjustBody,
+  CancelBody,
+  CreateLeaveBody,
+  EntitlementOut,
+  GenerateBody,
+  GenerateOut,
+  IdParams as LeaveParams,
+  LEAVE_STATES,
+  LeaveOut,
+  PatchLeaveBody,
+} from './leave.schema.js';
+import { leaveService } from './leave.service.js';
 import { setWorkforceScopeTimezone } from './person.scope.js';
 import {
   AddMembersBody,
@@ -104,7 +117,7 @@ import { profileService } from './profile.service.js';
 
 /**
  * HTTP surface of the workforce module: persons (P2.01), employment profiles (P2.02), employment
- * assignments (P2.03), worker teams (P2.04) and contractors (P2.05); Spec P4 §8.3, §6.5.
+ * assignments (P2.03), worker teams (P2.04), contractors (P2.05) and leave (P2.07); Spec P4 §8.3, §6.5.
  */
 
 export interface WorkforceDeps {
@@ -1206,6 +1219,264 @@ function contractorsModule({ db, platform, authz, accessLog, config }: Workforce
   return [m.build(), c.build()];
 }
 
+function leaveModules({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule[] {
+  const svc = leaveService({ db, accessLog, timezone: config.timezone });
+  registerApprovalAdapter(svc.adapter);
+  const byId = { params: LeaveParams };
+  const e = defineModule({
+    name: 'leave-entitlements',
+    path: '/leave-entitlements',
+    tag: 'Workforce',
+    platform,
+    authz,
+    accessLog,
+  });
+
+  e.route({
+    method: 'get',
+    path: '/',
+    summary: 'Leave balances',
+    description:
+      'The Leave Balance register (HR-008): per profile, leave type and fiscal year, with entitled, carried ' +
+      'forward, adjustment, total available, consumed, pending, balance and available_to_request. Filters: ' +
+      'employment_profile_id, leave_type_id, fiscal_year_id, estate_id. Everyone sees their own (self scope).',
+    auth: { permission: 'leave.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        employment_profile_id: { type: 'id', ops: ['eq', 'in'] },
+        leave_type_id: { type: 'id', ops: ['eq', 'in'] },
+        fiscal_year_id: { type: 'id', ops: ['eq'] },
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+      },
+      sorts: [],
+      maxPageSize: 500,
+    },
+    success: { status: 200, description: 'A page of entitlements', schema: EntitlementOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.entitlements.list(q);
+      sendPage(req, res, items, {
+        pagination: q.page ?? { page: 1, perPage: 25 },
+        total,
+        appliedScope: await appliedScope(),
+      });
+    },
+  });
+
+  e.route({
+    method: 'post',
+    path: '/generate',
+    summary: 'Generate a fiscal year’s entitlements',
+    description:
+      'For every current profile employed in the year (of the estate, or one profile), every active leave type ' +
+      'with annual_days that applies to it: entitled = annual_days × months employed ÷ 12 (3 places, P9 LV.1), ' +
+      'plus the previous year’s balance carried forward up to the type’s limit (LV.2). Existing entitlements ' +
+      'are kept. Run again for a new joiner.',
+    auth: { permission: 'leave.create' },
+    body: GenerateBody,
+    success: { status: 200, description: 'Generated', schema: GenerateOut },
+    errors: ['SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: GenerateBody });
+      sendOne(res, await svc.entitlements.generate(body, currentActorId()));
+    },
+  });
+
+  e.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get a leave entitlement',
+    auth: { permission: 'leave.view' },
+    ...byId,
+    success: { status: 200, description: 'The entitlement', schema: EntitlementOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.entitlements.get(params.id);
+      sendOne(res, x, { version: x.version });
+    },
+  });
+
+  e.route({
+    method: 'post',
+    path: '/:id/adjust',
+    summary: 'Adjust an entitlement',
+    description:
+      'An approved manual adjustment with its reason (P3 §22.1): replaces the adjustment; may be negative.',
+    auth: { permission: 'leave.approve' },
+    ...byId,
+    body: AdjustBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Adjusted', schema: EntitlementOut },
+    errors: ['INSUFFICIENT_BALANCE', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: AdjustBody });
+      const x = await svc.entitlements.adjust(
+        params.id,
+        requireIfMatch(req),
+        body.adjustment_days,
+        body.reason,
+        currentActorId(),
+      );
+      sendOne(res, x, { version: x.version });
+    },
+  });
+
+  const r = defineModule({
+    name: 'leave-requests',
+    path: '/leave-requests',
+    tag: 'Workforce',
+    platform,
+    authz,
+    accessLog,
+  });
+
+  r.route({
+    method: 'get',
+    path: '/',
+    summary: 'List leave requests',
+    description:
+      'The Leave Register (HR-007): filters profile, estate, leave type, state, date ranges. Your own are always visible.',
+    auth: { permission: 'leave.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        employment_profile_id: { type: 'id', ops: ['eq', 'in'] },
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        leave_type_id: { type: 'id', ops: ['eq', 'in'] },
+        state: { type: { enum: LEAVE_STATES }, ops: ['eq', 'in'] },
+        from_date: { type: 'date', ops: ['from', 'to'] },
+        to_date: { type: 'date', ops: ['from', 'to'] },
+      },
+      sorts: ['from_date', 'request_number', 'created_at'],
+      defaultSort: ['-from_date'],
+      maxPageSize: 500,
+    },
+    success: { status: 200, description: 'A page of requests', schema: LeaveOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.requests.list(q);
+      sendPage(req, res, items, {
+        pagination: q.page ?? { page: 1, perPage: 25 },
+        total,
+        appliedScope: await appliedScope(),
+      });
+    },
+  });
+
+  r.route({
+    method: 'post',
+    path: '/',
+    summary: 'Draft a leave request',
+    description:
+      'Your own leave (employment_profile_id omitted: the profile linked to your account), or, with the estate, ' +
+      'someone else’s. day_count is computed: working days from from_date to to_date (weekly offs excluded), a ' +
+      'half day 0.5. Within one fiscal year; no overlap with other leave; a type with annual days needs the ' +
+      'year’s entitlement. Submit it to check the balance and route it for approval.',
+    auth: { permission: 'leave.create' },
+    body: CreateLeaveBody,
+    success: { status: 201, description: 'Drafted', schema: LeaveOut },
+    errors: ['SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateLeaveBody });
+      const x = await svc.requests.create(body, currentActorId());
+      sendCreated(res, x, `/api/v1/leave-requests/${x.id}`, x.version);
+    },
+  });
+
+  r.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get a leave request',
+    auth: { permission: 'leave.view' },
+    ...byId,
+    success: { status: 200, description: 'The request', schema: LeaveOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.requests.get(params.id);
+      sendOne(res, x, { version: x.version });
+    },
+  });
+
+  r.route({
+    method: 'patch',
+    path: '/:id',
+    summary: 'Change a draft leave request',
+    auth: { permission: 'leave.create' },
+    ...byId,
+    body: PatchLeaveBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Changed', schema: LeaveOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: PatchLeaveBody });
+      const x = await svc.requests.update(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+
+  r.route({
+    method: 'delete',
+    path: '/:id',
+    summary: 'Delete a draft leave request',
+    auth: { permission: 'leave.create' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      await svc.requests.remove(params.id, currentActorId());
+      sendNoContent(res);
+    },
+  });
+
+  r.route({
+    method: 'post',
+    path: '/:id/submit',
+    summary: 'Submit a leave request',
+    description:
+      'Refused with 422 INSUFFICIENT_BALANCE when it exceeds the balance less the leave already pending (the ' +
+      'balance is in the error’s context), unless the type allows a negative balance. Routed through the leave ' +
+      'workflow (P7 §7.9: the submitter’s supervisor, HR, the estate manager for long leave); approval consumes ' +
+      'the entitlement.',
+    auth: { permission: 'leave.create' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 200, description: 'Submitted', schema: LeaveOut },
+    errors: ['INSUFFICIENT_BALANCE', 'INVALID_TRANSITION', 'SCOPE_DENIED', 'RULE_AMBIGUOUS'],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.requests.submit(params.id, requireIfMatch(req), currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+
+  r.route({
+    method: 'post',
+    path: '/:id/cancel',
+    summary: 'Cancel approved leave',
+    description: 'Restores the balance. A submitted request is returned or rejected by its approver instead.',
+    auth: { permission: 'leave.create' },
+    ...byId,
+    body: CancelBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Cancelled', schema: LeaveOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: CancelBody });
+      const x = await svc.requests.cancel(params.id, requireIfMatch(req), body.reason, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+
+  return [e.build(), r.build()];
+}
+
 function assignmentsModule({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule {
   const svc = assignmentService({ db, accessLog, timezone: config.timezone });
   registerApprovalAdapter(svc.adapter);
@@ -1350,5 +1621,6 @@ export function workforceModules(deps: WorkforceDeps): ApiModule[] {
     assignmentsModule(deps),
     teamsModule(deps),
     ...contractorsModule(deps),
+    ...leaveModules(deps),
   ];
 }

@@ -63,6 +63,8 @@ export const ERROR_CODES = {
 
   // ---- business invariants (422) ---------------------------------------------------------------
   INSUFFICIENT_STOCK: 422,
+  // P2.07: leave beyond the available balance (P3 §22.2 invariant).
+  INSUFFICIENT_BALANCE: 422,
   NEGATIVE_STOCK: 422,
   LOT_ALREADY_SOLD: 422,
   RESERVATION_EXPIRED: 422,

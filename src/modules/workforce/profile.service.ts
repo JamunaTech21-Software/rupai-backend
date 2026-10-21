@@ -770,7 +770,24 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
         },
       });
       const current = rows.filter((r) => r.status !== 'separated');
-      const count = (s: string) => current.filter((r) => r.status === s).length;
+      // On leave today: approved leave covering today (P2.07), or the status set so.
+      const day = businessDateToDb(t);
+      const away = new Set(
+        (
+          await db.leaveRequest.findMany({
+            where: {
+              employmentProfileId: { in: current.map((r) => r.id) },
+              state: 'approved',
+              fromDate: { lte: day },
+              toDate: { gte: day },
+            },
+            select: { employmentProfileId: true },
+          })
+        ).map((l) => l.employmentProfileId),
+      );
+      const statusOf = (r: (typeof current)[number]) =>
+        r.status === 'active' && away.has(r.id) ? 'on_leave' : r.status;
+      const count = (s: string) => current.filter((r) => statusOf(r) === s).length;
       const pct = (n: number) => (current.length === 0 ? '0.00' : ((n / current.length) * 100).toFixed(2));
       const bucket = <T>(items: T[], key: (i: T) => [string, string] | null) => {
         const m = new Map<string, { key: string; label: string; count: number }>();

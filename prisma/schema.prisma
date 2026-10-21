@@ -217,6 +217,14 @@ model User {
   terminatedContracts         ContractorContract[]   @relation("ContractTerminatedBy")
   createdContractorLabour     ContractorLabour[]     @relation("ContractorLabourCreatedBy")
   updatedContractorLabour     ContractorLabour[]     @relation("ContractorLabourUpdatedBy")
+  createdLeaveEntitlements    LeaveEntitlement[]     @relation("LeaveEntitlementCreatedBy")
+  updatedLeaveEntitlements    LeaveEntitlement[]     @relation("LeaveEntitlementUpdatedBy")
+  createdLeaveRequests        LeaveRequest[]         @relation("LeaveRequestCreatedBy")
+  updatedLeaveRequests        LeaveRequest[]         @relation("LeaveRequestUpdatedBy")
+  submittedLeaveRequests      LeaveRequest[]         @relation("LeaveRequestSubmittedBy")
+  approvedLeaveRequests       LeaveRequest[]         @relation("LeaveRequestApprovedBy")
+  rejectedLeaveRequests       LeaveRequest[]         @relation("LeaveRequestRejectedBy")
+  cancelledLeaveRequests      LeaveRequest[]         @relation("LeaveRequestCancelledBy")
   updatedPersons              Person[]               @relation("PersonUpdatedBy")
   createdPersonDependents     PersonDependent[]      @relation("PersonDependentCreatedBy")
   updatedPersonDependents     PersonDependent[]      @relation("PersonDependentUpdatedBy")
@@ -701,6 +709,7 @@ model Estate {
   workerTeams           WorkerTeam[]
   registeredContractors Contractor[]
   contractorContracts   ContractorContract[]
+  leaveRequests         LeaveRequest[]
   manager               EmploymentProfile?     @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
   shifts                Shift[]                @relation("ShiftEstate")
 
@@ -1083,11 +1092,12 @@ model FiscalYear {
   updatedAt      DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy      BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  organisation Organisation       @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_organisation")
-  closer       User?              @relation("FiscalYearClosedBy", fields: [closedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_closed_by")
-  creator      User               @relation("FiscalYearCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_created_by")
-  updater      User?              @relation("FiscalYearUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_updated_by")
-  periods      AccountingPeriod[]
+  organisation      Organisation       @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_organisation")
+  closer            User?              @relation("FiscalYearClosedBy", fields: [closedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_closed_by")
+  creator           User               @relation("FiscalYearCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_created_by")
+  updater           User?              @relation("FiscalYearUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_updated_by")
+  periods           AccountingPeriod[]
+  leaveEntitlements LeaveEntitlement[]
 
   @@unique([organisationId, code], map: "ux_fiscal_year_code")
   @@unique([organisationId, startDate], map: "ux_fiscal_year_start")
@@ -1277,22 +1287,34 @@ model EmploymentType {
 }
 
 model LeaveType {
-  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  code        String    @db.VarChar(20)
-  name        String    @db.VarChar(150)
-  description String?   @db.VarChar(500)
-  sortOrder   Int       @default(0) @map("sort_order")
-  isSystem    Boolean   @default(false) @map("is_system")
+  id                    BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code                  String    @db.VarChar(20)
+  name                  String    @db.VarChar(150)
+  description           String?   @db.VarChar(500)
+  sortOrder             Int       @default(0) @map("sort_order")
+  isSystem              Boolean   @default(false) @map("is_system")
+  /// P2.07 (D-2.07-1, interim until statutory_rule, Phase 9): days a fiscal year. NULL: no entitlement
+  /// is generated (unpaid or special leave, taken without a balance).
+  annualDays            Decimal?  @map("annual_days") @db.Decimal(9, 4)
+  /// The most days carried into the next fiscal year (capped BEFORE being added, P9 LV.2).
+  carryForwardLimitDays Decimal   @default(0) @map("carry_forward_limit_days") @db.Decimal(9, 4)
+  allowsNegativeBalance Boolean   @default(false) @map("allows_negative_balance")
+  /// Unpaid leave still records attendance but contributes no payable day.
+  isPaid                Boolean   @default(true) @map("is_paid")
+  /// all | worker | employee
+  appliesTo             String    @default("all") @map("applies_to") @db.VarChar(30)
   /// active | inactive
-  status      String    @default("active") @db.VarChar(30)
-  version     Int       @default(1)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
-  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
-  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+  status                String    @default("active") @db.VarChar(30)
+  version               Int       @default(1)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy             BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt             DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy             BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  creator User  @relation("LeaveTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_type_created_by")
-  updater User? @relation("LeaveTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_type_updated_by")
+  entitlements LeaveEntitlement[]
+  requests     LeaveRequest[]
+  creator      User               @relation("LeaveTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_type_created_by")
+  updater      User?              @relation("LeaveTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_type_updated_by")
 
   @@unique([code], map: "ux_leave_type_code")
   @@index([status], map: "ix_leave_type_status")
@@ -2938,6 +2960,9 @@ model EmploymentProfile {
   assignments        EmploymentAssignment[]
   teamMemberships    TeamMember[]
   supervisedTeams    WorkerTeam[]           @relation("TeamSupervisor")
+  leaveEntitlements  LeaveEntitlement[]
+  leaveRequests      LeaveRequest[]         @relation("LeaveRequestProfile")
+  coveringLeave      LeaveRequest[]         @relation("LeaveRequestCovering")
   users              User[]                 @relation("UserProfile")
   managedEstates     Estate[]               @relation("EstateManager")
   managedDivisions   Division[]             @relation("DivisionManager")
@@ -3398,4 +3423,110 @@ model ContractorLabour {
   @@index([createdBy], map: "ix_contractor_labour_created_by")
   @@index([updatedBy], map: "ix_contractor_labour_updated_by")
   @@map("contractor_labour")
+}
+
+/// P2.07 (Spec P3 §22.1, P9 §12): a profile's entitlement of a leave type for a fiscal year. Generated,
+/// not keyed: pro-rata for a mid-year joiner or leaver, the previous year's balance carried forward up to
+/// the type's limit. consumed_days is maintained from approved leave, under a lock on this row.
+model LeaveEntitlement {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  employmentProfileId BigInt    @map("employment_profile_id") @db.UnsignedBigInt
+  leaveTypeId         BigInt    @map("leave_type_id") @db.UnsignedBigInt
+  fiscalYearId        BigInt    @map("fiscal_year_id") @db.UnsignedBigInt
+  /// The rule version that produced the figure: from Phase 9 (statutory_rule). NULL: the leave type's days.
+  statutoryRuleId     BigInt?   @map("statutory_rule_id") @db.UnsignedBigInt
+  entitledDays        Decimal   @map("entitled_days") @db.Decimal(9, 4)
+  carriedForwardDays  Decimal   @default(0) @map("carried_forward_days") @db.Decimal(9, 4)
+  adjustmentDays      Decimal   @default(0) @map("adjustment_days") @db.Decimal(9, 4)
+  adjustmentReason    String?   @map("adjustment_reason") @db.VarChar(300)
+  consumedDays        Decimal   @default(0) @map("consumed_days") @db.Decimal(9, 4)
+  encashedDays        Decimal   @default(0) @map("encashed_days") @db.Decimal(9, 4)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy           BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  profile    EmploymentProfile @relation(fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_entitlement_profile")
+  leaveType  LeaveType         @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_entitlement_type")
+  fiscalYear FiscalYear        @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_entitlement_fiscal_year")
+  requests   LeaveRequest[]
+  creator    User              @relation("LeaveEntitlementCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_entitlement_created_by")
+  updater    User?             @relation("LeaveEntitlementUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_entitlement_updated_by")
+
+  @@unique([employmentProfileId, leaveTypeId, fiscalYearId], map: "ux_leave_entitlement")
+  @@index([leaveTypeId], map: "ix_leave_entitlement_type")
+  @@index([fiscalYearId], map: "ix_leave_entitlement_fiscal_year")
+  @@index([createdBy], map: "ix_leave_entitlement_created_by")
+  @@index([updatedBy], map: "ix_leave_entitlement_updated_by")
+  @@map("leave_entitlement")
+}
+
+/// P2.07 (Spec P3 §22.2, P7 §7.9): a leave request. Approvable; approval consumes the entitlement under a
+/// lock (the balance must be available unless the type allows a negative one). Attendance for the dates
+/// is written from P5.02. Cancelling approved leave restores the balance.
+model LeaveRequest {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  employmentProfileId BigInt    @map("employment_profile_id") @db.UnsignedBigInt
+  /// The profile's estate, copied: scope and the approval place read it.
+  estateId            BigInt    @map("estate_id") @db.UnsignedBigInt
+  leaveTypeId         BigInt    @map("leave_type_id") @db.UnsignedBigInt
+  requestNumber       String    @map("request_number") @db.VarChar(30)
+  fromDate            DateTime  @map("from_date") @db.Date
+  toDate              DateTime  @map("to_date") @db.Date
+  /// Working days (weekly offs excluded; holidays and rosters from P5.01); a half day is 0.500.
+  dayCount            Decimal   @map("day_count") @db.Decimal(9, 4)
+  isHalfDay           Boolean   @default(false) @map("is_half_day")
+  reason              String?   @db.VarChar(500)
+  contactDuringLeave  String?   @map("contact_during_leave") @db.VarChar(30)
+  coveringProfileId   BigInt?   @map("covering_profile_id") @db.UnsignedBigInt
+  leaveEntitlementId  BigInt?   @map("leave_entitlement_id") @db.UnsignedBigInt
+  isPaid              Boolean   @default(true) @map("is_paid")
+  /// draft | submitted | approved | rejected | cancelled
+  state               String    @default("draft") @db.VarChar(30)
+  stateChangedAt      DateTime? @map("state_changed_at") @db.DateTime(0)
+  cancelledAt         DateTime? @map("cancelled_at") @db.DateTime(0)
+  cancelledBy         BigInt?   @map("cancelled_by") @db.UnsignedBigInt
+  cancellationReason  String?   @map("cancellation_reason") @db.VarChar(500)
+  submittedAt         DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy         BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt          DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy          BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt          DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy          BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason     String?   @map("rejection_reason") @db.VarChar(500)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy           BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  profile     EmploymentProfile  @relation("LeaveRequestProfile", fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_request_profile")
+  estate      Estate             @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_request_estate")
+  leaveType   LeaveType          @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_request_type")
+  covering    EmploymentProfile? @relation("LeaveRequestCovering", fields: [coveringProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_request_covering")
+  entitlement LeaveEntitlement?  @relation(fields: [leaveEntitlementId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_request_entitlement")
+  creator     User               @relation("LeaveRequestCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_request_created_by")
+  updater     User?              @relation("LeaveRequestUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_request_updated_by")
+  submitter   User?              @relation("LeaveRequestSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_request_submitted_by")
+  approver    User?              @relation("LeaveRequestApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_request_approved_by")
+  rejecter    User?              @relation("LeaveRequestRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_request_rejected_by")
+  canceller   User?              @relation("LeaveRequestCancelledBy", fields: [cancelledBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_leave_request_cancelled_by")
+
+  @@unique([requestNumber], map: "ux_leave_request_number")
+  @@index([employmentProfileId, fromDate], map: "ix_leave_request_profile")
+  @@index([estateId], map: "ix_leave_request_estate")
+  @@index([leaveTypeId], map: "ix_leave_request_type")
+  @@index([fromDate], map: "ix_leave_request_from")
+  @@index([toDate], map: "ix_leave_request_to")
+  @@index([state], map: "ix_leave_request_state")
+  @@index([coveringProfileId], map: "ix_leave_request_covering")
+  @@index([leaveEntitlementId], map: "ix_leave_request_entitlement")
+  @@index([createdBy], map: "ix_leave_request_created_by")
+  @@index([updatedBy], map: "ix_leave_request_updated_by")
+  @@index([submittedBy], map: "ix_leave_request_submitted_by")
+  @@index([approvedBy], map: "ix_leave_request_approved_by")
+  @@index([rejectedBy], map: "ix_leave_request_rejected_by")
+  @@index([cancelledBy], map: "ix_leave_request_cancelled_by")
+  @@map("leave_request")
 }
