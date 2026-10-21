@@ -118,6 +118,21 @@ const COMMON_SEEDS: Readonly<Record<string, Row[]>> = {
     ['GRADE_3', 'Grade 3'],
     ['GRADE_4', 'Grade 4'],
   ]),
+  // P2.05: the design's Trade / Work Category (Add New Contractor and Contractor Management lists).
+  trade_category: plain([
+    ['CONSTRUCTION', 'Construction'],
+    ['ELECTRICAL', 'Electrical'],
+    ['MECHANICAL', 'Mechanical'],
+    ['TRANSPORT', 'Transport'],
+    ['PLUCKING', 'Plucking'],
+    ['PRUNING', 'Pruning'],
+    ['WEEDING', 'Weeding'],
+    ['LEAF_TRANSPORT', 'Leaf transport'],
+    ['GARDEN_CLEANING', 'Garden cleaning'],
+    ['ROAD_MAINTENANCE', 'Road maintenance'],
+    ['SECURITY', 'Security'],
+    ['WATER_SUPPLY', 'Water supply'],
+  ]),
   language: plain([
     ['BN', 'Bangla'],
     ['EN', 'English'],
@@ -177,6 +192,15 @@ const COMMON_SEEDS: Readonly<Record<string, Row[]>> = {
     ['OWNERSHIP_DEED', 'Ownership deed'],
     ['TAX_DOCUMENT', 'Tax document'],
     ['PHOTOGRAPH', 'Photograph'],
+    // P2.05: a contractor's papers (the design's Documents section).
+    ['TRADE_LICENCE', 'Trade licence'],
+    ['TIN_CERT', 'TIN certificate'],
+    ['VAT_CERT', 'VAT certificate'],
+    ['BANK_DOCUMENT', 'Bank document'],
+    ['CONTRACT_AGREEMENT', 'Contract agreement'],
+    ['INSURANCE', 'Insurance'],
+    ['WORK_PERMIT', 'Work permit'],
+    ['COMPANY_LOGO', 'Company logo'],
     ['OTHER', 'Other'],
   ]),
   packaging_type: plain([

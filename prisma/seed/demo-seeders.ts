@@ -63,6 +63,7 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['person', 'view'],
   ['employment', 'view'],
   ['team', 'view'],
+  ['contractor', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -92,6 +93,7 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     'person',
     'employment',
     'team',
+    'contractor',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
   ['accounting_period', 'view'],
   ['accounting_period', 'edit'],
@@ -106,6 +108,9 @@ const DEMO_APPROVER_PERMISSIONS = [
   ['employment', 'approve'],
   ['person', 'view'],
   ['team', 'view'],
+  // P2.05: the estate and finance manager of the demo contract ladder (P7 §9.5).
+  ['contractor', 'view'],
+  ['contractor', 'approve'],
   ['workflow', 'view'],
   ['workflow', 'approve'],
   ['purchase_order', 'view'],
@@ -254,6 +259,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoShapesSeeder,
     demoAssignmentsSeeder,
     demoTeamsSeeder,
+    demoContractorsSeeder,
   ];
 }
 
@@ -840,6 +846,255 @@ const demoTeamsSeeder: Seeder = {
           },
         });
         inserted += 1;
+      }
+      return { inserted, updated: 0 };
+    }),
+};
+
+/**
+ * P2.05: the contract ladder of P7 §9.5 as the active contractor_contract workflow (the estate manager
+ * always; the finance manager from the proposed T2, 250,001: both steps held by the `approver` login on
+ * staging), and three contractors of the design on DEMO-A: M/S Green Leaf Services (plucking, an active
+ * contract with five labourers), M/S Akter Enterprise (labour supply, a contract ending in 20 days) and
+ * Rahim Electric (an individual, a draft contract to submit). Added once.
+ */
+const demoContractorsSeeder: Seeder = {
+  name: 'demo: P2.05 contract workflow and contractors on DEMO-A',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const estate = await tx.estate.findFirst({
+        where: { code: 'DEMO-A' },
+        select: { id: true, code: true },
+      });
+      if (!estate) return { inserted, updated: 0 };
+      const now = new Date();
+      const day = (offset: number) =>
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset));
+
+      // The ladder, while the contract workflow is still the seeded one.
+      const flows = await tx.workflow.findMany({
+        where: { documentType: 'contractor_contract' },
+        select: { id: true, ruleCode: true },
+      });
+      const [seeded] = flows;
+      if (flows.length === 1 && seeded) {
+        const approverRole = await tx.role.findUniqueOrThrow({
+          where: { code: DEMO_APPROVER_ROLE },
+          select: { id: true },
+        });
+        await tx.workflow.update({ where: { id: seeded.id }, data: { effectiveTo: day(-1) } });
+        const w = await tx.workflow.create({
+          data: {
+            ruleCode: seeded.ruleCode,
+            name: 'Contracts and agreements (demo of P7 §9.5)',
+            documentType: 'contractor_contract',
+            method: 'sequential',
+            parameters: {},
+            effectiveFrom: day(0),
+            supersedesId: seeded.id,
+            notes:
+              'Demo: T2 is the proposed 250,001, not a confirmed figure. Both steps are the approver login.',
+            state: 'active',
+            stateChangedAt: now,
+            approvedAt: now,
+            approvedBy: by,
+            createdBy: by,
+            steps: {
+              create: [
+                {
+                  stepNumber: 1,
+                  sequence: 1,
+                  name: 'Estate manager',
+                  approverRule: 'by_role',
+                  roleId: approverRole.id,
+                  createdBy: by,
+                },
+                {
+                  stepNumber: 2,
+                  sequence: 2,
+                  name: 'Finance manager',
+                  approverRule: 'by_role',
+                  roleId: approverRole.id,
+                  conditionField: 'contract_value',
+                  conditionOperator: 'gte',
+                  conditionValue: '250001',
+                  createdBy: by,
+                },
+              ],
+            },
+          },
+        });
+        await tx.statusHistory.create({
+          data: {
+            recordType: 'workflow',
+            recordId: w.id.toString(),
+            toState: 'active',
+            changedBy: by,
+            comment: 'Demo seed',
+          },
+        });
+        inserted += 3;
+      }
+
+      if ((await tx.contractor.count({ where: { registeredEstateId: estate.id } })) > 0)
+        return { inserted, updated: 0 };
+      const trade = async (code: string) =>
+        (await tx.tradeCategory.findUnique({ where: { code }, select: { id: true } }))?.id ?? null;
+      const division = await tx.division.findFirst({
+        where: { estateId: estate.id },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+      });
+      const approver = await tx.user.findUnique({ where: { username: 'approver' }, select: { id: true } });
+      const plan = [
+        {
+          code: 'CON-1001',
+          name: 'M/S Green Leaf Services',
+          type: 'company',
+          trade: 'PLUCKING',
+          contact: 'Mr. Jahangir Alam',
+          phone: '+8801712345678',
+          contract: {
+            work: 'plucking',
+            basis: 'per_kg',
+            rate: '4.5000',
+            from: -120,
+            to: 245,
+            value: '8450000',
+            state: 'approved',
+          },
+          labour: 5,
+        },
+        {
+          code: 'CON-1002',
+          name: 'M/S Akter Enterprise',
+          type: 'supplier',
+          trade: 'PRUNING',
+          contact: 'Ms. Rokeya Akter',
+          phone: '+8801798765432',
+          contract: {
+            work: 'labour_supply',
+            basis: 'per_day',
+            rate: '450.0000',
+            from: -340,
+            to: 20,
+            value: '525000',
+            state: 'approved',
+          },
+          labour: 2,
+        },
+        {
+          code: 'CON-1003',
+          name: 'Rahim Electric',
+          type: 'individual',
+          trade: 'ELECTRICAL',
+          contact: 'Rahim Uddin',
+          phone: '+8801811223344',
+          contract: {
+            work: 'service',
+            basis: 'lump_sum',
+            rate: '0.0000',
+            from: 10,
+            to: 190,
+            value: '180000',
+            state: 'draft',
+          },
+          labour: 0,
+        },
+      ] as const;
+      for (const [i, p] of plan.entries()) {
+        const c = await tx.contractor.create({
+          data: {
+            code: p.code,
+            name: p.name,
+            contractorType: p.type,
+            tradeCategoryId: await trade(p.trade),
+            contactPerson: p.contact,
+            designation: 'Proprietor',
+            phone: p.phone,
+            addressLine1: 'Tea Garden Road, Sreemangal',
+            presentDistrict: 'Moulvibazar',
+            tradeLicenceNumber: `TL-2026-${String(1256 + i)}`,
+            tradeLicenceExpiry: day(i === 1 ? 25 : 300),
+            bankName: 'Islami Bank Bangladesh Ltd.',
+            bankBranch: 'Sreemangal',
+            bankAccountName: p.name,
+            bankAccountNumber: `0501234567890${String(i)}`,
+            safetyCompliance: 'compliant',
+            qualityRating: 'good',
+            emergencyContactName: p.contact,
+            emergencyRelation: 'other',
+            emergencyPhone: p.phone,
+            registeredEstateId: estate.id,
+            createdBy: by,
+          },
+        });
+        await tx.partyContact.create({
+          data: {
+            ownerType: 'contractor',
+            ownerId: c.id,
+            contactName: p.contact,
+            designation: 'Proprietor',
+            contactType: 'primary',
+            phone: p.phone,
+            isPrimary: true,
+            createdBy: by,
+          },
+        });
+        const approved = p.contract.state === 'approved';
+        const k = await tx.contractorContract.create({
+          data: {
+            contractorId: c.id,
+            estateId: estate.id,
+            contractNumber: `CC-${estate.code}-DEMO-${String(i + 1)}`,
+            referenceNumber: `REF/${p.code}`,
+            workType: p.contract.work,
+            rateBasis: p.contract.basis,
+            rate: p.contract.rate,
+            startDate: day(p.contract.from),
+            endDate: day(p.contract.to),
+            contractValue: p.contract.value,
+            paymentTerms: 'monthly',
+            workLocation: 'field',
+            divisionId: division?.id ?? null,
+            state: p.contract.state,
+            stateChangedAt: now,
+            ...(approved
+              ? { submittedAt: now, submittedBy: by, approvedAt: now, approvedBy: approver?.id ?? by }
+              : {}),
+            createdBy: by,
+          },
+        });
+        for (let n = 1; n <= p.labour; n += 1) {
+          await tx.contractorLabour.create({
+            data: {
+              contractorContractId: k.id,
+              labourCode: `L-${String(n).padStart(4, '0')}`,
+              name:
+                ['Abdul Karim', 'Rafiq Mia', 'Sumon Das', 'Babul Tanti', 'Monir Hossain'][n - 1] ??
+                `Worker ${String(n)}`,
+              engagedFrom: day(p.contract.from),
+              createdBy: by,
+            },
+          });
+        }
+        for (const [type, id] of [
+          ['contractor', c.id],
+          ['contractor_contract', k.id],
+        ] as const) {
+          await tx.statusHistory.create({
+            data: {
+              recordType: type,
+              recordId: id.toString(),
+              toState: type === 'contractor' ? 'active' : p.contract.state,
+              changedBy: by,
+              comment: 'Demo seed',
+            },
+          });
+        }
+        inserted += 3 + p.labour;
       }
       return { inserted, updated: 0 };
     }),

@@ -7,6 +7,8 @@ import { businessDateToDb, todayIn } from '../../core/time/dates.js';
  *   employment_assignment  the profile's estate, and the division, section or department it names; self.
  *   worker_team            its estate, division or section (P2.04).
  *   team_member            as its team; also the member's own profile (self).
+ *   contractor             where it was registered OR has a contract (P2.05, D-2.05-3).
+ *   contractor_contract    its estate and division; contractor_labour as its contract.
  *   employment_profile     an estate grant sees the profiles of that estate; a division or section grant
  *                          the profiles whose CURRENT assignment is there (approved, in force today, in
  *                          the organisation's timezone); everyone sees their own (self).
@@ -37,12 +39,29 @@ const assignedTo = (where: Record<string, unknown>) => {
   };
 };
 
-SCOPED_MODELS.register('WorkerTeam', {
-  estate: byColumn('estateId'),
-  division: byColumn('divisionId'),
-  section: byColumn('sectionId'),
+SCOPED_MODELS.register('Contractor', {
+  estate: (ids) => ({
+    OR: [{ registeredEstateId: inIds(ids) }, { contracts: { some: { estateId: inIds(ids) } } }],
+  }),
+  division: (ids) => ({ contracts: { some: { divisionId: inIds(ids) } } }),
   createsCheckedBy: 'service',
 })
+  .register('ContractorContract', {
+    estate: byColumn('estateId'),
+    division: byColumn('divisionId'),
+    createsCheckedBy: 'service',
+  })
+  .register('ContractorLabour', {
+    estate: (ids) => ({ contract: { estateId: inIds(ids) } }),
+    division: (ids) => ({ contract: { divisionId: inIds(ids) } }),
+    createsCheckedBy: 'service',
+  })
+  .register('WorkerTeam', {
+    estate: byColumn('estateId'),
+    division: byColumn('divisionId'),
+    section: byColumn('sectionId'),
+    createsCheckedBy: 'service',
+  })
   .register('TeamMember', {
     estate: (ids) => ({ team: { estateId: inIds(ids) } }),
     division: (ids) => ({ team: { divisionId: inIds(ids) } }),

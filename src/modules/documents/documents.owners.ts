@@ -1,6 +1,7 @@
 import type { Database } from '../../core/db/prisma.js';
 import type { Tx } from '../../core/db/transaction.js';
 import type { ItemPlace } from '../../core/notify/notify.js';
+import { scopeToCheck } from '../../core/scope/scope.js';
 import { writable } from '../organisation/common.js';
 import { personWritable } from '../workforce/person.access.js';
 
@@ -107,6 +108,33 @@ export const DOCUMENT_OWNERS: readonly DocumentOwner[] = [
     writable: always,
     // Organisation level: no estate scope applies.
     places: (_db, ids) => Promise.resolve(new Map(ids.map((id) => [id, {}]))),
+  },
+  {
+    // P2.05: the design's contractor Documents (trade licence, TIN, VAT, bank, agreement, insurance …).
+    type: 'contractor',
+    path: '/contractors',
+    module: 'contractor',
+    label: 'contractor',
+    find: async (db, ids) => named(await db.contractor.findMany({ where: { id: { in: [...ids] } }, select })),
+    writable: async (db, id) => {
+      const c = await db.contractor.findFirst({
+        where: { id },
+        select: { registeredEstateId: true, contracts: { select: { estateId: true } } },
+      });
+      if (!c) return false;
+      const scope = await scopeToCheck();
+      if (scope === null || scope.allEstates) return true;
+      return [c.registeredEstateId, ...c.contracts.map((x) => x.estateId)].some(
+        (e) => e !== null && scope.estates.includes(e),
+      );
+    },
+    places: async (db, ids) => {
+      const rows = await db.contractor.findMany({
+        where: { id: { in: [...ids] } },
+        select: { id: true, registeredEstateId: true },
+      });
+      return byId(rows, (r) => ({ estateId: r.registeredEstateId }));
+    },
   },
   {
     // P2.01: a person's identity papers and photo (personal data: person.view to read).

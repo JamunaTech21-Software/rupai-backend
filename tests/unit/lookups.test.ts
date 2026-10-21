@@ -8,10 +8,10 @@ import { lookupSchemas } from '../../src/modules/lookups/lookup.engine.js';
 /** P1.10: the lookup descriptors are consistent with each other and with the permission catalogue. */
 
 describe('lookup types (P3 §5, §7.1)', () => {
-  it('describes the 33 reference masters (25 of P3, amenity of R.2, 3 Field / Block lists of R.3, 4 person lists of P2.01, job grade of P2.02), each once, each at its own path', () => {
-    expect(LOOKUP_TYPES).toHaveLength(34);
-    expect(new Set(LOOKUP_TYPES.map((t) => t.key)).size).toBe(34);
-    expect(new Set(LOOKUP_TYPES.map((t) => t.path)).size).toBe(34);
+  it('describes the 35 reference masters (25 of P3, amenity of R.2, 3 Field / Block lists of R.3, 4 person lists of P2.01, job grade of P2.02, trade category of P2.05), each once, each at its own path', () => {
+    expect(LOOKUP_TYPES).toHaveLength(35);
+    expect(new Set(LOOKUP_TYPES.map((t) => t.key)).size).toBe(35);
+    expect(new Set(LOOKUP_TYPES.map((t) => t.path)).size).toBe(35);
     const path = (key: string) => LOOKUP_TYPES.find((t) => t.key === key)?.path;
     expect([path('uom'), path('tea_type'), path('tea_grade'), path('shift')]).toEqual([
       '/uoms',

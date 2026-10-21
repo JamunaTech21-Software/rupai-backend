@@ -23,6 +23,7 @@ import { lookupModules } from './lookups/lookup.routes.js';
 import { calendarModules } from './calendar/calendar.routes.js';
 import { dashboardModule } from './dashboard/dashboard.routes.js';
 import { DOCUMENT_SCHEDULES, documentExpiryJob } from './documents/documents.jobs.js';
+import { CONTRACTOR_SCHEDULES, contractExpiryJob } from './workforce/contractor.jobs.js';
 import { documentsModule } from './documents/documents.routes.js';
 import { facilitiesModules } from './facilities/facilities.routes.js';
 import { healthModule } from './health/health.routes.js';
@@ -92,6 +93,7 @@ export const JOB_CATALOGUE_SCHEDULES: readonly ScheduleDefinition[] = [
   ...IDENTITY_SCHEDULES,
   ...APPROVAL_SCHEDULES,
   ...DOCUMENT_SCHEDULES,
+  ...CONTRACTOR_SCHEDULES,
   ...NOTIFICATION_SCHEDULES,
 ];
 
@@ -118,6 +120,7 @@ export function registerJobs(deps: {
   registerJob(recheckUnresolvedJob(db));
   registerJob(approvalNotifyJob(db, config.timezone));
   registerJob(documentExpiryJob(db, config.timezone));
+  registerJob(contractExpiryJob(db, config.timezone));
   registerJob(deliverJob(db, mailer, config.app.publicUrl));
   registerJob(purgeNotificationsJob(db));
 }

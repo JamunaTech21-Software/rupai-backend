@@ -70,7 +70,12 @@ const masterList = (extra: Record<string, unknown>) =>
  * The contacts sub-resource of an owner, declared once (P3 §6.2): list, add, read, edit, remove,
  * make-primary. Permission follows the owner: {module}.view to read, {module}.edit to change.
  */
-function contactRoutes(m: Builder, contacts: ContactsService, ownerLabel: string, basePath: string): void {
+export function contactRoutes(
+  m: Builder,
+  contacts: ContactsService,
+  ownerLabel: string,
+  basePath: string,
+): void {
   const { module } = contacts.owner;
 
   m.route({
