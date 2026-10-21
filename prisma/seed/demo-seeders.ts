@@ -69,6 +69,8 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['benefit', 'view'],
   ['welfare', 'view'],
   ['training', 'view'],
+  ['goal', 'view'],
+  ['evaluation', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -103,8 +105,12 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     'benefit',
     'welfare',
     'training',
+    'goal',
+    'evaluation',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
   ['training', 'submit'],
+  ['goal', 'submit'],
+  ['evaluation', 'submit'],
   // P2.08: benefits and welfare cases are submitted for approval (operational class).
   ['benefit', 'submit'],
   ['welfare', 'submit'],
@@ -135,6 +141,11 @@ const DEMO_APPROVER_PERMISSIONS = [
   // P2.09: approves training programmes.
   ['training', 'view'],
   ['training', 'approve'],
+  // P2.10: approves goals and evaluations.
+  ['goal', 'view'],
+  ['goal', 'approve'],
+  ['evaluation', 'view'],
+  ['evaluation', 'approve'],
   ['workflow', 'view'],
   ['workflow', 'approve'],
   ['purchase_order', 'view'],
@@ -287,6 +298,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoLeaveSeeder,
     demoBenefitsSeeder,
     demoTrainingSeeder,
+    demoPerformanceSeeder,
   ];
 }
 
@@ -1371,6 +1383,130 @@ const demoTrainingSeeder: Seeder = {
           },
         });
         inserted += 1;
+      }
+      return { inserted, updated: 0 };
+    }),
+};
+
+/**
+ * P2.10: an estate objective on DEMO-A with a worker's goal under it (one on track, one delayed), and an
+ * approved evaluation of EMP-A-0002 (the `manager` login) waiting for her acknowledgement. Added once.
+ */
+const demoPerformanceSeeder: Seeder = {
+  name: 'demo: P2.10 goals and an evaluation on DEMO-A',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const estate = await tx.estate.findFirst({
+        where: { code: 'DEMO-A' },
+        select: { id: true, code: true },
+      });
+      if (!estate || (await tx.goal.count({ where: { estateId: estate.id } })) > 0)
+        return { inserted, updated: 0 };
+      const now = new Date();
+      const day = (offset: number) =>
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset));
+      const approved = {
+        submittedAt: now,
+        submittedBy: by,
+        approvedAt: now,
+        approvedBy: by,
+        stateChangedAt: now,
+        createdBy: by,
+      };
+      const objective = await tx.goal.create({
+        data: {
+          goalCode: `GL-${estate.code}-DEMO-1`,
+          ownerType: 'estate',
+          ownerId: estate.id,
+          estateId: estate.id,
+          title: 'Green leaf 1.2 million kg this season',
+          kpiName: 'Green leaf',
+          measureUnit: 'kg',
+          targetValue: '1200000',
+          currentValue: '540000',
+          progressPercentage: '45',
+          startDate: day(-150),
+          dueDate: day(150),
+          state: 'in_progress',
+          ...approved,
+        },
+      });
+      const workers = await tx.employmentProfile.findMany({
+        where: { estateId: estate.id, employmentType: 'worker', status: { not: 'separated' } },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+        take: 2,
+      });
+      for (const [i, w] of workers.entries()) {
+        await tx.goal.create({
+          data: {
+            goalCode: `GL-${estate.code}-DEMO-${String(i + 2)}`,
+            ownerType: 'employment_profile',
+            ownerId: w.id,
+            estateId: estate.id,
+            parentGoalId: objective.id,
+            title: 'Pluck 6,000 kg this season',
+            kpiName: 'Green leaf plucked',
+            measureUnit: 'kg',
+            targetValue: '6000',
+            currentValue: i === 0 ? '3200' : '900',
+            progressPercentage: i === 0 ? '53.3333' : '15',
+            startDate: day(-150),
+            dueDate: day(150),
+            state: i === 0 ? 'in_progress' : 'delayed',
+            ...approved,
+          },
+        });
+      }
+      inserted += 1 + workers.length;
+      const manager = await tx.employmentProfile.findFirst({
+        where: { estateId: estate.id, profileNumber: 'EMP-A-0002' },
+        select: { id: true },
+      });
+      const reviewer = await tx.employmentProfile.findFirst({
+        where: { estateId: estate.id, profileNumber: 'EMP-A-0001' },
+        select: { id: true },
+      });
+      const codes = await tx.evaluationCriteria.findMany({
+        where: { code: { in: ['JOB_KNOWLEDGE', 'QUALITY', 'TEAMWORK'] } },
+        select: { id: true, code: true },
+      });
+      if (manager && codes.length === 3) {
+        const e = await tx.evaluation.create({
+          data: {
+            evaluationNumber: `EV-${estate.code}-DEMO-1`,
+            employmentProfileId: manager.id,
+            estateId: estate.id,
+            reviewerProfileId: reviewer?.id ?? null,
+            periodStart: day(-365),
+            periodEnd: day(-1),
+            evaluationType: 'annual',
+            overallScore: '80',
+            overallRating: 'exceeds',
+            strengths: 'Organised HR records; quick on worker queries.',
+            developmentNeeds: 'Payroll knowledge before Phase 9.',
+            reviewerComment: 'A strong year.',
+            state: 'approved',
+            ...approved,
+          },
+        });
+        for (const [i, c] of codes.entries()) {
+          await tx.evaluationLine.create({
+            data: {
+              evaluationId: e.id,
+              criteriaId: c.id,
+              weight: '1',
+              score: '4',
+              maxScore: '5',
+              weightedScore: '0.8',
+              sequence: i + 1,
+              createdBy: by,
+            },
+          });
+        }
+        inserted += 4;
       }
       return { inserted, updated: 0 };
     }),

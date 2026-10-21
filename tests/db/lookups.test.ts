@@ -196,6 +196,8 @@ describe('one engine, every type (P4 §7.3)', () => {
         return { code: unique('A'), name: 'Activity', cost_category: 'other' };
       case 'benefit_type':
         return { code: unique('B'), name: 'Benefit', benefit_category: 'other' };
+      case 'evaluation_criteria':
+        return { code: unique('C'), name: 'Criterion', criteria_group: 'other' };
       case 'shift':
         return { code: unique('S'), name: 'Shift', start_time: '06:00', end_time: '14:00' };
       case 'uom':

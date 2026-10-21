@@ -60,6 +60,29 @@ import {
   TRAINING_TYPES,
 } from './training.schema.js';
 import { trainingService } from './training.service.js';
+import {
+  AcknowledgeBody,
+  CalendarOut,
+  CalendarQuery,
+  CancelGoalBody,
+  CreateEvaluationBody,
+  CreateGoalBody,
+  EVALUATION_STATES,
+  EVALUATION_TYPES,
+  EvaluationOut,
+  GOAL_OWNER_TYPES,
+  GOAL_STATES,
+  GoalOut,
+  IdParams as PerformanceParams,
+  LinesBody,
+  OverviewOut,
+  OverviewQuery,
+  PatchEvaluationBody,
+  PatchGoalBody,
+  ProgressBody,
+  ProgressOut,
+} from './performance.schema.js';
+import { performanceService } from './performance.service.js';
 import { contactsService } from '../facilities/contacts.service.js';
 import { contactRoutes } from '../facilities/facilities.routes.js';
 import {
@@ -155,7 +178,7 @@ import { profileService } from './profile.service.js';
 /**
  * HTTP surface of the workforce module: persons (P2.01), employment profiles (P2.02), employment
  * assignments (P2.03), worker teams (P2.04), contractors (P2.05), leave (P2.07) and benefits and welfare
- * (P2.08), and training (P2.09); Spec P4 §8.3, §6.5.
+ * (P2.08), training (P2.09) and goals and evaluations (P2.10); Spec P4 §8.3, §6.5, §12.4.
  */
 
 export interface WorkforceDeps {
@@ -2191,6 +2214,372 @@ function trainingModule({ db, platform, authz, accessLog, config }: WorkforceDep
   return m.build();
 }
 
+function performanceModules({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule[] {
+  const svc = performanceService({ db, accessLog, timezone: config.timezone });
+  for (const a of svc.adapters) registerApprovalAdapter(a);
+  const byId = { params: PerformanceParams };
+  const all = (
+    req: Parameters<typeof sendPage>[0],
+    res: Parameters<typeof sendPage>[1],
+    items: readonly unknown[],
+  ) => {
+    sendPage(req, res, items, {
+      pagination: { page: 1, perPage: Math.max(items.length, 1) },
+      total: items.length,
+    });
+  };
+
+  const g = defineModule({ name: 'goals', path: '/goals', tag: 'Workforce', platform, authz, accessLog });
+  g.route({
+    method: 'get',
+    path: '/',
+    summary: 'List goals',
+    description:
+      'Filters: owner_type and owner_id, estate, parent goal, state, start / due dates. Everyone sees their own.',
+    auth: { permission: 'goal.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        owner_type: { type: { enum: GOAL_OWNER_TYPES } },
+        owner_id: { type: 'id', ops: ['eq'] },
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        parent_goal_id: { type: 'id', ops: ['eq'] },
+        state: { type: { enum: GOAL_STATES }, ops: ['eq', 'in'] },
+        start_date: { type: 'date', ops: ['from', 'to'] },
+        due_date: { type: 'date', ops: ['from', 'to'] },
+      },
+      sorts: ['due_date', 'start_date', 'goal_code'],
+      defaultSort: ['due_date'],
+      maxPageSize: 500,
+    },
+    success: { status: 200, description: 'A page of goals', schema: GoalOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.goals.list(q);
+      sendPage(req, res, items, {
+        pagination: q.page ?? { page: 1, perPage: 25 },
+        total,
+        appliedScope: await appliedScope(),
+      });
+    },
+  });
+  g.route({
+    method: 'get',
+    path: '/overview',
+    summary: 'Goals overview',
+    description: 'Total, completed, in progress, delayed, overdue (P4 §12.4), plus drafts and cancelled.',
+    auth: { permission: 'goal.view' },
+    query: OverviewQuery,
+    success: { status: 200, description: 'The figures', schema: OverviewOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { query } = getValidated(res, { query: OverviewQuery });
+      sendOne(res, await svc.goals.overview(query));
+    },
+  });
+  g.route({
+    method: 'get',
+    path: '/calendar',
+    summary: 'Goals calendar',
+    description: 'Start, review and due dates of the goals between from and to.',
+    auth: { permission: 'goal.view' },
+    query: CalendarQuery,
+    success: { status: 200, description: 'The events', schema: CalendarOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { query } = getValidated(res, { query: CalendarQuery });
+      all(req, res, await svc.goals.calendar(query));
+    },
+  });
+  g.route({
+    method: 'post',
+    path: '/',
+    summary: 'Set a goal',
+    description:
+      'For a profile (owner_type employment_profile), a department (with estate_id) or an estate; numbered GL-…; parent_goal_id links ' +
+      'it to a departmental or estate objective. A draft: submit it for approval.',
+    auth: { permission: 'goal.create' },
+    body: CreateGoalBody,
+    success: { status: 201, description: 'Set', schema: GoalOut },
+    errors: ['SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateGoalBody });
+      const x = await svc.goals.create(body, currentActorId());
+      sendCreated(res, x, `/api/v1/goals/${x.id}`, x.version);
+    },
+  });
+  g.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get a goal',
+    auth: { permission: 'goal.view' },
+    ...byId,
+    success: { status: 200, description: 'The goal', schema: GoalOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.goals.get(params.id);
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  g.route({
+    method: 'patch',
+    path: '/:id',
+    summary: 'Change a draft goal',
+    auth: { permission: 'goal.edit' },
+    ...byId,
+    body: PatchGoalBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Changed', schema: GoalOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: PatchGoalBody });
+      const x = await svc.goals.update(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  g.route({
+    method: 'delete',
+    path: '/:id',
+    summary: 'Delete a draft goal',
+    auth: { permission: 'goal.delete' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      await svc.goals.remove(params.id, currentActorId());
+      sendNoContent(res);
+    },
+  });
+  for (const [action, summary, description, permission] of [
+    [
+      'submit',
+      'Submit a goal for approval',
+      'Routed through the goal workflow; approved, it becomes active.',
+      'goal.submit',
+    ],
+    ['complete', 'Complete a goal', 'An active goal (in progress, delayed or overdue too).', 'goal.edit'],
+  ] as const) {
+    g.route({
+      method: 'post',
+      path: `/:id/${action}`,
+      summary,
+      description,
+      auth: { permission },
+      ...byId,
+      ifMatch: true,
+      success: { status: 200, description: 'Done', schema: GoalOut },
+      errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+      handler: async (req, res) => {
+        const { params } = getValidated(res, byId);
+        const v = requireIfMatch(req);
+        const x =
+          action === 'submit'
+            ? await svc.goals.submit(params.id, v, currentActorId())
+            : await svc.goals.complete(params.id, v, currentActorId());
+        sendOne(res, x, { version: x.version });
+      },
+    });
+  }
+  g.route({
+    method: 'post',
+    path: '/:id/cancel',
+    summary: 'Cancel a goal',
+    auth: { permission: 'goal.edit' },
+    ...byId,
+    body: CancelGoalBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Cancelled', schema: GoalOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: CancelGoalBody });
+      const x = await svc.goals.cancel(params.id, requireIfMatch(req), body.reason, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  g.route({
+    method: 'get',
+    path: '/:id/progress',
+    summary: 'A goal’s progress history',
+    auth: { permission: 'goal.view' },
+    ...byId,
+    success: { status: 200, description: 'The progress updates', schema: ProgressOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      all(req, res, await svc.goals.progressOf(params.id));
+    },
+  });
+  g.route({
+    method: 'post',
+    path: '/:id/progress',
+    summary: 'Record progress',
+    description:
+      'The value on a date (the percentage is value ÷ target for a goal with a target) or the percentage. The goal becomes in_progress, ' +
+      'or delayed / overdue when it trails its dates (computed, never keyed).',
+    auth: { permission: 'goal.edit' },
+    ...byId,
+    body: ProgressBody,
+    success: { status: 200, description: 'Recorded: the goal as it now stands', schema: GoalOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: ProgressBody });
+      const { goal } = await svc.goals.progress(params.id, body, currentActorId());
+      sendOne(res, goal, { version: goal.version });
+    },
+  });
+
+  const e = defineModule({
+    name: 'evaluations',
+    path: '/evaluations',
+    tag: 'Workforce',
+    platform,
+    authz,
+    accessLog,
+  });
+  e.route({
+    method: 'get',
+    path: '/',
+    summary: 'List evaluations',
+    description:
+      'Filters: profile, reviewer, estate, type, state, period end. Everyone sees their own; historical evaluations stay in full.',
+    auth: { permission: 'evaluation.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        employment_profile_id: { type: 'id', ops: ['eq', 'in'] },
+        reviewer_profile_id: { type: 'id', ops: ['eq'] },
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        evaluation_type: { type: { enum: EVALUATION_TYPES } },
+        state: { type: { enum: EVALUATION_STATES }, ops: ['eq', 'in'] },
+        period_end: { type: 'date', ops: ['from', 'to'] },
+      },
+      sorts: ['period_end', 'evaluation_number'],
+      defaultSort: ['-period_end'],
+      maxPageSize: 500,
+    },
+    success: { status: 200, description: 'A page of evaluations', schema: EvaluationOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.evaluations.list(q);
+      sendPage(req, res, items, {
+        pagination: q.page ?? { page: 1, perPage: 25 },
+        total,
+        appliedScope: await appliedScope(),
+      });
+    },
+  });
+  e.route({
+    method: 'post',
+    path: '/',
+    summary: 'Start an evaluation',
+    description:
+      'A draft for a profile and period (numbered EV-…), optionally with its lines: score each criterion, then submit.',
+    auth: { permission: 'evaluation.create' },
+    body: CreateEvaluationBody,
+    success: { status: 201, description: 'Started', schema: EvaluationOut },
+    errors: ['SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateEvaluationBody });
+      const x = await svc.evaluations.create(body, currentActorId());
+      sendCreated(res, x, `/api/v1/evaluations/${x.id}`, x.version);
+    },
+  });
+  e.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get an evaluation',
+    auth: { permission: 'evaluation.view' },
+    ...byId,
+    success: { status: 200, description: 'The evaluation', schema: EvaluationOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.evaluations.get(params.id);
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  e.route({
+    method: 'patch',
+    path: '/:id',
+    summary: 'Change a draft evaluation',
+    description: 'Drafts only; an acknowledged evaluation is locked for good (409).',
+    auth: { permission: 'evaluation.edit' },
+    ...byId,
+    body: PatchEvaluationBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Changed', schema: EvaluationOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: PatchEvaluationBody });
+      const x = await svc.evaluations.update(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  e.route({
+    method: 'put',
+    path: '/:id/lines',
+    summary: 'Score the criteria',
+    description:
+      'Replaces the lines (one per criterion; score 0 … max_score; weight default 1; a goal of the profile for a goal-linked one) and recomputes the overall score and rating.',
+    auth: { permission: 'evaluation.edit' },
+    ...byId,
+    body: LinesBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Scored', schema: EvaluationOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: LinesBody });
+      const x = await svc.evaluations.setLines(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  e.route({
+    method: 'post',
+    path: '/:id/submit',
+    summary: 'Submit an evaluation for approval',
+    description: 'Every criterion scored.',
+    auth: { permission: 'evaluation.submit' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 200, description: 'Submitted', schema: EvaluationOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED', 'RULE_AMBIGUOUS'],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.evaluations.submit(params.id, requireIfMatch(req), currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  e.route({
+    method: 'post',
+    path: '/:id/acknowledge',
+    summary: 'Acknowledge an evaluation',
+    description:
+      'By the evaluated employee (the account linked to the profile), with an optional comment: locks the record for good (P4 §12.4).',
+    auth: { permission: 'evaluation.view' },
+    ...byId,
+    body: AcknowledgeBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Acknowledged', schema: EvaluationOut },
+    errors: ['INVALID_TRANSITION'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: AcknowledgeBody });
+      const x = await svc.evaluations.acknowledge(
+        params.id,
+        requireIfMatch(req),
+        body.employee_comment ?? null,
+        currentActorId(),
+      );
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  return [g.build(), e.build()];
+}
+
 function assignmentsModule({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule {
   const svc = assignmentService({ db, accessLog, timezone: config.timezone });
   registerApprovalAdapter(svc.adapter);
@@ -2338,5 +2727,6 @@ export function workforceModules(deps: WorkforceDeps): ApiModule[] {
     ...leaveModules(deps),
     ...benefitModules(deps),
     trainingModule(deps),
+    ...performanceModules(deps),
   ];
 }

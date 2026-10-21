@@ -14,6 +14,7 @@ import { businessDateToDb, todayIn } from '../../core/time/dates.js';
  *   benefit_entitlement / benefit_issue  their estate, and the profile itself (self); welfare_case its
  *                          estate (P2.08).
  *   training_program       its estate; training_participant as its programme, and the profile itself (P2.09).
+ *   goal / evaluation      their estate, and the profile itself (its own goals and evaluations, P2.10).
  *   employment_profile     an estate grant sees the profiles of that estate; a division or section grant
  *                          the profiles whose CURRENT assignment is there (approved, in force today, in
  *                          the organisation's timezone); everyone sees their own (self).
@@ -44,7 +45,27 @@ const assignedTo = (where: Record<string, unknown>) => {
   };
 };
 
-SCOPED_MODELS.register('TrainingProgram', { estate: byColumn('estateId'), createsCheckedBy: 'service' })
+SCOPED_MODELS.register('Goal', {
+  estate: byColumn('estateId'),
+  self: (ids) => ({ ownerType: 'employment_profile', ownerId: inIds(ids) }),
+  createsCheckedBy: 'service',
+})
+  .register('GoalProgress', {
+    estate: (ids) => ({ goal: { estateId: inIds(ids) } }),
+    self: (ids) => ({ goal: { ownerType: 'employment_profile', ownerId: inIds(ids) } }),
+    createsCheckedBy: 'service',
+  })
+  .register('Evaluation', {
+    estate: byColumn('estateId'),
+    self: byColumn('employmentProfileId'),
+    createsCheckedBy: 'service',
+  })
+  .register('EvaluationLine', {
+    estate: (ids) => ({ evaluation: { estateId: inIds(ids) } }),
+    self: (ids) => ({ evaluation: { employmentProfileId: inIds(ids) } }),
+    createsCheckedBy: 'service',
+  })
+  .register('TrainingProgram', { estate: byColumn('estateId'), createsCheckedBy: 'service' })
   .register('TrainingParticipant', {
     estate: (ids) => ({ program: { estateId: inIds(ids) } }),
     self: byColumn('employmentProfileId'),
