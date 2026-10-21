@@ -249,6 +249,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoPersonsSeeder,
     demoProfilesSeeder,
     demoShapesSeeder,
+    demoAssignmentsSeeder,
   ];
 }
 
@@ -552,6 +553,202 @@ const demoProfilesSeeder: Seeder = {
         });
         if (type === 'employee') supervisor = created.id;
         inserted += 1;
+      }
+      return { inserted, updated: 0 };
+    }),
+};
+
+/**
+ * P2.03: departments and designations (the client's own lists, seeded empty), an approved joining
+ * assignment for each demo profile of DEMO-A (the worker form's section and job / task, the employee
+ * form's department, designation and salary structure), one transfer in the timeline, and a reporting
+ * line for the approval engine: the `manager` login is an HR officer reporting to the field supervisor,
+ * whose profile the `approver` login holds, so a wage change the manager submits reaches the approver.
+ * Added once; a reviewer's changes stay.
+ */
+const demoAssignmentsSeeder: Seeder = {
+  name: 'demo: P2.03 departments, designations, assignments and a reporting line on DEMO-A',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const estate = await tx.estate.findFirst({ where: { code: 'DEMO-A' }, select: { id: true } });
+      if (!estate) return { inserted, updated: 0 };
+      const ensure = async (
+        model: 'department' | 'designation',
+        rows: readonly (readonly [string, string])[],
+      ) => {
+        const ids = new Map<string, bigint>();
+        const m = tx[model] as unknown as typeof tx.department;
+        for (const [i, [code, name]] of rows.entries()) {
+          const found = await m.findUnique({ where: { code }, select: { id: true } });
+          const row =
+            found ?? (await m.create({ data: { code, name, sortOrder: (i + 1) * 10, createdBy: by } }));
+          if (!found) inserted += 1;
+          ids.set(code, row.id);
+        }
+        return ids;
+      };
+      const dept = await ensure('department', [
+        ['ESTATE_MGMT', 'Estate Management'],
+        ['HR_ADMIN', 'HR & Admin'],
+        ['FIELD_OPS', 'Field Operations'],
+        ['ACCOUNTS', 'Accounts & Finance'],
+        ['FACTORY', 'Factory'],
+      ]);
+      const desig = await ensure('designation', [
+        ['ESTATE_MANAGER', 'Estate Manager'],
+        ['HR_MANAGER', 'HR Manager'],
+        ['HR_OFFICER', 'HR Officer'],
+        ['FIELD_SUPERVISOR', 'Field Supervisor'],
+        ['ACCOUNTS_OFFICER', 'Accounts Officer'],
+      ]);
+      const sections = await tx.section.findMany({
+        where: { division: { estateId: estate.id }, status: 'active' },
+        select: { id: true, divisionId: true },
+        orderBy: { id: 'asc' },
+      });
+      const activity = async (code: string) =>
+        (await tx.activityType.findUnique({ where: { code }, select: { id: true } }))?.id ?? null;
+      const plucking = await activity('PLUCKING');
+      const pruning = await activity('PRUNING');
+      const profile = (number: string) =>
+        tx.employmentProfile.findFirst({
+          where: { estateId: estate.id, profileNumber: number },
+          select: { id: true, personId: true, joiningDate: true, employmentType: true, status: true },
+        });
+
+      // The reporting line: an HR officer (the `manager` login) under the field supervisor (`approver`).
+      const supervisor = await profile('EMP-A-0001');
+      let officer = await profile('EMP-A-0002');
+      if (supervisor && !officer) {
+        const person = await tx.person.create({
+          data: {
+            personCode: 'PRS-DEMO-MGR',
+            registeredEstateId: estate.id,
+            title: 'ms',
+            firstName: 'Farhana',
+            lastName: 'Akter',
+            fullName: 'Farhana Akter',
+            gender: 'female',
+            dateOfBirth: businessDateToDb('1991-02-14' as BusinessDate),
+            createdBy: by,
+          },
+        });
+        const created = await tx.employmentProfile.create({
+          data: {
+            personId: person.id,
+            estateId: estate.id,
+            employmentType: 'employee',
+            profileNumber: 'EMP-A-0002',
+            engagementType: 'permanent',
+            employmentBasis: 'full_time',
+            jobNature: 'administrative',
+            workingLocation: 'office',
+            joiningDate: businessDateToDb('2019-04-01' as BusinessDate),
+            supervisorProfileId: supervisor.id,
+            createdBy: by,
+          },
+        });
+        inserted += 2;
+        officer = await profile(created.profileNumber);
+      }
+      const link = async (username: string, p: { id: bigint; personId: bigint } | null) => {
+        if (!p) return;
+        const u = await tx.user.findUnique({
+          where: { username },
+          select: { id: true, employmentProfileId: true },
+        });
+        if (u?.employmentProfileId === null) {
+          await tx.user.update({
+            where: { id: u.id },
+            data: { employmentProfileId: p.id, personId: p.personId },
+          });
+          inserted += 1;
+        }
+      };
+      await link('approver', supervisor);
+      await link('manager', officer);
+
+      const salary = (basic: number) => [
+        { component: 'basic', amount: String(basic) },
+        { component: 'house_rent', amount: String(basic / 2) },
+        { component: 'medical', amount: '3000' },
+        { component: 'conveyance', amount: '2000' },
+      ];
+      const plan: readonly {
+        number: string;
+        section?: number;
+        activity?: bigint | null;
+        dept?: string;
+        desig?: string;
+        pay?: { component: string; amount: string }[];
+        transfer?: { from: string; section: number };
+      }[] = [
+        { number: 'EMP-A-0001', dept: 'FIELD_OPS', desig: 'FIELD_SUPERVISOR', pay: salary(35000) },
+        { number: 'EMP-A-0002', dept: 'HR_ADMIN', desig: 'HR_OFFICER', pay: salary(28000) },
+        { number: 'WRK-A-0001', section: 0, activity: plucking },
+        {
+          number: 'WRK-A-0002',
+          section: 1,
+          activity: plucking,
+          transfer: { from: '2025-01-01', section: 2 },
+        },
+        { number: 'WRK-A-0003', section: 0, activity: plucking },
+        { number: 'WRK-A-0004', section: 2, activity: pruning },
+      ];
+      const now = new Date();
+      for (const item of plan) {
+        const p = await profile(item.number);
+        if (!p || p.status === 'separated') continue;
+        if ((await tx.employmentAssignment.count({ where: { employmentProfileId: p.id } })) > 0) continue;
+        const place = (i: number | undefined) => {
+          const s = i === undefined ? undefined : sections[i % Math.max(sections.length, 1)];
+          return s ? { sectionId: s.id, divisionId: s.divisionId } : {};
+        };
+        const create = async (from: Date, to: Date | null, reason: string, i: number | undefined) => {
+          const a = await tx.employmentAssignment.create({
+            data: {
+              employmentProfileId: p.id,
+              estateId: estate.id,
+              departmentId: item.dept ? (dept.get(item.dept) ?? null) : null,
+              designationId: item.desig ? (desig.get(item.desig) ?? null) : null,
+              ...place(i),
+              activityTypeId: item.activity ?? null,
+              wageBasis: p.employmentType === 'worker' ? 'daily' : 'monthly',
+              effectiveFrom: from,
+              effectiveTo: to,
+              changeReason: reason,
+              isWageChange: reason === 'joining' && (item.pay?.length ?? 0) > 0,
+              state: 'approved',
+              stateChangedAt: now,
+              submittedAt: now,
+              submittedBy: by,
+              approvedAt: now,
+              approvedBy: by,
+              createdBy: by,
+              payLines: { create: item.pay ?? [] },
+            },
+          });
+          await tx.statusHistory.create({
+            data: {
+              recordType: 'employment_assignment',
+              recordId: a.id.toString(),
+              fromState: null,
+              toState: 'approved',
+              changedBy: by,
+              comment: 'Demo seed',
+            },
+          });
+          inserted += 1;
+        };
+        if (item.transfer) {
+          const from = businessDateToDb(item.transfer.from as BusinessDate);
+          await create(p.joiningDate, new Date(from.getTime() - 86_400_000), 'joining', item.section);
+          await create(from, null, 'transfer', item.transfer.section);
+        } else {
+          await create(p.joiningDate, null, 'joining', item.section);
+        }
       }
       return { inserted, updated: 0 };
     }),

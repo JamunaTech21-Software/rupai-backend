@@ -1,25 +1,61 @@
-import { SCOPED_MODELS } from '../../core/scope/scoped-models.js';
+import { byColumn, SCOPED_MODELS } from '../../core/scope/scoped-models.js';
+import { businessDateToDb, todayIn } from '../../core/time/dates.js';
 
 /**
- * Data scope of the workforce (P2.01–P2.02, BACKLOG D-2.01-2, D-2.02-3).
+ * Data scope of the workforce (P2.01–P2.03, BACKLOG D-2.01-2, D-2.02-3, D-2.03-4).
  *
- *   employment_profile  an estate grant sees the profiles of that estate; everyone sees their own (self).
- *                       Division and section grants see the profiles assigned to them from P2.03.
- *   person              a person is seen where they are registered OR hold a profile, and by themselves.
+ *   employment_assignment  the profile's estate, and the division, section or department it names; self.
+ *   employment_profile     an estate grant sees the profiles of that estate; a division or section grant
+ *                          the profiles whose CURRENT assignment is there (approved, in force today, in
+ *                          the organisation's timezone); everyone sees their own (self).
+ *   person                 seen where registered OR employed (as the profile above), and by themselves.
  *
- * Creates are checked by the services: a person's estate is not one column, and a profile is created
- * under an estate the caller must be able to change.
+ * Creates are checked by the services: a person's estate is not one column, and a profile or an
+ * assignment is created under an estate the caller must be able to change.
  */
 const inIds = (ids: readonly bigint[]) => ({ in: [...ids] });
 
-SCOPED_MODELS.register('EmploymentProfile', {
-  estate: (ids) => ({ estateId: inIds(ids) }),
-  self: (ids) => ({ id: inIds(ids) }),
+let timezone = 'UTC';
+/** The organisation's timezone, for "today" (set once when the workforce routes are built). */
+export function setWorkforceScopeTimezone(tz: string): void {
+  timezone = tz;
+}
+/** Profiles whose assignment in force today matches. */
+const assignedTo = (where: Record<string, unknown>) => {
+  const today = businessDateToDb(todayIn(timezone));
+  return {
+    assignments: {
+      some: {
+        ...where,
+        state: 'approved',
+        effectiveFrom: { lte: today },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: today } }],
+      },
+    },
+  };
+};
+
+SCOPED_MODELS.register('EmploymentAssignment', {
+  estate: byColumn('estateId'),
+  division: byColumn('divisionId'),
+  section: byColumn('sectionId'),
+  department: byColumn('departmentId'),
+  self: byColumn('employmentProfileId'),
   createsCheckedBy: 'service',
-}).register('Person', {
-  estate: (ids) => ({
-    OR: [{ registeredEstateId: inIds(ids) }, { profiles: { some: { estateId: inIds(ids) } } }],
-  }),
-  self: (ids) => ({ profiles: { some: { id: inIds(ids) } } }),
-  createsCheckedBy: 'service',
-});
+})
+  .register('EmploymentProfile', {
+    estate: (ids) => ({ estateId: inIds(ids) }),
+    division: (ids) => assignedTo({ divisionId: inIds(ids) }),
+    section: (ids) => assignedTo({ sectionId: inIds(ids) }),
+    self: (ids) => ({ id: inIds(ids) }),
+    createsCheckedBy: 'service',
+  })
+  .register('Person', {
+    estate: (ids) => ({
+      OR: [{ registeredEstateId: inIds(ids) }, { profiles: { some: { estateId: inIds(ids) } } }],
+    }),
+    division: (ids) => ({ profiles: { some: assignedTo({ divisionId: inIds(ids) }) } }),
+    section: (ids) => ({ profiles: { some: assignedTo({ sectionId: inIds(ids) }) } }),
+    self: (ids) => ({ profiles: { some: { id: inIds(ids) } } }),
+    createsCheckedBy: 'service',
+  });

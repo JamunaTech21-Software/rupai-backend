@@ -254,6 +254,9 @@ export const APPROVABLE_DOCUMENTS: readonly ApprovableDocument[] = [
   // ---- master records that need approval (P7 §9.6) ---------------------------------------------------
   doc('employment_assignment', 'Employment assignment', 'master', 'estate', 'employment', [
     flag('is_wage_change', 'Changes the wage basis or rate'),
+    flag('is_retrospective', 'Takes effect in the past'),
+    attr('change_reason', 'Reason for the change'),
+    attr('employment_type', 'Worker or employee'),
   ]),
   doc('supplier_bank_change', 'Supplier bank detail change', 'master', 'organisation', 'supplier'),
   doc('buyer_credit_limit', 'Buyer credit limit change', 'master', 'organisation', 'buyer', [

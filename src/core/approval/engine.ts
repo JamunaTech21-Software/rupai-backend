@@ -7,9 +7,9 @@ import { lockRowsForUpdate, withTransaction, type Tx } from '../db/transaction.j
 import { AppError, Errors } from '../errors/app-error.js';
 import { todayIn, type BusinessDate } from '../time/dates.js';
 import { approvalAdapter, type ApprovalContext } from './adapters.js';
-import { isApprover, resolveApprovers, type DocumentPlace } from './approvers.js';
+import { isApprover, placeOfRequest, resolveApprovers, stepRule, type DocumentPlace } from './approvers.js';
 import type { Condition } from './conditions.js';
-import { pathFor, type ApproverRule } from './definition.js';
+import { pathFor } from './definition.js';
 import { approvableDocument, NEVER_SELF_APPROVE, type ApprovableDocument } from './document-types.js';
 import { selectWorkflow } from './select.js';
 
@@ -67,6 +67,7 @@ const stepSelect = {
   approverRule: true,
   roleId: true,
   userId: true,
+  reportingLevel: true,
   allowSelfApproval: true,
   conditionField: true,
   conditionOperator: true,
@@ -79,11 +80,7 @@ export const readPath = (raw: unknown): PathEntry[] => {
   return Array.isArray(parsed) ? (parsed as PathEntry[]) : [];
 };
 
-const placeOf = (r: {
-  estateId: bigint | null;
-  factoryId: bigint | null;
-  warehouseId: bigint | null;
-}): DocumentPlace => ({ estateId: r.estateId, factoryId: r.factoryId, warehouseId: r.warehouseId });
+const placeOf = placeOfRequest;
 
 function documentTypeOf(key: string): ApprovableDocument {
   const d = approvableDocument(key);
@@ -106,13 +103,8 @@ export function permissionFor(
 }
 
 async function unresolved(tx: Tx, document: ApprovableDocument, step: StepRow, place: DocumentPlace) {
-  const r = await resolveApprovers(
-    tx,
-    document,
-    { approverRule: step.approverRule as ApproverRule, roleId: step.roleId, userId: step.userId },
-    place,
-  );
-  // A reporting-line or cost-centre step cannot be resolved until those tables exist (Phase 2, 3).
+  const r = await resolveApprovers(tx, document, stepRule(step), place);
+  // A cost-centre step cannot be resolved until cost centres exist (Phase 3).
   return r.users.length === 0;
 }
 
@@ -185,6 +177,7 @@ export async function submitForApproval(
     estateId: doc.estateId ?? null,
     factoryId: doc.factoryId ?? null,
     warehouseId: doc.warehouseId ?? null,
+    submittedBy: actor.actorId,
   };
   const now = new Date();
   try {
@@ -241,7 +234,7 @@ export async function eligibility(
   userId: bigint,
   documentType: string,
 ): Promise<Eligibility | null> {
-  const rule = { approverRule: step.approverRule as ApproverRule, roleId: step.roleId, userId: step.userId };
+  const rule = stepRule(step);
   if (await isApprover(tx, document, rule, place, userId)) return { actingForUserId: null };
   const now = new Date();
   const delegations = await tx.approvalDelegation.findMany({

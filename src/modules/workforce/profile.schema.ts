@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { zId } from '../../core/ids/ids.js';
 import { zBusinessDate } from '../../core/time/dates.js';
+import { CurrentAssignmentOut } from './assignment.schema.js';
 import { GENDERS, RELATIONS } from './person.schema.js';
 
 /**
@@ -170,6 +171,8 @@ export const ProfileOut = z.object({
   nominee_phone: z.string().nullable(),
   nominee_address: z.string().nullable(),
   remarks: z.string().nullable(),
+  /** The assignment in force today (P2.03): department, designation, division, section, job / task. */
+  current_assignment: CurrentAssignmentOut,
   status: z.enum(PROFILE_STATUSES),
   /** The user account linked to this profile, if any. */
   user: z.object({ id: z.string(), username: z.string() }).nullable(),
@@ -203,6 +206,8 @@ export const WorkforceSummaryOut = z.object({
   /** Mean years of service of the profiles not separated, to 1 place. */
   average_tenure_years: z.string().nullable(),
   by_category: z.array(Bucket),
+  /** By the department of the assignment in force today ("none": no assignment yet). */
+  by_department: z.array(Bucket),
   by_engagement_type: z.array(Bucket),
   by_gender: z.array(Bucket),
   by_age_group: z.array(Bucket),

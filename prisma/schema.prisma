@@ -136,111 +136,116 @@ model User {
   authorisationsGiven   AccessAuthorisation[] @relation("AccessAuthorisationBy")
   authorisationsRemoved AccessAuthorisation[] @relation("AccessAuthorisationRemovedBy")
 
-  createdOrganisations        Organisation[]        @relation("OrganisationCreatedBy")
-  updatedOrganisations        Organisation[]        @relation("OrganisationUpdatedBy")
-  createdEstates              Estate[]              @relation("EstateCreatedBy")
-  updatedEstates              Estate[]              @relation("EstateUpdatedBy")
-  createdDivisions            Division[]            @relation("DivisionCreatedBy")
-  updatedDivisions            Division[]            @relation("DivisionUpdatedBy")
-  createdSections             Section[]             @relation("SectionCreatedBy")
-  updatedSections             Section[]             @relation("SectionUpdatedBy")
-  createdFields               Field[]               @relation("FieldCreatedBy")
-  updatedFields               Field[]               @relation("FieldUpdatedBy")
-  createdFactories            Factory[]             @relation("FactoryCreatedBy")
-  updatedFactories            Factory[]             @relation("FactoryUpdatedBy")
-  createdWarehouses           Warehouse[]           @relation("WarehouseCreatedBy")
-  updatedWarehouses           Warehouse[]           @relation("WarehouseUpdatedBy")
-  createdParties              Party[]               @relation("PartyCreatedBy")
-  updatedParties              Party[]               @relation("PartyUpdatedBy")
-  createdContacts             PartyContact[]        @relation("PartyContactCreatedBy")
-  updatedContacts             PartyContact[]        @relation("PartyContactUpdatedBy")
-  createdSeasons              Season[]              @relation("SeasonCreatedBy")
-  updatedSeasons              Season[]              @relation("SeasonUpdatedBy")
-  closedSeasons               Season[]              @relation("SeasonClosedBy")
-  createdFiscalYears          FiscalYear[]          @relation("FiscalYearCreatedBy")
-  updatedFiscalYears          FiscalYear[]          @relation("FiscalYearUpdatedBy")
-  closedFiscalYears           FiscalYear[]          @relation("FiscalYearClosedBy")
-  createdPeriods              AccountingPeriod[]    @relation("AccountingPeriodCreatedBy")
-  updatedPeriods              AccountingPeriod[]    @relation("AccountingPeriodUpdatedBy")
-  closedPeriods               AccountingPeriod[]    @relation("AccountingPeriodClosedBy")
-  reopenedPeriods             AccountingPeriod[]    @relation("AccountingPeriodReopenedBy")
-  createdDepartments          Department[]          @relation("DepartmentCreatedBy")
-  updatedDepartments          Department[]          @relation("DepartmentUpdatedBy")
-  createdDesignations         Designation[]         @relation("DesignationCreatedBy")
-  updatedDesignations         Designation[]         @relation("DesignationUpdatedBy")
-  createdWorkerCategorys      WorkerCategory[]      @relation("WorkerCategoryCreatedBy")
-  updatedWorkerCategorys      WorkerCategory[]      @relation("WorkerCategoryUpdatedBy")
-  createdEmployeeCategorys    EmployeeCategory[]    @relation("EmployeeCategoryCreatedBy")
-  updatedEmployeeCategorys    EmployeeCategory[]    @relation("EmployeeCategoryUpdatedBy")
-  createdEmploymentTypes      EmploymentType[]      @relation("EmploymentTypeCreatedBy")
-  updatedEmploymentTypes      EmploymentType[]      @relation("EmploymentTypeUpdatedBy")
-  createdLeaveTypes           LeaveType[]           @relation("LeaveTypeCreatedBy")
-  updatedLeaveTypes           LeaveType[]           @relation("LeaveTypeUpdatedBy")
-  createdBuyerTypes           BuyerType[]           @relation("BuyerTypeCreatedBy")
-  updatedBuyerTypes           BuyerType[]           @relation("BuyerTypeUpdatedBy")
-  createdTradingTypes         TradingType[]         @relation("TradingTypeCreatedBy")
-  updatedTradingTypes         TradingType[]         @relation("TradingTypeUpdatedBy")
-  createdPackagingTypes       PackagingType[]       @relation("PackagingTypeCreatedBy")
-  updatedPackagingTypes       PackagingType[]       @relation("PackagingTypeUpdatedBy")
-  createdChargeTypes          ChargeType[]          @relation("ChargeTypeCreatedBy")
-  updatedChargeTypes          ChargeType[]          @relation("ChargeTypeUpdatedBy")
-  createdDocumentTypes        DocumentType[]        @relation("DocumentTypeCreatedBy")
-  updatedDocumentTypes        DocumentType[]        @relation("DocumentTypeUpdatedBy")
-  createdPaymentMethods       PaymentMethod[]       @relation("PaymentMethodCreatedBy")
-  updatedPaymentMethods       PaymentMethod[]       @relation("PaymentMethodUpdatedBy")
-  createdLandTypes            LandType[]            @relation("LandTypeCreatedBy")
-  createdAmenities            Amenity[]             @relation("AmenityCreatedBy")
-  createdImportBatches        ImportBatch[]         @relation("ImportBatchCreatedBy")
-  createdPersons              Person[]              @relation("PersonCreatedBy")
-  createdProfiles             EmploymentProfile[]   @relation("EmploymentProfileCreatedBy")
-  updatedProfiles             EmploymentProfile[]   @relation("EmploymentProfileUpdatedBy")
-  createdJobGrades            JobGrade[]            @relation("JobGradeCreatedBy")
-  updatedJobGrades            JobGrade[]            @relation("JobGradeUpdatedBy")
-  updatedPersons              Person[]              @relation("PersonUpdatedBy")
-  createdPersonDependents     PersonDependent[]     @relation("PersonDependentCreatedBy")
-  updatedPersonDependents     PersonDependent[]     @relation("PersonDependentUpdatedBy")
-  createdReligions            Religion[]            @relation("ReligionCreatedBy")
-  updatedReligions            Religion[]            @relation("ReligionUpdatedBy")
-  createdEducationLevels      EducationLevel[]      @relation("EducationLevelCreatedBy")
-  updatedEducationLevels      EducationLevel[]      @relation("EducationLevelUpdatedBy")
-  createdSkills               Skill[]               @relation("SkillCreatedBy")
-  updatedSkills               Skill[]               @relation("SkillUpdatedBy")
-  createdLanguages            Language[]            @relation("LanguageCreatedBy")
-  updatedLanguages            Language[]            @relation("LanguageUpdatedBy")
-  updatedImportBatches        ImportBatch[]         @relation("ImportBatchUpdatedBy")
-  createdIrrigationSources    IrrigationSource[]    @relation("IrrigationSourceCreatedBy")
-  updatedIrrigationSources    IrrigationSource[]    @relation("IrrigationSourceUpdatedBy")
-  createdSoilTypes            SoilType[]            @relation("SoilTypeCreatedBy")
-  updatedSoilTypes            SoilType[]            @relation("SoilTypeUpdatedBy")
-  createdDrainageClasses      DrainageClass[]       @relation("DrainageClassCreatedBy")
-  updatedDrainageClasses      DrainageClass[]       @relation("DrainageClassUpdatedBy")
-  updatedAmenities            Amenity[]             @relation("AmenityUpdatedBy")
-  createdEstateAmenities      EstateAmenity[]       @relation("EstateAmenityCreatedBy")
-  updatedLandTypes            LandType[]            @relation("LandTypeUpdatedBy")
-  createdAdjustmentReasons    AdjustmentReason[]    @relation("AdjustmentReasonCreatedBy")
-  updatedAdjustmentReasons    AdjustmentReason[]    @relation("AdjustmentReasonUpdatedBy")
-  createdQualityGrades        QualityGrade[]        @relation("QualityGradeCreatedBy")
-  updatedQualityGrades        QualityGrade[]        @relation("QualityGradeUpdatedBy")
-  createdCollectionPointTypes CollectionPointType[] @relation("CollectionPointTypeCreatedBy")
-  updatedCollectionPointTypes CollectionPointType[] @relation("CollectionPointTypeUpdatedBy")
-  createdTeaTypes             TeaType[]             @relation("TeaTypeCreatedBy")
-  updatedTeaTypes             TeaType[]             @relation("TeaTypeUpdatedBy")
-  createdTeaGrades            TeaGrade[]            @relation("TeaGradeCreatedBy")
-  updatedTeaGrades            TeaGrade[]            @relation("TeaGradeUpdatedBy")
-  createdActivityTypes        ActivityType[]        @relation("ActivityTypeCreatedBy")
-  updatedActivityTypes        ActivityType[]        @relation("ActivityTypeUpdatedBy")
-  createdShifts               Shift[]               @relation("ShiftCreatedBy")
-  updatedShifts               Shift[]               @relation("ShiftUpdatedBy")
-  createdUomCategorys         UomCategory[]         @relation("UomCategoryCreatedBy")
-  updatedUomCategorys         UomCategory[]         @relation("UomCategoryUpdatedBy")
-  createdTeaVarietys          TeaVariety[]          @relation("TeaVarietyCreatedBy")
-  updatedTeaVarietys          TeaVariety[]          @relation("TeaVarietyUpdatedBy")
-  createdUoms                 Uom[]                 @relation("UomCreatedBy")
-  updatedUoms                 Uom[]                 @relation("UomUpdatedBy")
-  createdCurrencys            Currency[]            @relation("CurrencyCreatedBy")
-  updatedCurrencys            Currency[]            @relation("CurrencyUpdatedBy")
-  createdCountrys             Country[]             @relation("CountryCreatedBy")
-  updatedCountrys             Country[]             @relation("CountryUpdatedBy")
+  createdOrganisations        Organisation[]         @relation("OrganisationCreatedBy")
+  updatedOrganisations        Organisation[]         @relation("OrganisationUpdatedBy")
+  createdEstates              Estate[]               @relation("EstateCreatedBy")
+  updatedEstates              Estate[]               @relation("EstateUpdatedBy")
+  createdDivisions            Division[]             @relation("DivisionCreatedBy")
+  updatedDivisions            Division[]             @relation("DivisionUpdatedBy")
+  createdSections             Section[]              @relation("SectionCreatedBy")
+  updatedSections             Section[]              @relation("SectionUpdatedBy")
+  createdFields               Field[]                @relation("FieldCreatedBy")
+  updatedFields               Field[]                @relation("FieldUpdatedBy")
+  createdFactories            Factory[]              @relation("FactoryCreatedBy")
+  updatedFactories            Factory[]              @relation("FactoryUpdatedBy")
+  createdWarehouses           Warehouse[]            @relation("WarehouseCreatedBy")
+  updatedWarehouses           Warehouse[]            @relation("WarehouseUpdatedBy")
+  createdParties              Party[]                @relation("PartyCreatedBy")
+  updatedParties              Party[]                @relation("PartyUpdatedBy")
+  createdContacts             PartyContact[]         @relation("PartyContactCreatedBy")
+  updatedContacts             PartyContact[]         @relation("PartyContactUpdatedBy")
+  createdSeasons              Season[]               @relation("SeasonCreatedBy")
+  updatedSeasons              Season[]               @relation("SeasonUpdatedBy")
+  closedSeasons               Season[]               @relation("SeasonClosedBy")
+  createdFiscalYears          FiscalYear[]           @relation("FiscalYearCreatedBy")
+  updatedFiscalYears          FiscalYear[]           @relation("FiscalYearUpdatedBy")
+  closedFiscalYears           FiscalYear[]           @relation("FiscalYearClosedBy")
+  createdPeriods              AccountingPeriod[]     @relation("AccountingPeriodCreatedBy")
+  updatedPeriods              AccountingPeriod[]     @relation("AccountingPeriodUpdatedBy")
+  closedPeriods               AccountingPeriod[]     @relation("AccountingPeriodClosedBy")
+  reopenedPeriods             AccountingPeriod[]     @relation("AccountingPeriodReopenedBy")
+  createdDepartments          Department[]           @relation("DepartmentCreatedBy")
+  updatedDepartments          Department[]           @relation("DepartmentUpdatedBy")
+  createdDesignations         Designation[]          @relation("DesignationCreatedBy")
+  updatedDesignations         Designation[]          @relation("DesignationUpdatedBy")
+  createdWorkerCategorys      WorkerCategory[]       @relation("WorkerCategoryCreatedBy")
+  updatedWorkerCategorys      WorkerCategory[]       @relation("WorkerCategoryUpdatedBy")
+  createdEmployeeCategorys    EmployeeCategory[]     @relation("EmployeeCategoryCreatedBy")
+  updatedEmployeeCategorys    EmployeeCategory[]     @relation("EmployeeCategoryUpdatedBy")
+  createdEmploymentTypes      EmploymentType[]       @relation("EmploymentTypeCreatedBy")
+  updatedEmploymentTypes      EmploymentType[]       @relation("EmploymentTypeUpdatedBy")
+  createdLeaveTypes           LeaveType[]            @relation("LeaveTypeCreatedBy")
+  updatedLeaveTypes           LeaveType[]            @relation("LeaveTypeUpdatedBy")
+  createdBuyerTypes           BuyerType[]            @relation("BuyerTypeCreatedBy")
+  updatedBuyerTypes           BuyerType[]            @relation("BuyerTypeUpdatedBy")
+  createdTradingTypes         TradingType[]          @relation("TradingTypeCreatedBy")
+  updatedTradingTypes         TradingType[]          @relation("TradingTypeUpdatedBy")
+  createdPackagingTypes       PackagingType[]        @relation("PackagingTypeCreatedBy")
+  updatedPackagingTypes       PackagingType[]        @relation("PackagingTypeUpdatedBy")
+  createdChargeTypes          ChargeType[]           @relation("ChargeTypeCreatedBy")
+  updatedChargeTypes          ChargeType[]           @relation("ChargeTypeUpdatedBy")
+  createdDocumentTypes        DocumentType[]         @relation("DocumentTypeCreatedBy")
+  updatedDocumentTypes        DocumentType[]         @relation("DocumentTypeUpdatedBy")
+  createdPaymentMethods       PaymentMethod[]        @relation("PaymentMethodCreatedBy")
+  updatedPaymentMethods       PaymentMethod[]        @relation("PaymentMethodUpdatedBy")
+  createdLandTypes            LandType[]             @relation("LandTypeCreatedBy")
+  createdAmenities            Amenity[]              @relation("AmenityCreatedBy")
+  createdImportBatches        ImportBatch[]          @relation("ImportBatchCreatedBy")
+  createdPersons              Person[]               @relation("PersonCreatedBy")
+  createdProfiles             EmploymentProfile[]    @relation("EmploymentProfileCreatedBy")
+  updatedProfiles             EmploymentProfile[]    @relation("EmploymentProfileUpdatedBy")
+  createdJobGrades            JobGrade[]             @relation("JobGradeCreatedBy")
+  updatedJobGrades            JobGrade[]             @relation("JobGradeUpdatedBy")
+  createdAssignments          EmploymentAssignment[] @relation("AssignmentCreatedBy")
+  updatedAssignments          EmploymentAssignment[] @relation("AssignmentUpdatedBy")
+  submittedAssignments        EmploymentAssignment[] @relation("AssignmentSubmittedBy")
+  approvedAssignments         EmploymentAssignment[] @relation("AssignmentApprovedBy")
+  rejectedAssignments         EmploymentAssignment[] @relation("AssignmentRejectedBy")
+  updatedPersons              Person[]               @relation("PersonUpdatedBy")
+  createdPersonDependents     PersonDependent[]      @relation("PersonDependentCreatedBy")
+  updatedPersonDependents     PersonDependent[]      @relation("PersonDependentUpdatedBy")
+  createdReligions            Religion[]             @relation("ReligionCreatedBy")
+  updatedReligions            Religion[]             @relation("ReligionUpdatedBy")
+  createdEducationLevels      EducationLevel[]       @relation("EducationLevelCreatedBy")
+  updatedEducationLevels      EducationLevel[]       @relation("EducationLevelUpdatedBy")
+  createdSkills               Skill[]                @relation("SkillCreatedBy")
+  updatedSkills               Skill[]                @relation("SkillUpdatedBy")
+  createdLanguages            Language[]             @relation("LanguageCreatedBy")
+  updatedLanguages            Language[]             @relation("LanguageUpdatedBy")
+  updatedImportBatches        ImportBatch[]          @relation("ImportBatchUpdatedBy")
+  createdIrrigationSources    IrrigationSource[]     @relation("IrrigationSourceCreatedBy")
+  updatedIrrigationSources    IrrigationSource[]     @relation("IrrigationSourceUpdatedBy")
+  createdSoilTypes            SoilType[]             @relation("SoilTypeCreatedBy")
+  updatedSoilTypes            SoilType[]             @relation("SoilTypeUpdatedBy")
+  createdDrainageClasses      DrainageClass[]        @relation("DrainageClassCreatedBy")
+  updatedDrainageClasses      DrainageClass[]        @relation("DrainageClassUpdatedBy")
+  updatedAmenities            Amenity[]              @relation("AmenityUpdatedBy")
+  createdEstateAmenities      EstateAmenity[]        @relation("EstateAmenityCreatedBy")
+  updatedLandTypes            LandType[]             @relation("LandTypeUpdatedBy")
+  createdAdjustmentReasons    AdjustmentReason[]     @relation("AdjustmentReasonCreatedBy")
+  updatedAdjustmentReasons    AdjustmentReason[]     @relation("AdjustmentReasonUpdatedBy")
+  createdQualityGrades        QualityGrade[]         @relation("QualityGradeCreatedBy")
+  updatedQualityGrades        QualityGrade[]         @relation("QualityGradeUpdatedBy")
+  createdCollectionPointTypes CollectionPointType[]  @relation("CollectionPointTypeCreatedBy")
+  updatedCollectionPointTypes CollectionPointType[]  @relation("CollectionPointTypeUpdatedBy")
+  createdTeaTypes             TeaType[]              @relation("TeaTypeCreatedBy")
+  updatedTeaTypes             TeaType[]              @relation("TeaTypeUpdatedBy")
+  createdTeaGrades            TeaGrade[]             @relation("TeaGradeCreatedBy")
+  updatedTeaGrades            TeaGrade[]             @relation("TeaGradeUpdatedBy")
+  createdActivityTypes        ActivityType[]         @relation("ActivityTypeCreatedBy")
+  updatedActivityTypes        ActivityType[]         @relation("ActivityTypeUpdatedBy")
+  createdShifts               Shift[]                @relation("ShiftCreatedBy")
+  updatedShifts               Shift[]                @relation("ShiftUpdatedBy")
+  createdUomCategorys         UomCategory[]          @relation("UomCategoryCreatedBy")
+  updatedUomCategorys         UomCategory[]          @relation("UomCategoryUpdatedBy")
+  createdTeaVarietys          TeaVariety[]           @relation("TeaVarietyCreatedBy")
+  updatedTeaVarietys          TeaVariety[]           @relation("TeaVarietyUpdatedBy")
+  createdUoms                 Uom[]                  @relation("UomCreatedBy")
+  updatedUoms                 Uom[]                  @relation("UomUpdatedBy")
+  createdCurrencys            Currency[]             @relation("CurrencyCreatedBy")
+  updatedCurrencys            Currency[]             @relation("CurrencyUpdatedBy")
+  createdCountrys             Country[]              @relation("CountryCreatedBy")
+  updatedCountrys             Country[]              @relation("CountryUpdatedBy")
 
   scopes               UserScope[]          @relation("UserScopeUser")
   grantedScopes        UserScope[]          @relation("UserScopeGrantedBy")
@@ -275,13 +280,12 @@ model User {
   createdNotifRules    NotificationRule[]   @relation("NotificationRuleCreatedBy")
   updatedNotifRules    NotificationRule[]   @relation("NotificationRuleUpdatedBy")
   notifications        Notification[]       @relation("NotificationUser")
+  employmentProfile    EmploymentProfile?   @relation("UserProfile", fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_user_employment_profile")
 
   @@unique([username], map: "ux_user_username")
   @@unique([email], map: "ux_user_email")
   @@index([status], map: "ix_user_status")
   @@index([personId], map: "ix_user_person")
-  employmentProfile           EmploymentProfile?    @relation("UserProfile", fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_user_employment_profile")
-
   @@index([employmentProfileId], map: "ix_user_employment_profile")
   @@index([createdBy], map: "ix_user_created_by")
   @@index([updatedBy], map: "ix_user_updated_by")
@@ -666,19 +670,20 @@ model Estate {
   updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  organisation Organisation    @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_organisation")
-  creator      User            @relation("EstateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_created_by")
-  updater      User?           @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
+  organisation Organisation           @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_organisation")
+  creator      User                   @relation("EstateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_created_by")
+  updater      User?                  @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
   divisions    Division[]
   fields       Field[]
-  country      Country?        @relation(fields: [countryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_country")
+  country      Country?               @relation(fields: [countryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_country")
   amenityLinks EstateAmenity[]
   factories    Factory[]
   seasons      Season[]
   persons      Person[]
-  profiles     EmploymentProfile[] @relation("ProfileEstate")
-  manager      EmploymentProfile?  @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
-  shifts       Shift[]         @relation("ShiftEstate")
+  profiles     EmploymentProfile[]    @relation("ProfileEstate")
+  assignments  EmploymentAssignment[]
+  manager      EmploymentProfile?     @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
+  shifts       Shift[]                @relation("ShiftEstate")
 
   workflows Workflow[]
 
@@ -711,11 +716,12 @@ model Division {
   updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  estate   Estate    @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_estate")
-  creator  User      @relation("DivisionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_created_by")
-  updater  User?     @relation("DivisionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_updated_by")
-  sections Section[]
-  manager  EmploymentProfile? @relation("DivisionManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_manager")
+  estate      Estate                 @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_estate")
+  creator     User                   @relation("DivisionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_created_by")
+  updater     User?                  @relation("DivisionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_updated_by")
+  sections    Section[]
+  assignments EmploymentAssignment[]
+  manager     EmploymentProfile?     @relation("DivisionManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_manager")
 
   @@unique([estateId, code], map: "ux_division_code")
   @@index([status], map: "ix_division_status")
@@ -749,13 +755,14 @@ model Section {
   updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  division Division  @relation(fields: [divisionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_division")
-  parent   Section?  @relation("SectionParent", fields: [parentSectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_parent")
-  children Section[] @relation("SectionParent")
-  supervisor EmploymentProfile? @relation("SectionSupervisor", fields: [supervisorProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_supervisor")
-  creator  User      @relation("SectionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_created_by")
-  updater  User?     @relation("SectionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_updated_by")
-  fields   Field[]
+  division    Division               @relation(fields: [divisionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_division")
+  parent      Section?               @relation("SectionParent", fields: [parentSectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_parent")
+  children    Section[]              @relation("SectionParent")
+  supervisor  EmploymentProfile?     @relation("SectionSupervisor", fields: [supervisorProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_supervisor")
+  creator     User                   @relation("SectionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_created_by")
+  updater     User?                  @relation("SectionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_updated_by")
+  fields      Field[]
+  assignments EmploymentAssignment[]
 
   @@unique([divisionId, code], map: "ux_section_code")
   @@index([status], map: "ix_section_status")
@@ -879,6 +886,7 @@ model Factory {
   updater       User?        @relation("FactoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_factory_updated_by")
 
   manager EmploymentProfile? @relation("FactoryManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_factory_manager")
+
   @@unique([organisationId, code], map: "ux_factory_code")
   @@index([primaryEstateId], map: "ix_factory_primary_estate")
   @@index([licenceExpiry], map: "ix_factory_licence_expiry")
@@ -1128,7 +1136,8 @@ model Department {
   updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  workflows Workflow[]
+  workflows   Workflow[]
+  assignments EmploymentAssignment[]
 
   creator User  @relation("DepartmentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_created_by")
   updater User? @relation("DepartmentUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_updated_by")
@@ -1158,6 +1167,8 @@ model Designation {
   creator User  @relation("DesignationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_designation_created_by")
   updater User? @relation("DesignationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_designation_updated_by")
 
+  assignments EmploymentAssignment[]
+
   @@unique([code], map: "ux_designation_code")
   @@index([status], map: "ix_designation_status")
   @@index([createdBy], map: "ix_designation_created_by")
@@ -1181,8 +1192,8 @@ model WorkerCategory {
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
   profiles EmploymentProfile[]
-  creator User  @relation("WorkerCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_worker_category_created_by")
-  updater User? @relation("WorkerCategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_worker_category_updated_by")
+  creator  User                @relation("WorkerCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_worker_category_created_by")
+  updater  User?               @relation("WorkerCategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_worker_category_updated_by")
 
   @@unique([code], map: "ux_worker_category_code")
   @@index([status], map: "ix_worker_category_status")
@@ -1207,8 +1218,8 @@ model EmployeeCategory {
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
   profiles EmploymentProfile[]
-  creator User  @relation("EmployeeCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_employee_category_created_by")
-  updater User? @relation("EmployeeCategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_employee_category_updated_by")
+  creator  User                @relation("EmployeeCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_employee_category_created_by")
+  updater  User?               @relation("EmployeeCategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_employee_category_updated_by")
 
   @@unique([code], map: "ux_employee_category_code")
   @@index([status], map: "ix_employee_category_status")
@@ -1598,6 +1609,8 @@ model ActivityType {
   creator    User  @relation("ActivityTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_activity_type_created_by")
   updater    User? @relation("ActivityTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_activity_type_updated_by")
 
+  assignments EmploymentAssignment[]
+
   @@unique([code], map: "ux_activity_type_code")
   @@index([defaultUomId], map: "ix_activity_type_default_uom")
   @@index([status], map: "ix_activity_type_status")
@@ -1632,6 +1645,8 @@ model Shift {
   estate  Estate? @relation("ShiftEstate", fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_shift_estate")
   creator User    @relation("ShiftCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_shift_created_by")
   updater User?   @relation("ShiftUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_shift_updated_by")
+
+  assignments EmploymentAssignment[]
 
   @@unique([code], map: "ux_shift_code")
   @@index([estateId], map: "ix_shift_estate")
@@ -2579,81 +2594,81 @@ model ImportRow {
 /// A person exists once (P1 §5.5): identity, contact and payment details. NO employment attribute: those
 /// are the employment profile's (P2.02).
 model Person {
-  id                         BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  id                       BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
   /// Permanent identity reference, numbered by the `person` number format (PRS-000001).
-  personCode                 String    @map("person_code") @db.VarChar(20)
+  personCode               String    @map("person_code") @db.VarChar(20)
   /// The estate that registered the person: decides who sees them until a profile places them (D-2.01-2).
-  registeredEstateId         BigInt?   @map("registered_estate_id") @db.UnsignedBigInt
+  registeredEstateId       BigInt?   @map("registered_estate_id") @db.UnsignedBigInt
   /// mr | mrs | ms | other
-  title                      String?   @db.VarChar(10)
-  firstName                  String    @map("first_name") @db.VarChar(100)
-  middleName                 String?   @map("middle_name") @db.VarChar(100)
-  lastName                   String?   @map("last_name") @db.VarChar(100)
+  title                    String?   @db.VarChar(10)
+  firstName                String    @map("first_name") @db.VarChar(100)
+  middleName               String?   @map("middle_name") @db.VarChar(100)
+  lastName                 String?   @map("last_name") @db.VarChar(100)
   /// Maintained by the application from the name parts, for search and printing.
-  fullName                   String    @map("full_name") @db.VarChar(200)
-  fatherName                 String?   @map("father_name") @db.VarChar(150)
-  motherName                 String?   @map("mother_name") @db.VarChar(150)
-  spouseName                 String?   @map("spouse_name") @db.VarChar(150)
-  dateOfBirth                DateTime? @map("date_of_birth") @db.Date
+  fullName                 String    @map("full_name") @db.VarChar(200)
+  fatherName               String?   @map("father_name") @db.VarChar(150)
+  motherName               String?   @map("mother_name") @db.VarChar(150)
+  spouseName               String?   @map("spouse_name") @db.VarChar(150)
+  dateOfBirth              DateTime? @map("date_of_birth") @db.Date
   /// male | female | other
-  gender                     String?   @db.VarChar(30)
+  gender                   String?   @db.VarChar(30)
   /// single | married | widowed | divorced
-  maritalStatus              String?   @map("marital_status") @db.VarChar(30)
-  bloodGroup                 String?   @map("blood_group") @db.VarChar(10)
-  nationalityCountryId       BigInt?   @map("nationality_country_id") @db.UnsignedBigInt
-  religionId                 BigInt?   @map("religion_id") @db.UnsignedBigInt
+  maritalStatus            String?   @map("marital_status") @db.VarChar(30)
+  bloodGroup               String?   @map("blood_group") @db.VarChar(10)
+  nationalityCountryId     BigInt?   @map("nationality_country_id") @db.UnsignedBigInt
+  religionId               BigInt?   @map("religion_id") @db.UnsignedBigInt
   /// Unique where present (several NULLs allowed).
-  nationalId                 String?   @map("national_id") @db.VarChar(30)
-  birthCertificateNo         String?   @map("birth_certificate_no") @db.VarChar(30)
-  passportNo                 String?   @map("passport_no") @db.VarChar(30)
-  drivingLicenseNo           String?   @map("driving_license_no") @db.VarChar(30)
-  tin                        String?   @db.VarChar(30)
-  phone                      String?   @db.VarChar(30)
-  alternatePhone             String?   @map("alternate_phone") @db.VarChar(30)
-  personalEmail              String?   @map("personal_email") @db.VarChar(150)
-  presentAddress             String?   @map("present_address") @db.VarChar(300)
-  presentDistrict            String?   @map("present_district") @db.VarChar(100)
-  presentUpazila             String?   @map("present_upazila") @db.VarChar(100)
-  presentPostalCode          String?   @map("present_postal_code") @db.VarChar(20)
-  permanentAddress           String?   @map("permanent_address") @db.VarChar(300)
-  permanentDistrict          String?   @map("permanent_district") @db.VarChar(100)
-  permanentUpazila           String?   @map("permanent_upazila") @db.VarChar(100)
-  permanentPostalCode        String?   @map("permanent_postal_code") @db.VarChar(20)
-  educationLevelId           BigInt?   @map("education_level_id") @db.UnsignedBigInt
-  experienceYears            Int?      @map("experience_years")
-  emergencyContactName       String?   @map("emergency_contact_name") @db.VarChar(150)
-  emergencyContactPhone      String?   @map("emergency_contact_phone") @db.VarChar(30)
-  emergencyContactAltPhone   String?   @map("emergency_contact_alt_phone") @db.VarChar(30)
-  emergencyContactRelation   String?   @map("emergency_contact_relation") @db.VarChar(30)
-  emergencyContactAddress    String?   @map("emergency_contact_address") @db.VarChar(300)
+  nationalId               String?   @map("national_id") @db.VarChar(30)
+  birthCertificateNo       String?   @map("birth_certificate_no") @db.VarChar(30)
+  passportNo               String?   @map("passport_no") @db.VarChar(30)
+  drivingLicenseNo         String?   @map("driving_license_no") @db.VarChar(30)
+  tin                      String?   @db.VarChar(30)
+  phone                    String?   @db.VarChar(30)
+  alternatePhone           String?   @map("alternate_phone") @db.VarChar(30)
+  personalEmail            String?   @map("personal_email") @db.VarChar(150)
+  presentAddress           String?   @map("present_address") @db.VarChar(300)
+  presentDistrict          String?   @map("present_district") @db.VarChar(100)
+  presentUpazila           String?   @map("present_upazila") @db.VarChar(100)
+  presentPostalCode        String?   @map("present_postal_code") @db.VarChar(20)
+  permanentAddress         String?   @map("permanent_address") @db.VarChar(300)
+  permanentDistrict        String?   @map("permanent_district") @db.VarChar(100)
+  permanentUpazila         String?   @map("permanent_upazila") @db.VarChar(100)
+  permanentPostalCode      String?   @map("permanent_postal_code") @db.VarChar(20)
+  educationLevelId         BigInt?   @map("education_level_id") @db.UnsignedBigInt
+  experienceYears          Int?      @map("experience_years")
+  emergencyContactName     String?   @map("emergency_contact_name") @db.VarChar(150)
+  emergencyContactPhone    String?   @map("emergency_contact_phone") @db.VarChar(30)
+  emergencyContactAltPhone String?   @map("emergency_contact_alt_phone") @db.VarChar(30)
+  emergencyContactRelation String?   @map("emergency_contact_relation") @db.VarChar(30)
+  emergencyContactAddress  String?   @map("emergency_contact_address") @db.VarChar(300)
   /// bank | cash | mobile_banking
-  paymentMethod              String?   @map("payment_method") @db.VarChar(30)
-  bankName                   String?   @map("bank_name") @db.VarChar(150)
-  bankBranch                 String?   @map("bank_branch") @db.VarChar(150)
+  paymentMethod            String?   @map("payment_method") @db.VarChar(30)
+  bankName                 String?   @map("bank_name") @db.VarChar(150)
+  bankBranch               String?   @map("bank_branch") @db.VarChar(150)
   /// Payment details belong to the person, not the profile (P3 §8.1).
-  bankAccountNumber          String?   @map("bank_account_number") @db.VarChar(40)
+  bankAccountNumber        String?   @map("bank_account_number") @db.VarChar(40)
   /// bkash | nagad | rocket | upay | other
-  mobileBankingProvider      String?   @map("mobile_banking_provider") @db.VarChar(30)
-  mobileBankingNumber        String?   @map("mobile_banking_number") @db.VarChar(30)
-  remarks                    String?   @db.VarChar(500)
+  mobileBankingProvider    String?   @map("mobile_banking_provider") @db.VarChar(30)
+  mobileBankingNumber      String?   @map("mobile_banking_number") @db.VarChar(30)
+  remarks                  String?   @db.VarChar(500)
   /// active | inactive
-  status                     String    @default("active") @db.VarChar(30)
-  version                    Int       @default(1)
-  createdAt                  DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  createdBy                  BigInt    @map("created_by") @db.UnsignedBigInt
-  updatedAt                  DateTime? @map("updated_at") @db.DateTime(0)
-  updatedBy                  BigInt?   @map("updated_by") @db.UnsignedBigInt
+  status                   String    @default("active") @db.VarChar(30)
+  version                  Int       @default(1)
+  createdAt                DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy                BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt                DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy                BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  registeredEstate Estate?          @relation(fields: [registeredEstateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_registered_estate")
-  nationality      Country?         @relation(fields: [nationalityCountryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_nationality")
-  religion         Religion?        @relation(fields: [religionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_religion")
-  educationLevel   EducationLevel?  @relation(fields: [educationLevelId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_education_level")
+  registeredEstate Estate?             @relation(fields: [registeredEstateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_registered_estate")
+  nationality      Country?            @relation(fields: [nationalityCountryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_nationality")
+  religion         Religion?           @relation(fields: [religionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_religion")
+  educationLevel   EducationLevel?     @relation(fields: [educationLevelId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_education_level")
   dependents       PersonDependent[]
   profiles         EmploymentProfile[]
   skillLinks       PersonSkill[]
   languageLinks    PersonLanguage[]
-  creator          User             @relation("PersonCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_created_by")
-  updater          User?            @relation("PersonUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_updated_by")
+  creator          User                @relation("PersonCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_created_by")
+  updater          User?               @relation("PersonUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_person_updated_by")
 
   @@unique([personCode], map: "ux_person_code")
   @@unique([nationalId], map: "ux_person_nid")
@@ -2744,8 +2759,8 @@ model Religion {
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
   persons Person[]
-  creator User    @relation("ReligionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_religion_created_by")
-  updater User?   @relation("ReligionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_religion_updated_by")
+  creator User     @relation("ReligionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_religion_created_by")
+  updater User?    @relation("ReligionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_religion_updated_by")
 
   @@unique([code], map: "ux_religion_code")
   @@index([status], map: "ix_religion_status")
@@ -2771,8 +2786,8 @@ model EducationLevel {
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
   persons Person[]
-  creator User    @relation("EducationLevelCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_education_level_created_by")
-  updater User?   @relation("EducationLevelUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_education_level_updated_by")
+  creator User     @relation("EducationLevelCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_education_level_created_by")
+  updater User?    @relation("EducationLevelUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_education_level_updated_by")
 
   @@unique([code], map: "ux_education_level_code")
   @@index([status], map: "ix_education_level_status")
@@ -2798,8 +2813,8 @@ model Skill {
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
   personLinks PersonSkill[]
-  creator User    @relation("SkillCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_skill_created_by")
-  updater User?   @relation("SkillUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_skill_updated_by")
+  creator     User          @relation("SkillCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_skill_created_by")
+  updater     User?         @relation("SkillUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_skill_updated_by")
 
   @@unique([code], map: "ux_skill_code")
   @@index([status], map: "ix_skill_status")
@@ -2825,8 +2840,8 @@ model Language {
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
   personLinks PersonLanguage[]
-  creator User    @relation("LanguageCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_language_created_by")
-  updater User?   @relation("LanguageUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_language_updated_by")
+  creator     User             @relation("LanguageCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_language_created_by")
+  updater     User?            @relation("LanguageUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_language_updated_by")
 
   @@unique([code], map: "ux_language_code")
   @@index([status], map: "ix_language_status")
@@ -2890,20 +2905,21 @@ model EmploymentProfile {
   updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  person           Person            @relation(fields: [personId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_person")
-  estate           Estate            @relation("ProfileEstate", fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_estate")
-  workerCategory   WorkerCategory?   @relation(fields: [workerCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_worker_category")
-  employeeCategory EmployeeCategory? @relation(fields: [employeeCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_employee_category")
-  jobGrade         JobGrade?         @relation(fields: [jobGradeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_job_grade")
-  supervisor       EmploymentProfile?  @relation("ProfileSupervisor", fields: [supervisorProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_supervisor")
-  reports          EmploymentProfile[] @relation("ProfileSupervisor")
-  users            User[]            @relation("UserProfile")
-  managedEstates   Estate[]          @relation("EstateManager")
-  managedDivisions Division[]        @relation("DivisionManager")
-  supervisedSections Section[]       @relation("SectionSupervisor")
-  managedFactories Factory[]         @relation("FactoryManager")
-  creator          User              @relation("EmploymentProfileCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_created_by")
-  updater          User?             @relation("EmploymentProfileUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_updated_by")
+  person             Person                 @relation(fields: [personId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_person")
+  estate             Estate                 @relation("ProfileEstate", fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_estate")
+  workerCategory     WorkerCategory?        @relation(fields: [workerCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_worker_category")
+  employeeCategory   EmployeeCategory?      @relation(fields: [employeeCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_employee_category")
+  jobGrade           JobGrade?              @relation(fields: [jobGradeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_job_grade")
+  supervisor         EmploymentProfile?     @relation("ProfileSupervisor", fields: [supervisorProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_supervisor")
+  reports            EmploymentProfile[]    @relation("ProfileSupervisor")
+  assignments        EmploymentAssignment[]
+  users              User[]                 @relation("UserProfile")
+  managedEstates     Estate[]               @relation("EstateManager")
+  managedDivisions   Division[]             @relation("DivisionManager")
+  supervisedSections Section[]              @relation("SectionSupervisor")
+  managedFactories   Factory[]              @relation("FactoryManager")
+  creator            User                   @relation("EmploymentProfileCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_created_by")
+  updater            User?                  @relation("EmploymentProfileUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_updated_by")
 
   @@unique([estateId, profileNumber], map: "ux_profile_number")
   @@unique([activeKey], map: "ux_profile_active")
@@ -2946,4 +2962,110 @@ model JobGrade {
   @@index([createdBy], map: "ix_job_grade_created_by")
   @@index([updatedBy], map: "ix_job_grade_updated_by")
   @@map("job_grade")
+}
+
+/// P2.03 (Spec P3 §8.3, P7 §9.6; the manager's design, BACKLOG D-2-3): where and on what terms a profile
+/// works, effective-dated. A transfer, promotion or wage revision is a NEW row, never an update: the
+/// approved row it follows is closed the day before it starts. Payroll and cost attribution resolve the
+/// row in force on the transaction date. A draft is edited; a submitted or approved row never is.
+model EmploymentAssignment {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  employmentProfileId BigInt    @map("employment_profile_id") @db.UnsignedBigInt
+  /// The profile's estate, copied: the scope and the approval place read it.
+  estateId            BigInt    @map("estate_id") @db.UnsignedBigInt
+  /// Required for an employee (the design's employee form); a worker's form has none.
+  departmentId        BigInt?   @map("department_id") @db.UnsignedBigInt
+  designationId       BigInt?   @map("designation_id") @db.UnsignedBigInt
+  divisionId          BigInt?   @map("division_id") @db.UnsignedBigInt
+  sectionId           BigInt?   @map("section_id") @db.UnsignedBigInt
+  /// The design's Job / Task (plucking, pruning, …): required for a worker.
+  activityTypeId      BigInt?   @map("activity_type_id") @db.UnsignedBigInt
+  /// Where labour cost is charged. No foreign key until cost centres exist (P3.02).
+  costCentreId        BigInt?   @map("cost_centre_id") @db.UnsignedBigInt
+  defaultShiftId      BigInt?   @map("default_shift_id") @db.UnsignedBigInt
+  /// daily | monthly | hourly | piece_rate | quantity | fixed: selects the calculation method
+  wageBasis           String    @map("wage_basis") @db.VarChar(30)
+  /// Overrides the category's wage rule; NULL resolves from wage_rule (exceptional, P3 §8.3).
+  baseRate            Decimal?  @map("base_rate") @db.Decimal(18, 4)
+  effectiveFrom       DateTime  @map("effective_from") @db.Date
+  /// Set when the next assignment is approved: the day before it starts. NULL: open-ended.
+  effectiveTo         DateTime? @map("effective_to") @db.Date
+  /// joining | transfer | promotion | demotion | wage_revision | other (P3 §8.3; separation ends the profile instead)
+  changeReason        String    @map("change_reason") @db.VarChar(30)
+  remarks             String?   @db.VarChar(500)
+  /// Its pay differs from the assignment it follows: approval is required (P7 §9.6). Set on submission.
+  isWageChange        Boolean   @default(false) @map("is_wage_change")
+  /// Starts before the day it was submitted (P1 §10.7): arrears may follow.
+  isRetrospective     Boolean   @default(false) @map("is_retrospective")
+  // ---- state block (P3 §3.2): draft | submitted | approved | rejected ----
+  state               String    @default("draft") @db.VarChar(30)
+  stateChangedAt      DateTime? @map("state_changed_at") @db.DateTime(0)
+  // ---- approval block (P3 §3.3) ----
+  submittedAt         DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy         BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt          DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy          BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt          DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy          BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason     String?   @map("rejection_reason") @db.VarChar(500)
+  /// GENERATED (migration SQL): profile + effective_from unless rejected. Unique (ux_assignment_effective).
+  effectiveKey        String?   @map("effective_key") @db.VarChar(40)
+  /// GENERATED (migration SQL): the profile while draft or submitted. Unique: one pending change at a time.
+  openKey             BigInt?   @map("open_key") @db.UnsignedBigInt
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy           BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  profile      EmploymentProfile   @relation(fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_profile")
+  estate       Estate              @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_estate")
+  department   Department?         @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_department")
+  designation  Designation?        @relation(fields: [designationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_designation")
+  division     Division?           @relation(fields: [divisionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_division")
+  section      Section?            @relation(fields: [sectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_section")
+  activityType ActivityType?       @relation(fields: [activityTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_activity_type")
+  defaultShift Shift?              @relation(fields: [defaultShiftId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_shift")
+  payLines     AssignmentPayLine[]
+  creator      User                @relation("AssignmentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_created_by")
+  updater      User?               @relation("AssignmentUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_updated_by")
+  submitter    User?               @relation("AssignmentSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_submitted_by")
+  approver     User?               @relation("AssignmentApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_approved_by")
+  rejecter     User?               @relation("AssignmentRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_rejected_by")
+
+  @@unique([effectiveKey], map: "ux_assignment_effective")
+  @@unique([openKey], map: "ux_assignment_open")
+  @@index([employmentProfileId, effectiveFrom], map: "ix_assignment_profile_from")
+  @@index([estateId], map: "ix_assignment_estate")
+  @@index([departmentId], map: "ix_assignment_department")
+  @@index([designationId], map: "ix_assignment_designation")
+  @@index([divisionId], map: "ix_assignment_division")
+  @@index([sectionId], map: "ix_assignment_section")
+  @@index([activityTypeId], map: "ix_assignment_activity_type")
+  @@index([defaultShiftId], map: "ix_assignment_shift")
+  @@index([effectiveFrom], map: "ix_assignment_from")
+  @@index([effectiveTo], map: "ix_assignment_to")
+  @@index([state], map: "ix_assignment_state")
+  @@index([createdBy], map: "ix_assignment_created_by")
+  @@index([updatedBy], map: "ix_assignment_updated_by")
+  @@index([submittedBy], map: "ix_assignment_submitted_by")
+  @@index([approvedBy], map: "ix_assignment_approved_by")
+  @@index([rejectedBy], map: "ix_assignment_rejected_by")
+  @@map("employment_assignment")
+}
+
+/// P2.03 (the design's employee form, Salary & Payroll, D-2-3): the salary structure of an assignment.
+/// Part of the assignment: replaced with it while a draft, fixed once submitted. Payroll (Phase 9) maps
+/// each component to a pay component.
+model AssignmentPayLine {
+  id           BigInt  @id @default(autoincrement()) @db.UnsignedBigInt
+  assignmentId BigInt  @map("assignment_id") @db.UnsignedBigInt
+  /// basic | house_rent | medical | conveyance | other
+  component    String  @db.VarChar(30)
+  amount       Decimal @db.Decimal(18, 4)
+
+  assignment EmploymentAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_pay_line_assignment")
+
+  @@unique([assignmentId, component], map: "ux_pay_line_component")
+  @@map("assignment_pay_line")
 }

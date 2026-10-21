@@ -242,6 +242,10 @@ const ACTIVITY_TYPES = [
   ['SHADE_MANAGEMENT', 'Shade management', 'maintenance', false],
   ['SOIL_MANAGEMENT', 'Soil management', 'cultivation', false],
   ['MAINTENANCE', 'Maintenance', 'maintenance', false],
+  // P2.03: the rest of the worker form's Job / Task list (the manager's design, D-2-3).
+  ['PLUCKING', 'Tea plucking', 'harvesting', false],
+  ['PLANTATION', 'Plantation', 'cultivation', false],
+  ['FACTORY_WORK', 'Factory work', 'other', false],
 ] as const;
 
 const CURRENCIES = [

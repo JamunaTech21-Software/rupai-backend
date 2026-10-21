@@ -11,9 +11,13 @@ import type { ApproverRule } from './definition.js';
  *                  document: an estate manager of Estate A is never offered an Estate B document, and a
  *                  user whose scope grant has expired is not resolved (P7 §4.4)
  *   by_named_user  that user, if active
- *   by_reporting_line, by_cost_centre_manager
- *                  follow the submitter and the document, so they can only be resolved for a real
- *                  submission (P1.14; the tables they read arrive in Phase 2 and Phase 3)
+ *   by_reporting_line
+ *                  the submitter's supervisor, or the supervisor N levels up (P7 Table 4.1): the
+ *                  submitter's user account → its employment profile → supervisor_profile_id, N times →
+ *                  the active user accounts linked to that profile, within the document's scope (P2.03).
+ *                  It follows the submitter, so it is resolved only for a real submission
+ *   by_cost_centre_manager
+ *                  follows the document's cost centre: resolved from Phase 3 (P3.02)
  *
  * An empty result is not an error here: at runtime it raises the unresolved-step exception (P7 §4.3).
  */
@@ -22,6 +26,23 @@ export interface StepApproverRule {
   readonly approverRule: ApproverRule;
   readonly roleId: bigint | null;
   readonly userId: bigint | null;
+  /** by_reporting_line: how many levels up (1 = the submitter's own supervisor). */
+  readonly reportingLevel?: number | null;
+}
+
+/** The approver rule of a workflow step row. */
+export function stepRule(s: {
+  readonly approverRule: string;
+  readonly roleId: bigint | null;
+  readonly userId: bigint | null;
+  readonly reportingLevel: number | null;
+}): StepApproverRule {
+  return {
+    approverRule: s.approverRule as ApproverRule,
+    roleId: s.roleId,
+    userId: s.userId,
+    reportingLevel: s.reportingLevel,
+  };
 }
 
 /** Where the document sits, for scope. Absent: unknown (a preview without a place). */
@@ -29,6 +50,23 @@ export interface DocumentPlace {
   readonly estateId?: bigint | null;
   readonly factoryId?: bigint | null;
   readonly warehouseId?: bigint | null;
+  /** Who submitted it: a reporting-line step follows them. Absent: a preview, not yet submitted. */
+  readonly submittedBy?: bigint | null;
+}
+
+/** The place of a pending approval request, as stored when it was submitted. */
+export function placeOfRequest(r: {
+  readonly estateId: bigint | null;
+  readonly factoryId: bigint | null;
+  readonly warehouseId: bigint | null;
+  readonly submittedBy: bigint;
+}): DocumentPlace {
+  return {
+    estateId: r.estateId,
+    factoryId: r.factoryId,
+    warehouseId: r.warehouseId,
+    submittedBy: r.submittedBy,
+  };
 }
 
 export interface ResolvedApprovers {
@@ -57,6 +95,56 @@ export function placeKnown(document: ApprovableDocument, place: DocumentPlace): 
   return Boolean(place.factoryId) || Boolean(place.warehouseId);
 }
 
+const MAX_REPORTING_LEVEL = 10;
+
+/**
+ * The profile `level` steps up the submitter's reporting line, or null when the line ends first (no
+ * profile, no supervisor, or a supervisor separated). A loop in the line stops at the depth limit.
+ */
+async function supervisorProfileOf(db: Database | Tx, submitterId: bigint, level: number) {
+  const user = await db.user.findUnique({
+    where: { id: submitterId },
+    select: { employmentProfileId: true },
+  });
+  let profileId = user?.employmentProfileId ?? null;
+  for (let i = 0; i < Math.min(Math.max(level, 1), MAX_REPORTING_LEVEL) && profileId !== null; i += 1) {
+    // Reads the line itself, whatever the reader's scope: the line is not the data being protected.
+    const rows = await db.$queryRaw<
+      { supervisor_profile_id: bigint | number | null; status: string | null }[]
+    >`
+      SELECT s.id AS supervisor_profile_id, s.status
+        FROM employment_profile p
+        LEFT JOIN employment_profile s ON s.id = p.supervisor_profile_id
+       WHERE p.id = ${profileId}`;
+    const next = rows[0];
+    const supervisor = next?.supervisor_profile_id ?? null;
+    profileId = supervisor !== null && next?.status !== 'separated' ? BigInt(supervisor) : null;
+  }
+  return profileId;
+}
+
+async function reportingLineUsers(
+  db: Database | Tx,
+  document: ApprovableDocument,
+  step: StepApproverRule,
+  place: DocumentPlace,
+  only?: bigint,
+) {
+  if (!place.submittedBy) return null;
+  const profileId = await supervisorProfileOf(db, place.submittedBy, step.reportingLevel ?? 1);
+  if (profileId === null) return [];
+  return db.user.findMany({
+    where: {
+      ...(only !== undefined ? { id: only } : {}),
+      employmentProfileId: profileId,
+      status: 'active',
+      ...(placeKnown(document, place) ? { scopes: { some: scopeFilter(document, place) } } : {}),
+    },
+    select: { id: true, username: true },
+    orderBy: { username: 'asc' },
+  });
+}
+
 export async function resolveApprovers(
   db: Database | Tx,
   document: ApprovableDocument,
@@ -72,6 +160,11 @@ export async function resolveApprovers(
             select: { id: true, username: true },
           });
     return { users: user ? [{ id: user.id.toString(), username: user.username }] : [], deferred: false };
+  }
+  if (step.approverRule === 'by_reporting_line') {
+    const users = await reportingLineUsers(db, document, step, place);
+    if (users === null) return { users: [], deferred: true };
+    return { users: users.map((u) => ({ id: u.id.toString(), username: u.username })), deferred: false };
   }
   if (step.approverRule !== 'by_role' || step.roleId === null) return { users: [], deferred: true };
 
@@ -108,6 +201,9 @@ export async function isApprover(
 ): Promise<boolean> {
   if (step.approverRule === 'by_named_user') {
     return step.userId === userId && (await db.user.count({ where: { id: userId, status: 'active' } })) === 1;
+  }
+  if (step.approverRule === 'by_reporting_line') {
+    return ((await reportingLineUsers(db, document, step, place, userId)) ?? []).length === 1;
   }
   if (step.approverRule !== 'by_role' || step.roleId === null) return false;
   const count = await db.user.count({

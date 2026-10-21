@@ -9,8 +9,21 @@ import { sendCreated, sendNoContent, sendOne, sendPage } from '../../core/http/r
 import { defineModule } from '../../core/http/route.js';
 import { getValidated } from '../../core/http/validate.js';
 import type { Platform } from '../../core/platform.js';
+import { registerApprovalAdapter } from '../../core/approval/adapters.js';
 import { appliedScope } from '../../core/scope/scope.js';
-import './person.scope.js';
+import {
+  ASSIGNMENT_STATES,
+  AsOfQuery,
+  AssignmentOut,
+  AssignmentParams,
+  CHANGE_REASONS,
+  CreateAssignmentBody,
+  PatchAssignmentBody,
+  ReplaceAssignmentBody,
+  WAGE_BASES,
+} from './assignment.schema.js';
+import { assignmentService } from './assignment.service.js';
+import { setWorkforceScopeTimezone } from './person.scope.js';
 import {
   CreateDependentBody,
   CreatePersonBody,
@@ -44,7 +57,10 @@ import {
 } from './profile.schema.js';
 import { profileService } from './profile.service.js';
 
-/** HTTP surface of the workforce module: persons (P2.01) and employment profiles (P2.02); Spec P4 §8.3. */
+/**
+ * HTTP surface of the workforce module: persons (P2.01), employment profiles (P2.02) and employment
+ * assignments (P2.03); Spec P4 §8.3, §6.5.
+ */
 
 export interface WorkforceDeps {
   readonly db: Database;
@@ -261,7 +277,8 @@ function profilesModule({ db, platform, authz, accessLog, config }: WorkforceDep
     summary: 'List employment profiles',
     description:
       'The Worker / Employee Management lists: filter[employment_type]=worker|employee, estate, status, ' +
-      'engagement type, category, job nature, working location, grade, supervisor, joining date. ' +
+      'engagement type, category, job nature, working location, grade, supervisor, joining date, and by the ' +
+      'current assignment: department, designation, division, section, job / task. ' +
       'filter[q]=… searches the profile number, name, national ID and phone. Each row carries the person ' +
       '(name, father, mobile, photo document) for the list columns.',
     auth: { permission: 'employment.view' },
@@ -280,6 +297,11 @@ function profilesModule({ db, platform, authz, accessLog, config }: WorkforceDep
         job_grade_id: { type: 'id', ops: ['eq', 'in'] },
         supervisor_profile_id: { type: 'id', ops: ['eq'] },
         joining_date: { type: 'date', ops: ['from', 'to'] },
+        department_id: { type: 'id', ops: ['eq', 'in'] },
+        designation_id: { type: 'id', ops: ['eq', 'in'] },
+        division_id: { type: 'id', ops: ['eq', 'in'] },
+        section_id: { type: 'id', ops: ['eq', 'in'] },
+        activity_type_id: { type: 'id', ops: ['eq', 'in'] },
       },
       sorts: ['profile_number', 'joining_date'],
       defaultSort: ['profile_number'],
@@ -304,7 +326,7 @@ function profilesModule({ db, platform, authz, accessLog, config }: WorkforceDep
     summary: 'The workforce figures',
     description:
       'The cards and charts of Worker / Employee Management, within your scope: totals by status with ' +
-      'percentages, new and exits this month, average tenure, by category, engagement type, gender, age ' +
+      'percentages, new and exits this month, average tenure, by category, department, engagement type, gender, age ' +
       'group and length of service, birthdays and service anniversaries this month.',
     auth: { permission: 'employment.view' },
     query: SummaryQuery,
@@ -461,9 +483,210 @@ function profilesModule({ db, platform, authz, accessLog, config }: WorkforceDep
     },
   });
 
+  // ---- assignments of a profile (P2.03) ----------------------------------------------------------------
+  const assignments = assignmentService({ db, accessLog, timezone: config.timezone });
+  m.route({
+    method: 'get',
+    path: '/:id/assignments',
+    summary: 'A profile’s assignment timeline',
+    description:
+      'Every assignment of the profile, latest start first: approved ones (the closed ones with effective_to), ' +
+      'the pending change (draft or submitted) and rejected ones. is_current marks the one in force today.',
+    auth: { permission: 'employment.view' },
+    ...byId,
+    success: { status: 200, description: 'The assignments', schema: AssignmentOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const items = await assignments.ofProfile(params.id);
+      sendPage(req, res, items, {
+        pagination: { page: 1, perPage: Math.max(items.length, 1) },
+        total: items.length,
+      });
+    },
+  });
+
+  m.route({
+    method: 'get',
+    path: '/:id/assignments/resolve',
+    summary: 'The assignment in force on a date',
+    description:
+      'The approved assignment that applied on as_of (today when omitted): what payroll, attendance and cost ' +
+      'attribution of that date use. 404 when none was in force (before joining).',
+    auth: { permission: 'employment.view' },
+    ...byId,
+    query: AsOfQuery,
+    success: { status: 200, description: 'The assignment', schema: AssignmentOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params, query } = getValidated(res, { ...byId, query: AsOfQuery });
+      sendOne(res, await assignments.resolve(params.id, query.as_of));
+    },
+  });
+
+  m.route({
+    method: 'post',
+    path: '/:id/assignments',
+    summary: 'Start an assignment (a draft)',
+    description:
+      'A transfer, promotion, demotion, wage revision or other change from effective_from, as a DRAFT: submit ' +
+      'it to put it into effect. Fields left out are carried over from the latest approved assignment (a ' +
+      'transfer names only the new section; its division follows the section); null clears one. The first ' +
+      'assignment starts on the joining date with change_reason joining; a later one starts after the latest ' +
+      'approved one. An employee needs department and designation, a worker section and job / task ' +
+      '(activity_type_id). One pending change per profile (422 DUPLICATE_KEY).',
+    auth: { permission: 'employment.create' },
+    ...byId,
+    body: CreateAssignmentBody,
+    success: { status: 201, description: 'Drafted', schema: AssignmentOut },
+    errors: ['DUPLICATE_KEY', 'INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: CreateAssignmentBody });
+      const a = await assignments.create(params.id, body, currentActorId());
+      sendCreated(res, a, `/api/v1/employment-assignments/${a.id}`, a.version);
+    },
+  });
+
+  return m.build();
+}
+
+function assignmentsModule({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule {
+  const svc = assignmentService({ db, accessLog, timezone: config.timezone });
+  registerApprovalAdapter(svc.adapter);
+  const byAssignment = { params: AssignmentParams };
+  const m = defineModule({
+    name: 'employment-assignments',
+    path: '/employment-assignments',
+    tag: 'Workforce',
+    platform,
+    authz,
+    accessLog,
+  });
+
+  m.route({
+    method: 'get',
+    path: '/',
+    summary: 'List employment assignments',
+    description:
+      'Across profiles, in your scope: e.g. filter[state]=submitted for the changes awaiting approval, or ' +
+      'filter[section_id]=… for who was placed in a section. Each row names its profile.',
+    auth: { permission: 'employment.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        employment_profile_id: { type: 'id', ops: ['eq', 'in'] },
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        department_id: { type: 'id', ops: ['eq', 'in'] },
+        designation_id: { type: 'id', ops: ['eq', 'in'] },
+        division_id: { type: 'id', ops: ['eq', 'in'] },
+        section_id: { type: 'id', ops: ['eq', 'in'] },
+        activity_type_id: { type: 'id', ops: ['eq', 'in'] },
+        state: { type: { enum: ASSIGNMENT_STATES }, ops: ['eq', 'in'] },
+        change_reason: { type: { enum: CHANGE_REASONS }, ops: ['eq', 'in'] },
+        wage_basis: { type: { enum: WAGE_BASES }, ops: ['eq', 'in'] },
+        is_wage_change: { type: 'bool' },
+        effective_from: { type: 'date', ops: ['from', 'to'] },
+      },
+      sorts: ['effective_from', 'created_at'],
+      defaultSort: ['-effective_from'],
+      maxPageSize: 500,
+    },
+    success: { status: 200, description: 'A page of assignments', schema: AssignmentOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.list(q);
+      sendPage(req, res, items, {
+        pagination: q.page ?? { page: 1, perPage: 25 },
+        total,
+        appliedScope: await appliedScope(),
+      });
+    },
+  });
+
+  m.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get an employment assignment',
+    auth: { permission: 'employment.view' },
+    ...byAssignment,
+    success: { status: 200, description: 'The assignment', schema: AssignmentOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byAssignment);
+      const a = await svc.get(params.id);
+      sendOne(res, a, { version: a.version });
+    },
+  });
+
+  for (const [method, body, summary] of [
+    ['put', ReplaceAssignmentBody, 'Replace a draft assignment'],
+    ['patch', PatchAssignmentBody, 'Change some of a draft assignment'],
+  ] as const) {
+    m.route({
+      method,
+      path: '/:id',
+      summary,
+      description:
+        'Drafts only (a returned one is a draft again). A submitted or approved assignment is never edited: ' +
+        'the next change is a new assignment (409 INVALID_TRANSITION). pay_lines are replaced as a whole.',
+      auth: { permission: 'employment.edit' },
+      ...byAssignment,
+      body,
+      ifMatch: true,
+      success: { status: 200, description: 'Changed', schema: AssignmentOut },
+      errors: ['DUPLICATE_KEY', 'INVALID_TRANSITION', 'SCOPE_DENIED'],
+      handler: async (req, res) => {
+        const { params, body: changes } = getValidated(res, { ...byAssignment, body: PatchAssignmentBody });
+        const a = await svc.update(params.id, requireIfMatch(req), changes, currentActorId());
+        sendOne(res, a, { version: a.version });
+      },
+    });
+  }
+
+  m.route({
+    method: 'delete',
+    path: '/:id',
+    summary: 'Delete a draft assignment',
+    description: 'Drafts only. A submitted change is returned or rejected by its approver instead.',
+    auth: { permission: 'employment.delete' },
+    ...byAssignment,
+    ifMatch: true,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byAssignment);
+      await svc.remove(params.id, currentActorId());
+      sendNoContent(res);
+    },
+  });
+
+  m.route({
+    method: 'post',
+    path: '/:id/submit',
+    summary: 'Submit an assignment',
+    description:
+      'A wage change (wage basis, base rate or salary lines differ from the assignment it follows; for the ' +
+      'first one, any rate or salary line) is routed through the approval workflow of employment_assignment ' +
+      '(P7 §9.6): the result is `submitted` with approval_id, decided with POST /approvals/{approval_id}/' +
+      'approve|reject|return. Any other change is `approved` at once. On approval the assignment it follows ' +
+      'is closed the day before it starts.',
+    auth: { permission: 'employment.create' },
+    ...byAssignment,
+    ifMatch: true,
+    success: { status: 200, description: 'Submitted', schema: AssignmentOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED', 'RULE_AMBIGUOUS'],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byAssignment);
+      const a = await svc.submit(params.id, requireIfMatch(req), currentActorId());
+      sendOne(res, a, { version: a.version });
+    },
+  });
+
   return m.build();
 }
 
 export function workforceModules(deps: WorkforceDeps): ApiModule[] {
-  return [personsModule(deps), profilesModule(deps)];
+  setWorkforceScopeTimezone(deps.config.timezone);
+  return [personsModule(deps), profilesModule(deps), assignmentsModule(deps)];
 }

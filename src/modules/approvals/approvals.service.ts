@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 
-import { resolveApprovers } from '../../core/approval/approvers.js';
+import { placeOfRequest, resolveApprovers, stepRule } from '../../core/approval/approvers.js';
 import type { ApproverRule } from '../../core/approval/definition.js';
 import { approvableDocument, NEVER_SELF_APPROVE } from '../../core/approval/document-types.js';
 import {
@@ -64,6 +64,7 @@ const requestInclude = {
       approverRule: true,
       roleId: true,
       userId: true,
+      reportingLevel: true,
       allowSelfApproval: true,
       conditionField: true,
       conditionOperator: true,
@@ -129,14 +130,7 @@ export function approvalsService({ db, authz, timezone, afterDecision }: Approva
     let actions = none;
     let eligible = false;
     if (document && r.state === 'pending' && r.currentStep) {
-      const e = await eligibility(
-        tx,
-        document,
-        r.currentStep,
-        { estateId: r.estateId, factoryId: r.factoryId, warehouseId: r.warehouseId },
-        userId,
-        r.documentType,
-      );
+      const e = await eligibility(tx, document, r.currentStep, placeOfRequest(r), userId, r.documentType);
       eligible = e !== null;
       const selfBlocked =
         (involved ||
@@ -194,14 +188,7 @@ export function approvalsService({ db, authz, timezone, afterDecision }: Approva
               : 'not_reached';
       const approvers =
         status === 'current' && document
-          ? (
-              await resolveApprovers(
-                tx,
-                document,
-                { approverRule: s.approverRule as ApproverRule, roleId: s.roleId, userId: s.userId },
-                { estateId: r.estateId, factoryId: r.factoryId, warehouseId: r.warehouseId },
-              )
-            ).users
+          ? (await resolveApprovers(tx, document, stepRule(s), placeOfRequest(r))).users
           : [];
       const d = status === 'done' ? decided.get(s.stepNumber) : undefined;
       out.push({
@@ -336,6 +323,8 @@ export function approvalsService({ db, authz, timezone, afterDecision }: Approva
             OR: [
               { approverRule: 'by_role', roleId: { in: [...new Set(roles.map((r) => r.roleId))] } },
               { approverRule: 'by_named_user', userId: { in: people } },
+              // Whose line it is depends on the submitter: eligibility below decides.
+              { approverRule: 'by_reporting_line' },
             ],
           },
         },
@@ -357,14 +346,7 @@ export function approvalsService({ db, authz, timezone, afterDecision }: Approva
         const document = approvableDocument(r.documentType);
         const step = r.currentStep;
         if (!document || !step) continue;
-        const e = await eligibility(
-          db,
-          document,
-          step,
-          { estateId: r.estateId, factoryId: r.factoryId, warehouseId: r.warehouseId },
-          userId,
-          r.documentType,
-        );
+        const e = await eligibility(db, document, step, placeOfRequest(r), userId, r.documentType);
         const actingFor = e?.actingForUserId
           ? await db.user.findUnique({
               where: { id: e.actingForUserId },
@@ -452,14 +434,7 @@ export function approvalsService({ db, authz, timezone, afterDecision }: Approva
           const step = r.currentStep;
           if (!document || !step || !scopeReaches(scope, r)) continue;
           const nobody =
-            (
-              await resolveApprovers(
-                tx,
-                document,
-                { approverRule: step.approverRule as ApproverRule, roleId: step.roleId, userId: step.userId },
-                { estateId: r.estateId, factoryId: r.factoryId, warehouseId: r.warehouseId },
-              )
-            ).users.length === 0;
+            (await resolveApprovers(tx, document, stepRule(step), placeOfRequest(r))).users.length === 0;
           if (nobody !== r.isUnresolved) {
             await tx.approvalRequest.update({ where: { id: r.id }, data: { isUnresolved: nobody } });
           }
