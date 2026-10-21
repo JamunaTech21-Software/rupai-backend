@@ -16,11 +16,14 @@ import { createMigratedDatabase, silentLogger, url, type MigratedDatabase } from
 
 /**
  * P2.06 — workforce bulk import on real MySQL: workers (person + profile + joining assignment per row,
- * the verification: 2,000 workers with a usable error report), an NID already registered reused, the
+ * the verification: 2,000 workers with a usable error report: `npm run test:perf`; CI runs 200 rows of the
+ * same file to keep the suite fast), an NID already registered reused, the
  * uploader's estate scope, employees with salaries committed (and so approved) by someone else with
  * employment.approve, and contractors with a first contract.
  */
 
+/** Rows of the bulk test: 200 in CI, 2,000 (the P2.06 verification) with `npm run test:perf`. */
+const ROWS = Number(process.env.IMPORT_ROWS ?? '200');
 const ADMIN = '1';
 /** person, employment (view, create, edit), contractor (view, create); estate A only. */
 let CLERK = '';
@@ -224,15 +227,15 @@ afterAll(async () => {
 });
 
 describe('workforce import (P2.06)', () => {
-  it('imports 2,000 workers with a usable error report; each a person, a profile and a joining assignment', async () => {
-    const rows = Array.from({ length: 2000 }, (_, i) => workerRow(i + 1));
+  it(`imports ${String(ROWS)} workers with a usable error report; each a person, a profile and a joining assignment`, async () => {
+    const rows = Array.from({ length: ROWS }, (_, i) => workerRow(i + 1));
     rows[10] = workerRow(11, { section: 'X9' }); // no such section
     rows[20] = workerRow(21, { join_date: '' }); // required
     rows[30] = workerRow(31, { national_id: rows[0]?.[5] ?? '' }); // the same person as row 2
     rows[40] = workerRow(41, { estate: B }); // outside the clerk's scope
     rows[50] = workerRow(51, { gender: 'unknown' });
     const b = await uploadAndValidate('workforce.worker', csv([WORKER_HEADER, ...rows]));
-    expect(b).toMatchObject({ state: 'validated', row_count: 2000, valid_count: 1995, error_count: 5 });
+    expect(b).toMatchObject({ state: 'validated', row_count: ROWS, valid_count: ROWS - 5, error_count: 5 });
     const errors = await errorsOf(b.id);
     const at = (row: number) => errors.filter((e) => e.row_number === row).map((e) => [e.column, e.code]);
     expect(at(12)).toEqual([['section', 'VALIDATION_FAILED']]);
@@ -242,7 +245,7 @@ describe('workforce import (P2.06)', () => {
     expect(at(52)).toEqual([['gender', 'VALIDATION_FAILED']]);
 
     const done = await commit(b.id);
-    expect(done).toMatchObject({ state: 'committed', committed_count: 1995, failed_count: 0 });
+    expect(done).toMatchObject({ state: 'committed', committed_count: ROWS - 5, failed_count: 0 });
     const counts = await runUnscoped('test', async () => ({
       persons: await mdb.migrator.person.count({ where: { nationalId: { startsWith: '77' } } }),
       profiles: await mdb.migrator.employmentProfile.count({ where: { employmentType: 'worker' } }),
@@ -250,7 +253,7 @@ describe('workforce import (P2.06)', () => {
         where: { state: 'approved', changeReason: 'joining' },
       }),
     }));
-    expect(counts).toEqual({ persons: 1995, profiles: 1995, approved: 1995 });
+    expect(counts).toEqual({ persons: ROWS - 5, profiles: ROWS - 5, approved: ROWS - 5 });
     const list = await data<
       {
         profile_number: string;

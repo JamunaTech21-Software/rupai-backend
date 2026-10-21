@@ -194,6 +194,8 @@ describe('one engine, every type (P4 §7.3)', () => {
     switch (t.key) {
       case 'activity_type':
         return { code: unique('A'), name: 'Activity', cost_category: 'other' };
+      case 'benefit_type':
+        return { code: unique('B'), name: 'Benefit', benefit_category: 'other' };
       case 'shift':
         return { code: unique('S'), name: 'Shift', start_time: '06:00', end_time: '14:00' };
       case 'uom':

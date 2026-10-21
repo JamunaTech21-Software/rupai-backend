@@ -66,6 +66,8 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['team', 'view'],
   ['contractor', 'view'],
   ['leave', 'view'],
+  ['benefit', 'view'],
+  ['welfare', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -97,7 +99,12 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     'team',
     'contractor',
     'leave',
+    'benefit',
+    'welfare',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
+  // P2.08: benefits and welfare cases are submitted for approval (operational class).
+  ['benefit', 'submit'],
+  ['welfare', 'submit'],
   ['accounting_period', 'view'],
   ['accounting_period', 'edit'],
 ] as const;
@@ -117,6 +124,11 @@ const DEMO_APPROVER_PERMISSIONS = [
   // P2.07: approves leave as the field supervisor (the reporting line of the demo staff).
   ['leave', 'view'],
   ['leave', 'approve'],
+  // P2.08: approves benefit entitlements, issues and welfare cases.
+  ['benefit', 'view'],
+  ['benefit', 'approve'],
+  ['welfare', 'view'],
+  ['welfare', 'approve'],
   ['workflow', 'view'],
   ['workflow', 'approve'],
   ['purchase_order', 'view'],
@@ -267,6 +279,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoTeamsSeeder,
     demoContractorsSeeder,
     demoLeaveSeeder,
+    demoBenefitsSeeder,
   ];
 }
 
@@ -1165,6 +1178,107 @@ const demoLeaveSeeder: Seeder = {
           });
           inserted += 1;
         }
+      }
+      return { inserted, updated: 0 };
+    }),
+};
+
+/**
+ * P2.08: ration cards (the design's Ration Card tab) for DEMO-A's current workers and a house for one,
+ * approved; a welfare case awaiting submission. Added once.
+ */
+const demoBenefitsSeeder: Seeder = {
+  name: 'demo: P2.08 ration cards, housing and a welfare case on DEMO-A',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const estate = await tx.estate.findFirst({
+        where: { code: 'DEMO-A' },
+        select: { id: true, code: true },
+      });
+      if (!estate || (await tx.benefitEntitlement.count({ where: { estateId: estate.id } })) > 0)
+        return { inserted, updated: 0 };
+      const ration = await tx.benefitType.findUnique({ where: { code: 'RATION' }, select: { id: true } });
+      const housing = await tx.benefitType.findUnique({ where: { code: 'HOUSING' }, select: { id: true } });
+      if (!ration || !housing) return { inserted, updated: 0 };
+      const workers = await tx.employmentProfile.findMany({
+        where: { estateId: estate.id, employmentType: 'worker', status: { not: 'separated' } },
+        select: { id: true, profileNumber: true, joiningDate: true },
+        orderBy: { profileNumber: 'asc' },
+      });
+      const now = new Date();
+      for (const [i, w] of workers.entries()) {
+        const plan = [
+          {
+            type: ration.id,
+            ref: `RC-${w.profileNumber}`,
+            office: 'Lalbagh ration dealer',
+            qty: '3.500',
+            cost: '120',
+          },
+          ...(i === 0
+            ? [
+                {
+                  type: housing.id,
+                  ref: 'Line 4, Quarter 12',
+                  office: 'Estate office',
+                  qty: null,
+                  cost: '800',
+                },
+              ]
+            : []),
+        ];
+        for (const p of plan) {
+          const e = await tx.benefitEntitlement.create({
+            data: {
+              employmentProfileId: w.id,
+              estateId: estate.id,
+              benefitTypeId: p.type,
+              effectiveFrom: w.joiningDate,
+              quantityPerPeriod: p.qty,
+              employerCostPerPeriod: p.cost,
+              allocationReference: p.ref,
+              issuingOffice: p.office,
+              state: 'approved',
+              stateChangedAt: now,
+              submittedAt: now,
+              submittedBy: by,
+              approvedAt: now,
+              approvedBy: by,
+              createdBy: by,
+            },
+          });
+          await tx.statusHistory.create({
+            data: {
+              recordType: 'benefit_entitlement',
+              recordId: e.id.toString(),
+              toState: 'approved',
+              changedBy: by,
+              comment: 'Demo seed',
+            },
+          });
+          inserted += 1;
+        }
+      }
+      const first = workers[0];
+      if (first) {
+        await tx.welfareCase.create({
+          data: {
+            caseNumber: `WC-${estate.code}-DEMO-1`,
+            estateId: estate.id,
+            beneficiaryType: 'employment_profile',
+            beneficiaryId: first.id,
+            welfareCategory: 'medical',
+            caseDate: now,
+            description: 'Eye surgery at the district hospital',
+            requestedAmount: '15000',
+            state: 'draft',
+            stateChangedAt: now,
+            createdBy: by,
+          },
+        });
+        inserted += 1;
       }
       return { inserted, updated: 0 };
     }),

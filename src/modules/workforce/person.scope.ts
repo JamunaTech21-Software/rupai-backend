@@ -11,6 +11,8 @@ import { businessDateToDb, todayIn } from '../../core/time/dates.js';
  *   contractor_contract    its estate and division; contractor_labour as its contract.
  *   leave_entitlement      its profile's estate; leave_request its estate; both also by the profile
  *                          itself (self: everyone sees and files their own leave, P2.07).
+ *   benefit_entitlement / benefit_issue  their estate, and the profile itself (self); welfare_case its
+ *                          estate (P2.08).
  *   employment_profile     an estate grant sees the profiles of that estate; a division or section grant
  *                          the profiles whose CURRENT assignment is there (approved, in force today, in
  *                          the organisation's timezone); everyone sees their own (self).
@@ -41,11 +43,22 @@ const assignedTo = (where: Record<string, unknown>) => {
   };
 };
 
-SCOPED_MODELS.register('LeaveEntitlement', {
-  estate: (ids) => ({ profile: { estateId: inIds(ids) } }),
+SCOPED_MODELS.register('BenefitEntitlement', {
+  estate: byColumn('estateId'),
   self: byColumn('employmentProfileId'),
   createsCheckedBy: 'service',
 })
+  .register('BenefitIssue', {
+    estate: byColumn('estateId'),
+    self: (ids) => ({ entitlement: { employmentProfileId: inIds(ids) } }),
+    createsCheckedBy: 'service',
+  })
+  .register('WelfareCase', { estate: byColumn('estateId'), createsCheckedBy: 'service' })
+  .register('LeaveEntitlement', {
+    estate: (ids) => ({ profile: { estateId: inIds(ids) } }),
+    self: byColumn('employmentProfileId'),
+    createsCheckedBy: 'service',
+  })
   .register('LeaveRequest', {
     estate: byColumn('estateId'),
     self: byColumn('employmentProfileId'),

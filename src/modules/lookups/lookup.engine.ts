@@ -437,7 +437,9 @@ export function lookupService(db: Database, type: LookupType, accessLog: AccessL
     async createIn(tx: Tx, body: Readonly<Record<string, unknown>>, actorId: bigint): Promise<LookupRow> {
       const values: Record<string, unknown> = {};
       for (const f of type.fields) {
-        if (f.readOnly) values[f.name] = f.type.kind === 'bool' ? false : null;
+        // A read-only field starts at its declared default (P2.08 payroll_treatment), else false / null.
+        if (f.readOnly)
+          values[f.name] = f.default !== undefined ? f.default : f.type.kind === 'bool' ? false : null;
         else values[f.name] = toDb(f, body[f.name] === undefined ? (f.default ?? null) : body[f.name]);
       }
       if (type.estateColumn) await assertWritable(values[type.estateColumn], null, 'create');

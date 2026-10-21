@@ -73,6 +73,8 @@ export const DOCUMENT_TYPES: readonly DocumentType[] = [
   op('contractor', 'Contractor ID', 'CON', []),
   op('contractor_contract', 'Contractor contract', 'CC', ESTATE_FY),
   op('leave', 'Leave', 'LV', ESTATE_FY),
+  // P2.08: welfare cases per estate and year.
+  op('welfare_case', 'Welfare case', 'WC', ESTATE_FY),
   fin('payroll_run', 'Payroll run', 'PAY', ESTATE_FY),
   fin('payroll_payment', 'Payroll payment', 'PP', ESTATE_FY),
   fin('employee_advance', 'Employee advance', 'ADV', ESTATE_FY),
