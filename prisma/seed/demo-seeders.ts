@@ -4,7 +4,8 @@ import type { Tx } from '../../src/core/db/transaction.js';
 import { figuresOf, parseGeometry, type Geometry } from '../../src/core/geo/geometry.js';
 import { runUnscoped } from '../../src/core/scope/scope.js';
 import type { Prisma } from '../../src/generated/prisma/client.js';
-import { businessDateToDb, type BusinessDate } from '../../src/core/time/dates.js';
+import { businessDateFromDb, businessDateToDb, type BusinessDate } from '../../src/core/time/dates.js';
+import { activeMonths, proRata } from '../../src/modules/workforce/leave.service.js';
 import { fiscalYearCode, fiscalYearDates, periodsOf } from '../../src/modules/calendar/fiscal.service.js';
 import { ADMINISTRATOR_ROLE_CODE } from '../../src/modules/identity/permission-catalogue.js';
 import {
@@ -64,6 +65,7 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['employment', 'view'],
   ['team', 'view'],
   ['contractor', 'view'],
+  ['leave', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -94,6 +96,7 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     'employment',
     'team',
     'contractor',
+    'leave',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
   ['accounting_period', 'view'],
   ['accounting_period', 'edit'],
@@ -111,6 +114,9 @@ const DEMO_APPROVER_PERMISSIONS = [
   // P2.05: the estate and finance manager of the demo contract ladder (P7 §9.5).
   ['contractor', 'view'],
   ['contractor', 'approve'],
+  // P2.07: approves leave as the field supervisor (the reporting line of the demo staff).
+  ['leave', 'view'],
+  ['leave', 'approve'],
   ['workflow', 'view'],
   ['workflow', 'approve'],
   ['purchase_order', 'view'],
@@ -260,6 +266,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoAssignmentsSeeder,
     demoTeamsSeeder,
     demoContractorsSeeder,
+    demoLeaveSeeder,
   ];
 }
 
@@ -1095,6 +1102,69 @@ const demoContractorsSeeder: Seeder = {
           });
         }
         inserted += 3 + p.labour;
+      }
+      return { inserted, updated: 0 };
+    }),
+};
+
+/**
+ * P2.07: entitlements on the leave types still without one (the client's figures replace them: Earned 18
+ * a year carrying up to 10, Casual 10, Sick 14, Maternity 112 for employees; Unpaid unpaid), and the
+ * current fiscal year's entitlements of DEMO-A's profiles, pro-rata for this year's joiners. Added once.
+ */
+const demoLeaveSeeder: Seeder = {
+  name: 'demo: P2.07 leave entitlements on DEMO-A',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      for (const [code, data] of [
+        ['EARNED', { annualDays: '18', carryForwardLimitDays: '10' }],
+        ['CASUAL', { annualDays: '10' }],
+        ['SICK', { annualDays: '14' }],
+        ['MATERNITY', { annualDays: '112', appliesTo: 'employee' }],
+      ] as const) {
+        const t = await tx.leaveType.findUnique({ where: { code }, select: { annualDays: true } });
+        if (t?.annualDays === null) {
+          await tx.leaveType.update({ where: { code }, data });
+          inserted += 1;
+        }
+      }
+      await tx.leaveType.updateMany({ where: { code: 'UNPAID', isPaid: true }, data: { isPaid: false } });
+      const estate = await tx.estate.findFirst({ where: { code: 'DEMO-A' }, select: { id: true } });
+      const now = new Date();
+      const fy = await tx.fiscalYear.findFirst({ where: { startDate: { lte: now }, endDate: { gte: now } } });
+      if (!estate || !fy) return { inserted, updated: 0 };
+      if (
+        (await tx.leaveEntitlement.count({
+          where: { fiscalYearId: fy.id, profile: { estateId: estate.id } },
+        })) > 0
+      ) {
+        return { inserted, updated: 0 };
+      }
+      const types = await tx.leaveType.findMany({ where: { status: 'active', annualDays: { not: null } } });
+      const profiles = await tx.employmentProfile.findMany({
+        where: { estateId: estate.id, status: { not: 'separated' } },
+        select: { id: true, employmentType: true, joiningDate: true },
+      });
+      const start = businessDateFromDb(fy.startDate);
+      const end = businessDateFromDb(fy.endDate);
+      for (const p of profiles) {
+        const months = activeMonths(start, end, businessDateFromDb(p.joiningDate), null);
+        for (const t of types) {
+          if (months === 0 || t.annualDays === null) continue;
+          if (t.appliesTo !== 'all' && t.appliesTo !== p.employmentType) continue;
+          await tx.leaveEntitlement.create({
+            data: {
+              employmentProfileId: p.id,
+              leaveTypeId: t.id,
+              fiscalYearId: fy.id,
+              entitledDays: proRata(t.annualDays.toString(), months).toString(),
+              createdBy: by,
+            },
+          });
+          inserted += 1;
+        }
       }
       return { inserted, updated: 0 };
     }),

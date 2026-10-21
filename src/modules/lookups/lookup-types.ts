@@ -95,7 +95,6 @@ const PLAIN: readonly (readonly [string, string])[] = [
   ['worker_category', 'worker category'],
   ['employee_category', 'employee category'],
   ['employment_type', 'employment type'],
-  ['leave_type', 'leave type'],
   ['buyer_type', 'buyer type'],
   ['trading_type', 'trading type'],
   ['packaging_type', 'packaging type'],
@@ -145,6 +144,20 @@ export const LOOKUP_TYPES: readonly LookupType[] = [
     },
     { name: 'grade_category', type: { kind: 'enum', values: GRADE_CATEGORIES }, default: null, filter: true },
     { name: 'is_primary_grade', type: { kind: 'bool' }, default: false, filter: true },
+  ]),
+  // P2.07: the leave type carries its entitlement until statutory rules (Phase 9) take over (D-2.07-1).
+  common('leave_type', 'leave type', {}, [
+    /** Days a fiscal year; null: no entitlement is generated (unpaid or special leave). */
+    { name: 'annual_days', type: { kind: 'decimal', decimal: 'pct' }, default: null },
+    { name: 'carry_forward_limit_days', type: { kind: 'decimal', decimal: 'pct' }, default: '0' },
+    { name: 'allows_negative_balance', type: { kind: 'bool' }, default: false },
+    { name: 'is_paid', type: { kind: 'bool' }, default: true, filter: true },
+    {
+      name: 'applies_to',
+      type: { kind: 'enum', values: ['all', 'worker', 'employee'] },
+      default: 'all',
+      filter: true,
+    },
   ]),
   common('activity_type', 'activity type', { permission: 'activity_type' }, [
     { name: 'cost_category', type: { kind: 'enum', values: COST_CATEGORIES }, required: true, filter: true },
