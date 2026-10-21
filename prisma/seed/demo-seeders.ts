@@ -68,6 +68,7 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['leave', 'view'],
   ['benefit', 'view'],
   ['welfare', 'view'],
+  ['training', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -101,7 +102,9 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     'leave',
     'benefit',
     'welfare',
+    'training',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
+  ['training', 'submit'],
   // P2.08: benefits and welfare cases are submitted for approval (operational class).
   ['benefit', 'submit'],
   ['welfare', 'submit'],
@@ -129,6 +132,9 @@ const DEMO_APPROVER_PERMISSIONS = [
   ['benefit', 'approve'],
   ['welfare', 'view'],
   ['welfare', 'approve'],
+  // P2.09: approves training programmes.
+  ['training', 'view'],
+  ['training', 'approve'],
   ['workflow', 'view'],
   ['workflow', 'approve'],
   ['purchase_order', 'view'],
@@ -280,6 +286,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoContractorsSeeder,
     demoLeaveSeeder,
     demoBenefitsSeeder,
+    demoTrainingSeeder,
   ];
 }
 
@@ -1275,6 +1282,91 @@ const demoBenefitsSeeder: Seeder = {
             requestedAmount: '15000',
             state: 'draft',
             stateChangedAt: now,
+            createdBy: by,
+          },
+        });
+        inserted += 1;
+      }
+      return { inserted, updated: 0 };
+    }),
+};
+
+/**
+ * P2.09: a completed safety training on DEMO-A with its participants' results, and a planned plucking
+ * technique course awaiting submission. Added once.
+ */
+const demoTrainingSeeder: Seeder = {
+  name: 'demo: P2.09 training programmes on DEMO-A',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const estate = await tx.estate.findFirst({
+        where: { code: 'DEMO-A' },
+        select: { id: true, code: true },
+      });
+      if (!estate || (await tx.trainingProgram.count({ where: { estateId: estate.id } })) > 0)
+        return { inserted, updated: 0 };
+      const now = new Date();
+      const day = (offset: number) =>
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset));
+      const done = await tx.trainingProgram.create({
+        data: {
+          programCode: `TP-${estate.code}-DEMO-1`,
+          estateId: estate.id,
+          title: 'Safe pesticide handling',
+          trainingType: 'safety',
+          trainerName: 'Bangladesh Tea Research Institute',
+          trainerType: 'external',
+          venue: 'Estate club house',
+          startDate: day(-30),
+          endDate: day(-29),
+          durationHours: '12',
+          capacity: 25,
+          cost: '18000',
+          state: 'completed',
+          stateChangedAt: now,
+          submittedAt: now,
+          submittedBy: by,
+          approvedAt: now,
+          approvedBy: by,
+          createdBy: by,
+        },
+      });
+      await tx.trainingProgram.create({
+        data: {
+          programCode: `TP-${estate.code}-DEMO-2`,
+          estateId: estate.id,
+          title: 'Two leaves and a bud: plucking technique',
+          trainingType: 'skill',
+          trainerType: 'internal',
+          trainerName: 'Field supervisor',
+          startDate: day(14),
+          endDate: day(14),
+          durationHours: '4',
+          capacity: 30,
+          state: 'draft',
+          stateChangedAt: now,
+          createdBy: by,
+        },
+      });
+      inserted += 2;
+      const workers = await tx.employmentProfile.findMany({
+        where: { estateId: estate.id, employmentType: 'worker', status: { not: 'separated' } },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+        take: 3,
+      });
+      for (const [i, w] of workers.entries()) {
+        await tx.trainingParticipant.create({
+          data: {
+            trainingProgramId: done.id,
+            employmentProfileId: w.id,
+            attendanceStatus: i === 2 ? 'absent' : 'attended',
+            result: i === 2 ? 'not_assessed' : 'pass',
+            score: i === 2 ? null : String(78 + i * 6),
+            certificateNumber: i === 2 ? null : `BTRI-${String(4100 + i)}`,
+            feedbackRating: i === 2 ? null : 5 - i,
             createdBy: by,
           },
         });

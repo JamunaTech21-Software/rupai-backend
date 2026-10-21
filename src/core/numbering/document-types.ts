@@ -75,6 +75,8 @@ export const DOCUMENT_TYPES: readonly DocumentType[] = [
   op('leave', 'Leave', 'LV', ESTATE_FY),
   // P2.08: welfare cases per estate and year.
   op('welfare_case', 'Welfare case', 'WC', ESTATE_FY),
+  // P2.09: training programmes per estate and year.
+  op('training_program', 'Training programme', 'TP', ESTATE_FY),
   fin('payroll_run', 'Payroll run', 'PAY', ESTATE_FY),
   fin('payroll_payment', 'Payroll payment', 'PP', ESTATE_FY),
   fin('employee_advance', 'Employee advance', 'ADV', ESTATE_FY),
