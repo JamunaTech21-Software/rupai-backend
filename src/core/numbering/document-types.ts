@@ -77,6 +77,9 @@ export const DOCUMENT_TYPES: readonly DocumentType[] = [
   op('welfare_case', 'Welfare case', 'WC', ESTATE_FY),
   // P2.09: training programmes per estate and year.
   op('training_program', 'Training programme', 'TP', ESTATE_FY),
+  // P2.10: goals and evaluations per estate and year.
+  op('goal', 'Goal', 'GL', ESTATE_FY),
+  op('evaluation', 'Evaluation', 'EV', ESTATE_FY),
   fin('payroll_run', 'Payroll run', 'PAY', ESTATE_FY),
   fin('payroll_payment', 'Payroll payment', 'PP', ESTATE_FY),
   fin('employee_advance', 'Employee advance', 'ADV', ESTATE_FY),

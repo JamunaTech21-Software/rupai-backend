@@ -284,6 +284,17 @@ const BENEFIT_TYPES = [
   ['WATER', 'Drinking water', 'utility', 'monthly', null],
 ] as const;
 
+/** P2.10 (P3 §24.3): code, name, group, max score, goal-linked. */
+const EVALUATION_CRITERIA = [
+  ['JOB_KNOWLEDGE', 'Job knowledge', 'competency', '5', false],
+  ['QUALITY', 'Quality of work', 'performance', '5', false],
+  ['PRODUCTIVITY', 'Productivity', 'performance', '5', false],
+  ['ATTENDANCE', 'Attendance and punctuality', 'behaviour', '5', false],
+  ['TEAMWORK', 'Teamwork', 'behaviour', '5', false],
+  ['DISCIPLINE', 'Discipline and safety', 'behaviour', '5', false],
+  ['GOALS', 'Goal achievement', 'goals', '5', true],
+] as const;
+
 const CURRENCIES = [
   ['BDT', 'Bangladeshi taka', '৳', true],
   ['USD', 'US dollar', '$', false],
@@ -353,6 +364,16 @@ export const lookupSeeder: Seeder = {
       inserted += await ensure(tx, 'country', 'iso2', { iso2, iso3, name, dialling_code: dialling });
     }
 
+    for (const [i, [code, name, group, max, goal]] of EVALUATION_CRITERIA.entries()) {
+      inserted += await ensure(tx, 'evaluation_criteria', 'code', {
+        code,
+        name,
+        criteria_group: group,
+        max_score: max,
+        is_goal_linked: goal,
+        sort_order: (i + 1) * 10,
+      });
+    }
     for (const [i, [code, name, category, frequency, uom]] of BENEFIT_TYPES.entries()) {
       inserted += await ensure(tx, 'benefit_type', 'code', {
         code,

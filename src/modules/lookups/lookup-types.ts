@@ -185,6 +185,23 @@ export const LOOKUP_TYPES: readonly LookupType[] = [
       readOnly: true,
     },
   ]),
+  // P2.10 (P3 §24.3): what evaluations score.
+  common('evaluation_criteria', 'evaluation criterion', { permission: 'evaluation' }, [
+    {
+      name: 'criteria_group',
+      type: { kind: 'enum', values: ['competency', 'performance', 'behaviour', 'goals', 'other'] },
+      required: true,
+      filter: true,
+    },
+    { name: 'max_score', type: { kind: 'decimal', decimal: 'pct', positive: true }, default: '5' },
+    {
+      name: 'applies_to',
+      type: { kind: 'enum', values: ['all', 'worker', 'employee'] },
+      default: 'all',
+      filter: true,
+    },
+    { name: 'is_goal_linked', type: { kind: 'bool' }, default: false },
+  ]),
   common('activity_type', 'activity type', { permission: 'activity_type' }, [
     { name: 'cost_category', type: { kind: 'enum', values: COST_CATEGORIES }, required: true, filter: true },
     { name: 'default_uom_id', type: { kind: 'ref', table: 'uom', label: 'unit of measure' }, default: null },

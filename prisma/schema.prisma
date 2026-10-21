@@ -249,6 +249,21 @@ model User {
   rejectedTrainingPrograms     TrainingProgram[]      @relation("TrainingProgramRejectedBy")
   createdTrainingParticipants  TrainingParticipant[]  @relation("TrainingParticipantCreatedBy")
   updatedTrainingParticipants  TrainingParticipant[]  @relation("TrainingParticipantUpdatedBy")
+  createdGoals                 Goal[]                 @relation("GoalCreatedBy")
+  updatedGoals                 Goal[]                 @relation("GoalUpdatedBy")
+  submittedGoals               Goal[]                 @relation("GoalSubmittedBy")
+  approvedGoals                Goal[]                 @relation("GoalApprovedBy")
+  rejectedGoals                Goal[]                 @relation("GoalRejectedBy")
+  createdGoalProgresss         GoalProgress[]         @relation("GoalProgressCreatedBy")
+  createdEvaluations           Evaluation[]           @relation("EvaluationCreatedBy")
+  updatedEvaluations           Evaluation[]           @relation("EvaluationUpdatedBy")
+  submittedEvaluations         Evaluation[]           @relation("EvaluationSubmittedBy")
+  approvedEvaluations          Evaluation[]           @relation("EvaluationApprovedBy")
+  rejectedEvaluations          Evaluation[]           @relation("EvaluationRejectedBy")
+  createdEvaluationLines       EvaluationLine[]       @relation("EvaluationLineCreatedBy")
+  updatedEvaluationLines       EvaluationLine[]       @relation("EvaluationLineUpdatedBy")
+  createdEvaluationCriterias   EvaluationCriteria[]   @relation("EvaluationCriteriaCreatedBy")
+  updatedEvaluationCriterias   EvaluationCriteria[]   @relation("EvaluationCriteriaUpdatedBy")
   updatedPersons               Person[]               @relation("PersonUpdatedBy")
   createdPersonDependents      PersonDependent[]      @relation("PersonDependentCreatedBy")
   updatedPersonDependents      PersonDependent[]      @relation("PersonDependentUpdatedBy")
@@ -736,6 +751,8 @@ model Estate {
   leaveRequests         LeaveRequest[]
   welfareCases          WelfareCase[]
   trainingPrograms      TrainingProgram[]
+  goals                 Goal[]
+  evaluations           Evaluation[]
   manager               EmploymentProfile?     @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
   shifts                Shift[]                @relation("ShiftEstate")
 
@@ -2994,6 +3011,8 @@ model EmploymentProfile {
   benefitEntitlements BenefitEntitlement[]
   issuedBenefits      BenefitIssue[]         @relation("BenefitIssueIssuedBy")
   trainings           TrainingParticipant[]
+  evaluations         Evaluation[]           @relation("EvaluationProfile")
+  reviewedEvaluations Evaluation[]           @relation("EvaluationReviewer")
   users               User[]                 @relation("UserProfile")
   managedEstates      Estate[]               @relation("EstateManager")
   managedDivisions    Division[]             @relation("DivisionManager")
@@ -3874,4 +3893,224 @@ model TrainingParticipant {
   @@index([createdBy], map: "ix_training_participant_created_by")
   @@index([updatedBy], map: "ix_training_participant_updated_by")
   @@map("training_participant")
+}
+
+/// P2.10 (Spec P3 §24.2): a goal of a profile, a department or an estate, with its KPI and target.
+/// Approvable: draft → submitted → active (approved), or rejected; progress makes it in_progress; it is
+/// completed, or cancelled. delayed / overdue are computed nightly from the dates and progress.
+model Goal {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  goalCode           String    @map("goal_code") @db.VarChar(30)
+  /// employment_profile | department | estate
+  ownerType          String    @map("owner_type") @db.VarChar(30)
+  ownerId            BigInt    @map("owner_id") @db.UnsignedBigInt
+  /// The estate the goal belongs to (the owner's, or the department goal's estate): scope reads it.
+  estateId           BigInt    @map("estate_id") @db.UnsignedBigInt
+  /// Links an individual goal to a departmental or estate objective.
+  parentGoalId       BigInt?   @map("parent_goal_id") @db.UnsignedBigInt
+  title              String    @db.VarChar(200)
+  description        String?   @db.VarChar(500)
+  kpiName            String?   @map("kpi_name") @db.VarChar(150)
+  measureUnit        String?   @map("measure_unit") @db.VarChar(50)
+  targetValue        Decimal?  @map("target_value") @db.Decimal(18, 4)
+  /// Maintained from goal_progress.
+  currentValue       Decimal   @default(0) @map("current_value") @db.Decimal(18, 4)
+  /// Relative weight within the owner's goal set.
+  weight             Decimal?  @db.Decimal(9, 4)
+  startDate          DateTime  @map("start_date") @db.Date
+  /// Drives the goal calendar and the overdue count.
+  dueDate            DateTime  @map("due_date") @db.Date
+  reviewDate         DateTime? @map("review_date") @db.Date
+  progressPercentage Decimal   @default(0) @map("progress_percentage") @db.Decimal(9, 4)
+  /// draft | submitted | active | in_progress | delayed | overdue | completed | rejected | cancelled
+  state              String    @default("draft") @db.VarChar(30)
+  stateChangedAt     DateTime? @map("state_changed_at") @db.DateTime(0)
+  completedAt        DateTime? @map("completed_at") @db.DateTime(0)
+  cancellationReason String?   @map("cancellation_reason") @db.VarChar(500)
+  submittedAt        DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy        BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt         DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy         BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt         DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy         BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason    String?   @map("rejection_reason") @db.VarChar(500)
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  estate    Estate           @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_goal_estate")
+  parent    Goal?            @relation("GoalParent", fields: [parentGoalId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_goal_parent")
+  children  Goal[]           @relation("GoalParent")
+  progress  GoalProgress[]
+  lines     EvaluationLine[]
+  creator   User             @relation("GoalCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_goal_created_by")
+  updater   User?            @relation("GoalUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_goal_updated_by")
+  submitter User?            @relation("GoalSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_goal_submitted_by")
+  approver  User?            @relation("GoalApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_goal_approved_by")
+  rejecter  User?            @relation("GoalRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_goal_rejected_by")
+
+  @@unique([goalCode], map: "ux_goal_code")
+  @@index([ownerType, ownerId], map: "ix_goal_owner")
+  @@index([estateId], map: "ix_goal_estate")
+  @@index([parentGoalId], map: "ix_goal_parent")
+  @@index([startDate], map: "ix_goal_start")
+  @@index([dueDate], map: "ix_goal_due")
+  @@index([reviewDate], map: "ix_goal_review")
+  @@index([state], map: "ix_goal_state")
+  @@index([createdBy], map: "ix_goal_created_by")
+  @@index([updatedBy], map: "ix_goal_updated_by")
+  @@index([submittedBy], map: "ix_goal_submitted_by")
+  @@index([approvedBy], map: "ix_goal_approved_by")
+  @@index([rejectedBy], map: "ix_goal_rejected_by")
+  @@map("goal")
+}
+
+/// P2.10 (Spec P3 §24.2): a progress update of a goal (its value and percentage on a date).
+model GoalProgress {
+  id                 BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  goalId             BigInt   @map("goal_id") @db.UnsignedBigInt
+  progressDate       DateTime @map("progress_date") @db.Date
+  value              Decimal? @db.Decimal(18, 4)
+  progressPercentage Decimal  @map("progress_percentage") @db.Decimal(9, 4)
+  note               String?  @db.VarChar(500)
+  createdAt          DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  /// recorded_by (P3): the user who recorded it.
+  createdBy          BigInt   @map("created_by") @db.UnsignedBigInt
+
+  goal    Goal @relation(fields: [goalId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_goal_progress_goal")
+  creator User @relation("GoalProgressCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_goal_progress_created_by")
+
+  @@index([goalId, progressDate], map: "ix_goal_progress_goal")
+  @@index([createdBy], map: "ix_goal_progress_created_by")
+  @@map("goal_progress")
+}
+
+/// P2.10 (Spec P3 §24.3): what an evaluation scores (job knowledge, quality, attendance …). Common lookup
+/// shape plus its group, maximum score, who it applies to and whether it scores a goal.
+model EvaluationCriteria {
+  id            BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code          String    @db.VarChar(20)
+  name          String    @db.VarChar(150)
+  description   String?   @db.VarChar(500)
+  sortOrder     Int       @default(0) @map("sort_order")
+  isSystem      Boolean   @default(false) @map("is_system")
+  /// competency | performance | behaviour | goals | other
+  criteriaGroup String    @map("criteria_group") @db.VarChar(30)
+  maxScore      Decimal   @default(5) @map("max_score") @db.Decimal(9, 4)
+  /// all | worker | employee (P3 applies_to_category_id, simplified: D-2.10-5)
+  appliesTo     String    @default("all") @map("applies_to") @db.VarChar(30)
+  isGoalLinked  Boolean   @default(false) @map("is_goal_linked")
+  /// active | inactive
+  status        String    @default("active") @db.VarChar(30)
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy     BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt     DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy     BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  lines   EvaluationLine[]
+  creator User             @relation("EvaluationCriteriaCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_criteria_created_by")
+  updater User?            @relation("EvaluationCriteriaUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_criteria_updated_by")
+
+  @@unique([code], map: "ux_evaluation_criteria_code")
+  @@index([status], map: "ix_evaluation_criteria_status")
+  @@index([createdBy], map: "ix_evaluation_criteria_created_by")
+  @@index([updatedBy], map: "ix_evaluation_criteria_updated_by")
+  @@map("evaluation_criteria")
+}
+
+/// P2.10 (Spec P3 §24.3): an evaluation of a profile for a period by a reviewer. Approvable: draft →
+/// submitted → approved, or rejected; then acknowledged by the employee, which locks it for good. Never
+/// deleted; historical evaluations stay accessible in full.
+model Evaluation {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  evaluationNumber    String    @map("evaluation_number") @db.VarChar(30)
+  employmentProfileId BigInt    @map("employment_profile_id") @db.UnsignedBigInt
+  estateId            BigInt    @map("estate_id") @db.UnsignedBigInt
+  reviewerProfileId   BigInt?   @map("reviewer_profile_id") @db.UnsignedBigInt
+  periodStart         DateTime  @map("period_start") @db.Date
+  periodEnd           DateTime  @map("period_end") @db.Date
+  /// annual | probation | project
+  evaluationType      String    @map("evaluation_type") @db.VarChar(30)
+  /// Σ weighted scores ÷ Σ weights, as a percentage (computed from the lines).
+  overallScore        Decimal?  @map("overall_score") @db.Decimal(9, 4)
+  /// outstanding | exceeds | meets | needs_improvement | unsatisfactory (from the score)
+  overallRating       String?   @map("overall_rating") @db.VarChar(30)
+  strengths           String?   @db.VarChar(1000)
+  developmentNeeds    String?   @map("development_needs") @db.VarChar(1000)
+  reviewerComment     String?   @map("reviewer_comment") @db.VarChar(1000)
+  employeeComment     String?   @map("employee_comment") @db.VarChar(1000)
+  acknowledgedAt      DateTime? @map("acknowledged_at") @db.DateTime(0)
+  /// draft | submitted | approved | rejected | acknowledged
+  state               String    @default("draft") @db.VarChar(30)
+  stateChangedAt      DateTime? @map("state_changed_at") @db.DateTime(0)
+  submittedAt         DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy         BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt          DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy          BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt          DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy          BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason     String?   @map("rejection_reason") @db.VarChar(500)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy           BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  profile   EmploymentProfile  @relation("EvaluationProfile", fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_profile")
+  reviewer  EmploymentProfile? @relation("EvaluationReviewer", fields: [reviewerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_reviewer")
+  estate    Estate             @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_estate")
+  lines     EvaluationLine[]
+  creator   User               @relation("EvaluationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_created_by")
+  updater   User?              @relation("EvaluationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_updated_by")
+  submitter User?              @relation("EvaluationSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_submitted_by")
+  approver  User?              @relation("EvaluationApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_approved_by")
+  rejecter  User?              @relation("EvaluationRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_rejected_by")
+
+  @@unique([evaluationNumber], map: "ux_evaluation_number")
+  @@index([employmentProfileId], map: "ix_evaluation_profile")
+  @@index([reviewerProfileId], map: "ix_evaluation_reviewer")
+  @@index([estateId], map: "ix_evaluation_estate")
+  @@index([periodEnd], map: "ix_evaluation_period_end")
+  @@index([state], map: "ix_evaluation_state")
+  @@index([createdBy], map: "ix_evaluation_created_by")
+  @@index([updatedBy], map: "ix_evaluation_updated_by")
+  @@index([submittedBy], map: "ix_evaluation_submitted_by")
+  @@index([approvedBy], map: "ix_evaluation_approved_by")
+  @@index([rejectedBy], map: "ix_evaluation_rejected_by")
+  @@map("evaluation")
+}
+
+/// P2.10 (Spec P3 §24.3): the score of one criterion in an evaluation. weighted_score = score ÷ max ×
+/// weight. One line per evaluation and criterion.
+model EvaluationLine {
+  id            BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  evaluationId  BigInt    @map("evaluation_id") @db.UnsignedBigInt
+  criteriaId    BigInt    @map("criteria_id") @db.UnsignedBigInt
+  goalId        BigInt?   @map("goal_id") @db.UnsignedBigInt
+  weight        Decimal   @default(1) @db.Decimal(9, 4)
+  score         Decimal?  @db.Decimal(9, 4)
+  maxScore      Decimal   @map("max_score") @db.Decimal(9, 4)
+  weightedScore Decimal?  @map("weighted_score") @db.Decimal(9, 4)
+  comment       String?   @db.VarChar(500)
+  sequence      Int       @default(0)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy     BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt     DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy     BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  evaluation Evaluation         @relation(fields: [evaluationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_line_evaluation")
+  criteria   EvaluationCriteria @relation(fields: [criteriaId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_line_criteria")
+  goal       Goal?              @relation(fields: [goalId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_line_goal")
+  creator    User               @relation("EvaluationLineCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_line_created_by")
+  updater    User?              @relation("EvaluationLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_evaluation_line_updated_by")
+
+  @@unique([evaluationId, criteriaId], map: "ux_evaluation_line")
+  @@index([criteriaId], map: "ix_evaluation_line_criteria")
+  @@index([goalId], map: "ix_evaluation_line_goal")
+  @@index([createdBy], map: "ix_evaluation_line_created_by")
+  @@index([updatedBy], map: "ix_evaluation_line_updated_by")
+  @@map("evaluation_line")
 }
