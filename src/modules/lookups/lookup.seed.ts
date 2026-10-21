@@ -201,6 +201,8 @@ const COMMON_SEEDS: Readonly<Record<string, Row[]>> = {
     ['INSURANCE', 'Insurance'],
     ['WORK_PERMIT', 'Work permit'],
     ['COMPANY_LOGO', 'Company logo'],
+    // P2.08: the worker form's Ration Card upload.
+    ['RATION_CARD', 'Ration card'],
     ['OTHER', 'Other'],
   ]),
   packaging_type: plain([
@@ -272,6 +274,16 @@ const ACTIVITY_TYPES = [
   ['FACTORY_WORK', 'Factory work', 'other', false],
 ] as const;
 
+/** P2.08 (P3 §23.1): code, name, category, frequency, unit (code), all not_payroll. */
+const BENEFIT_TYPES = [
+  ['HOUSING', 'Housing', 'housing', 'monthly', null],
+  ['RATION', 'Ration', 'ration', 'weekly', 'kg'],
+  ['MEDICAL', 'Medical care', 'medical', 'on_demand', null],
+  ['EDUCATION', 'Children’s education', 'education', 'annual', null],
+  ['ELECTRICITY', 'Electricity', 'utility', 'monthly', null],
+  ['WATER', 'Drinking water', 'utility', 'monthly', null],
+] as const;
+
 const CURRENCIES = [
   ['BDT', 'Bangladeshi taka', '৳', true],
   ['USD', 'US dollar', '$', false],
@@ -341,6 +353,16 @@ export const lookupSeeder: Seeder = {
       inserted += await ensure(tx, 'country', 'iso2', { iso2, iso3, name, dialling_code: dialling });
     }
 
+    for (const [i, [code, name, category, frequency, uom]] of BENEFIT_TYPES.entries()) {
+      inserted += await ensure(tx, 'benefit_type', 'code', {
+        code,
+        name,
+        benefit_category: category,
+        issue_frequency: frequency,
+        uom_id: uom === null ? null : await idOf(tx, 'uom', uom),
+        sort_order: (i + 1) * 10,
+      });
+    }
     for (const [i, [code, name, process]] of TEA_TYPES.entries()) {
       inserted += await ensure(tx, 'tea_type', 'code', {
         code,

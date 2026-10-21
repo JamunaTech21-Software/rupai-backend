@@ -136,140 +136,157 @@ model User {
   authorisationsGiven   AccessAuthorisation[] @relation("AccessAuthorisationBy")
   authorisationsRemoved AccessAuthorisation[] @relation("AccessAuthorisationRemovedBy")
 
-  createdOrganisations        Organisation[]         @relation("OrganisationCreatedBy")
-  updatedOrganisations        Organisation[]         @relation("OrganisationUpdatedBy")
-  createdEstates              Estate[]               @relation("EstateCreatedBy")
-  updatedEstates              Estate[]               @relation("EstateUpdatedBy")
-  createdDivisions            Division[]             @relation("DivisionCreatedBy")
-  updatedDivisions            Division[]             @relation("DivisionUpdatedBy")
-  createdSections             Section[]              @relation("SectionCreatedBy")
-  updatedSections             Section[]              @relation("SectionUpdatedBy")
-  createdFields               Field[]                @relation("FieldCreatedBy")
-  updatedFields               Field[]                @relation("FieldUpdatedBy")
-  createdFactories            Factory[]              @relation("FactoryCreatedBy")
-  updatedFactories            Factory[]              @relation("FactoryUpdatedBy")
-  createdWarehouses           Warehouse[]            @relation("WarehouseCreatedBy")
-  updatedWarehouses           Warehouse[]            @relation("WarehouseUpdatedBy")
-  createdParties              Party[]                @relation("PartyCreatedBy")
-  updatedParties              Party[]                @relation("PartyUpdatedBy")
-  createdContacts             PartyContact[]         @relation("PartyContactCreatedBy")
-  updatedContacts             PartyContact[]         @relation("PartyContactUpdatedBy")
-  createdSeasons              Season[]               @relation("SeasonCreatedBy")
-  updatedSeasons              Season[]               @relation("SeasonUpdatedBy")
-  closedSeasons               Season[]               @relation("SeasonClosedBy")
-  createdFiscalYears          FiscalYear[]           @relation("FiscalYearCreatedBy")
-  updatedFiscalYears          FiscalYear[]           @relation("FiscalYearUpdatedBy")
-  closedFiscalYears           FiscalYear[]           @relation("FiscalYearClosedBy")
-  createdPeriods              AccountingPeriod[]     @relation("AccountingPeriodCreatedBy")
-  updatedPeriods              AccountingPeriod[]     @relation("AccountingPeriodUpdatedBy")
-  closedPeriods               AccountingPeriod[]     @relation("AccountingPeriodClosedBy")
-  reopenedPeriods             AccountingPeriod[]     @relation("AccountingPeriodReopenedBy")
-  createdDepartments          Department[]           @relation("DepartmentCreatedBy")
-  updatedDepartments          Department[]           @relation("DepartmentUpdatedBy")
-  createdDesignations         Designation[]          @relation("DesignationCreatedBy")
-  updatedDesignations         Designation[]          @relation("DesignationUpdatedBy")
-  createdWorkerCategorys      WorkerCategory[]       @relation("WorkerCategoryCreatedBy")
-  updatedWorkerCategorys      WorkerCategory[]       @relation("WorkerCategoryUpdatedBy")
-  createdEmployeeCategorys    EmployeeCategory[]     @relation("EmployeeCategoryCreatedBy")
-  updatedEmployeeCategorys    EmployeeCategory[]     @relation("EmployeeCategoryUpdatedBy")
-  createdEmploymentTypes      EmploymentType[]       @relation("EmploymentTypeCreatedBy")
-  updatedEmploymentTypes      EmploymentType[]       @relation("EmploymentTypeUpdatedBy")
-  createdLeaveTypes           LeaveType[]            @relation("LeaveTypeCreatedBy")
-  updatedLeaveTypes           LeaveType[]            @relation("LeaveTypeUpdatedBy")
-  createdBuyerTypes           BuyerType[]            @relation("BuyerTypeCreatedBy")
-  updatedBuyerTypes           BuyerType[]            @relation("BuyerTypeUpdatedBy")
-  createdTradingTypes         TradingType[]          @relation("TradingTypeCreatedBy")
-  updatedTradingTypes         TradingType[]          @relation("TradingTypeUpdatedBy")
-  createdPackagingTypes       PackagingType[]        @relation("PackagingTypeCreatedBy")
-  updatedPackagingTypes       PackagingType[]        @relation("PackagingTypeUpdatedBy")
-  createdChargeTypes          ChargeType[]           @relation("ChargeTypeCreatedBy")
-  updatedChargeTypes          ChargeType[]           @relation("ChargeTypeUpdatedBy")
-  createdDocumentTypes        DocumentType[]         @relation("DocumentTypeCreatedBy")
-  updatedDocumentTypes        DocumentType[]         @relation("DocumentTypeUpdatedBy")
-  createdPaymentMethods       PaymentMethod[]        @relation("PaymentMethodCreatedBy")
-  updatedPaymentMethods       PaymentMethod[]        @relation("PaymentMethodUpdatedBy")
-  createdLandTypes            LandType[]             @relation("LandTypeCreatedBy")
-  createdAmenities            Amenity[]              @relation("AmenityCreatedBy")
-  createdImportBatches        ImportBatch[]          @relation("ImportBatchCreatedBy")
-  createdPersons              Person[]               @relation("PersonCreatedBy")
-  createdProfiles             EmploymentProfile[]    @relation("EmploymentProfileCreatedBy")
-  updatedProfiles             EmploymentProfile[]    @relation("EmploymentProfileUpdatedBy")
-  createdJobGrades            JobGrade[]             @relation("JobGradeCreatedBy")
-  updatedJobGrades            JobGrade[]             @relation("JobGradeUpdatedBy")
-  createdAssignments          EmploymentAssignment[] @relation("AssignmentCreatedBy")
-  updatedAssignments          EmploymentAssignment[] @relation("AssignmentUpdatedBy")
-  submittedAssignments        EmploymentAssignment[] @relation("AssignmentSubmittedBy")
-  approvedAssignments         EmploymentAssignment[] @relation("AssignmentApprovedBy")
-  rejectedAssignments         EmploymentAssignment[] @relation("AssignmentRejectedBy")
-  createdWorkerTeams          WorkerTeam[]           @relation("WorkerTeamCreatedBy")
-  updatedWorkerTeams          WorkerTeam[]           @relation("WorkerTeamUpdatedBy")
-  createdTeamMembers          TeamMember[]           @relation("TeamMemberCreatedBy")
-  updatedTeamMembers          TeamMember[]           @relation("TeamMemberUpdatedBy")
-  createdTradeCategories      TradeCategory[]        @relation("TradeCategoryCreatedBy")
-  updatedTradeCategories      TradeCategory[]        @relation("TradeCategoryUpdatedBy")
-  createdContractors          Contractor[]           @relation("ContractorCreatedBy")
-  updatedContractors          Contractor[]           @relation("ContractorUpdatedBy")
-  createdContracts            ContractorContract[]   @relation("ContractCreatedBy")
-  updatedContracts            ContractorContract[]   @relation("ContractUpdatedBy")
-  submittedContracts          ContractorContract[]   @relation("ContractSubmittedBy")
-  approvedContracts           ContractorContract[]   @relation("ContractApprovedBy")
-  rejectedContracts           ContractorContract[]   @relation("ContractRejectedBy")
-  terminatedContracts         ContractorContract[]   @relation("ContractTerminatedBy")
-  createdContractorLabour     ContractorLabour[]     @relation("ContractorLabourCreatedBy")
-  updatedContractorLabour     ContractorLabour[]     @relation("ContractorLabourUpdatedBy")
-  createdLeaveEntitlements    LeaveEntitlement[]     @relation("LeaveEntitlementCreatedBy")
-  updatedLeaveEntitlements    LeaveEntitlement[]     @relation("LeaveEntitlementUpdatedBy")
-  createdLeaveRequests        LeaveRequest[]         @relation("LeaveRequestCreatedBy")
-  updatedLeaveRequests        LeaveRequest[]         @relation("LeaveRequestUpdatedBy")
-  submittedLeaveRequests      LeaveRequest[]         @relation("LeaveRequestSubmittedBy")
-  approvedLeaveRequests       LeaveRequest[]         @relation("LeaveRequestApprovedBy")
-  rejectedLeaveRequests       LeaveRequest[]         @relation("LeaveRequestRejectedBy")
-  cancelledLeaveRequests      LeaveRequest[]         @relation("LeaveRequestCancelledBy")
-  updatedPersons              Person[]               @relation("PersonUpdatedBy")
-  createdPersonDependents     PersonDependent[]      @relation("PersonDependentCreatedBy")
-  updatedPersonDependents     PersonDependent[]      @relation("PersonDependentUpdatedBy")
-  createdReligions            Religion[]             @relation("ReligionCreatedBy")
-  updatedReligions            Religion[]             @relation("ReligionUpdatedBy")
-  createdEducationLevels      EducationLevel[]       @relation("EducationLevelCreatedBy")
-  updatedEducationLevels      EducationLevel[]       @relation("EducationLevelUpdatedBy")
-  createdSkills               Skill[]                @relation("SkillCreatedBy")
-  updatedSkills               Skill[]                @relation("SkillUpdatedBy")
-  createdLanguages            Language[]             @relation("LanguageCreatedBy")
-  updatedLanguages            Language[]             @relation("LanguageUpdatedBy")
-  updatedImportBatches        ImportBatch[]          @relation("ImportBatchUpdatedBy")
-  createdIrrigationSources    IrrigationSource[]     @relation("IrrigationSourceCreatedBy")
-  updatedIrrigationSources    IrrigationSource[]     @relation("IrrigationSourceUpdatedBy")
-  createdSoilTypes            SoilType[]             @relation("SoilTypeCreatedBy")
-  updatedSoilTypes            SoilType[]             @relation("SoilTypeUpdatedBy")
-  createdDrainageClasses      DrainageClass[]        @relation("DrainageClassCreatedBy")
-  updatedDrainageClasses      DrainageClass[]        @relation("DrainageClassUpdatedBy")
-  updatedAmenities            Amenity[]              @relation("AmenityUpdatedBy")
-  createdEstateAmenities      EstateAmenity[]        @relation("EstateAmenityCreatedBy")
-  updatedLandTypes            LandType[]             @relation("LandTypeUpdatedBy")
-  createdAdjustmentReasons    AdjustmentReason[]     @relation("AdjustmentReasonCreatedBy")
-  updatedAdjustmentReasons    AdjustmentReason[]     @relation("AdjustmentReasonUpdatedBy")
-  createdQualityGrades        QualityGrade[]         @relation("QualityGradeCreatedBy")
-  updatedQualityGrades        QualityGrade[]         @relation("QualityGradeUpdatedBy")
-  createdCollectionPointTypes CollectionPointType[]  @relation("CollectionPointTypeCreatedBy")
-  updatedCollectionPointTypes CollectionPointType[]  @relation("CollectionPointTypeUpdatedBy")
-  createdTeaTypes             TeaType[]              @relation("TeaTypeCreatedBy")
-  updatedTeaTypes             TeaType[]              @relation("TeaTypeUpdatedBy")
-  createdTeaGrades            TeaGrade[]             @relation("TeaGradeCreatedBy")
-  updatedTeaGrades            TeaGrade[]             @relation("TeaGradeUpdatedBy")
-  createdActivityTypes        ActivityType[]         @relation("ActivityTypeCreatedBy")
-  updatedActivityTypes        ActivityType[]         @relation("ActivityTypeUpdatedBy")
-  createdShifts               Shift[]                @relation("ShiftCreatedBy")
-  updatedShifts               Shift[]                @relation("ShiftUpdatedBy")
-  createdUomCategorys         UomCategory[]          @relation("UomCategoryCreatedBy")
-  updatedUomCategorys         UomCategory[]          @relation("UomCategoryUpdatedBy")
-  createdTeaVarietys          TeaVariety[]           @relation("TeaVarietyCreatedBy")
-  updatedTeaVarietys          TeaVariety[]           @relation("TeaVarietyUpdatedBy")
-  createdUoms                 Uom[]                  @relation("UomCreatedBy")
-  updatedUoms                 Uom[]                  @relation("UomUpdatedBy")
-  createdCurrencys            Currency[]             @relation("CurrencyCreatedBy")
-  updatedCurrencys            Currency[]             @relation("CurrencyUpdatedBy")
-  createdCountrys             Country[]              @relation("CountryCreatedBy")
-  updatedCountrys             Country[]              @relation("CountryUpdatedBy")
+  createdOrganisations         Organisation[]         @relation("OrganisationCreatedBy")
+  updatedOrganisations         Organisation[]         @relation("OrganisationUpdatedBy")
+  createdEstates               Estate[]               @relation("EstateCreatedBy")
+  updatedEstates               Estate[]               @relation("EstateUpdatedBy")
+  createdDivisions             Division[]             @relation("DivisionCreatedBy")
+  updatedDivisions             Division[]             @relation("DivisionUpdatedBy")
+  createdSections              Section[]              @relation("SectionCreatedBy")
+  updatedSections              Section[]              @relation("SectionUpdatedBy")
+  createdFields                Field[]                @relation("FieldCreatedBy")
+  updatedFields                Field[]                @relation("FieldUpdatedBy")
+  createdFactories             Factory[]              @relation("FactoryCreatedBy")
+  updatedFactories             Factory[]              @relation("FactoryUpdatedBy")
+  createdWarehouses            Warehouse[]            @relation("WarehouseCreatedBy")
+  updatedWarehouses            Warehouse[]            @relation("WarehouseUpdatedBy")
+  createdParties               Party[]                @relation("PartyCreatedBy")
+  updatedParties               Party[]                @relation("PartyUpdatedBy")
+  createdContacts              PartyContact[]         @relation("PartyContactCreatedBy")
+  updatedContacts              PartyContact[]         @relation("PartyContactUpdatedBy")
+  createdSeasons               Season[]               @relation("SeasonCreatedBy")
+  updatedSeasons               Season[]               @relation("SeasonUpdatedBy")
+  closedSeasons                Season[]               @relation("SeasonClosedBy")
+  createdFiscalYears           FiscalYear[]           @relation("FiscalYearCreatedBy")
+  updatedFiscalYears           FiscalYear[]           @relation("FiscalYearUpdatedBy")
+  closedFiscalYears            FiscalYear[]           @relation("FiscalYearClosedBy")
+  createdPeriods               AccountingPeriod[]     @relation("AccountingPeriodCreatedBy")
+  updatedPeriods               AccountingPeriod[]     @relation("AccountingPeriodUpdatedBy")
+  closedPeriods                AccountingPeriod[]     @relation("AccountingPeriodClosedBy")
+  reopenedPeriods              AccountingPeriod[]     @relation("AccountingPeriodReopenedBy")
+  createdDepartments           Department[]           @relation("DepartmentCreatedBy")
+  updatedDepartments           Department[]           @relation("DepartmentUpdatedBy")
+  createdDesignations          Designation[]          @relation("DesignationCreatedBy")
+  updatedDesignations          Designation[]          @relation("DesignationUpdatedBy")
+  createdWorkerCategorys       WorkerCategory[]       @relation("WorkerCategoryCreatedBy")
+  updatedWorkerCategorys       WorkerCategory[]       @relation("WorkerCategoryUpdatedBy")
+  createdEmployeeCategorys     EmployeeCategory[]     @relation("EmployeeCategoryCreatedBy")
+  updatedEmployeeCategorys     EmployeeCategory[]     @relation("EmployeeCategoryUpdatedBy")
+  createdEmploymentTypes       EmploymentType[]       @relation("EmploymentTypeCreatedBy")
+  updatedEmploymentTypes       EmploymentType[]       @relation("EmploymentTypeUpdatedBy")
+  createdLeaveTypes            LeaveType[]            @relation("LeaveTypeCreatedBy")
+  updatedLeaveTypes            LeaveType[]            @relation("LeaveTypeUpdatedBy")
+  createdBuyerTypes            BuyerType[]            @relation("BuyerTypeCreatedBy")
+  updatedBuyerTypes            BuyerType[]            @relation("BuyerTypeUpdatedBy")
+  createdTradingTypes          TradingType[]          @relation("TradingTypeCreatedBy")
+  updatedTradingTypes          TradingType[]          @relation("TradingTypeUpdatedBy")
+  createdPackagingTypes        PackagingType[]        @relation("PackagingTypeCreatedBy")
+  updatedPackagingTypes        PackagingType[]        @relation("PackagingTypeUpdatedBy")
+  createdChargeTypes           ChargeType[]           @relation("ChargeTypeCreatedBy")
+  updatedChargeTypes           ChargeType[]           @relation("ChargeTypeUpdatedBy")
+  createdDocumentTypes         DocumentType[]         @relation("DocumentTypeCreatedBy")
+  updatedDocumentTypes         DocumentType[]         @relation("DocumentTypeUpdatedBy")
+  createdPaymentMethods        PaymentMethod[]        @relation("PaymentMethodCreatedBy")
+  updatedPaymentMethods        PaymentMethod[]        @relation("PaymentMethodUpdatedBy")
+  createdLandTypes             LandType[]             @relation("LandTypeCreatedBy")
+  createdAmenities             Amenity[]              @relation("AmenityCreatedBy")
+  createdImportBatches         ImportBatch[]          @relation("ImportBatchCreatedBy")
+  createdPersons               Person[]               @relation("PersonCreatedBy")
+  createdProfiles              EmploymentProfile[]    @relation("EmploymentProfileCreatedBy")
+  updatedProfiles              EmploymentProfile[]    @relation("EmploymentProfileUpdatedBy")
+  createdJobGrades             JobGrade[]             @relation("JobGradeCreatedBy")
+  updatedJobGrades             JobGrade[]             @relation("JobGradeUpdatedBy")
+  createdAssignments           EmploymentAssignment[] @relation("AssignmentCreatedBy")
+  updatedAssignments           EmploymentAssignment[] @relation("AssignmentUpdatedBy")
+  submittedAssignments         EmploymentAssignment[] @relation("AssignmentSubmittedBy")
+  approvedAssignments          EmploymentAssignment[] @relation("AssignmentApprovedBy")
+  rejectedAssignments          EmploymentAssignment[] @relation("AssignmentRejectedBy")
+  createdWorkerTeams           WorkerTeam[]           @relation("WorkerTeamCreatedBy")
+  updatedWorkerTeams           WorkerTeam[]           @relation("WorkerTeamUpdatedBy")
+  createdTeamMembers           TeamMember[]           @relation("TeamMemberCreatedBy")
+  updatedTeamMembers           TeamMember[]           @relation("TeamMemberUpdatedBy")
+  createdTradeCategories       TradeCategory[]        @relation("TradeCategoryCreatedBy")
+  updatedTradeCategories       TradeCategory[]        @relation("TradeCategoryUpdatedBy")
+  createdContractors           Contractor[]           @relation("ContractorCreatedBy")
+  updatedContractors           Contractor[]           @relation("ContractorUpdatedBy")
+  createdContracts             ContractorContract[]   @relation("ContractCreatedBy")
+  updatedContracts             ContractorContract[]   @relation("ContractUpdatedBy")
+  submittedContracts           ContractorContract[]   @relation("ContractSubmittedBy")
+  approvedContracts            ContractorContract[]   @relation("ContractApprovedBy")
+  rejectedContracts            ContractorContract[]   @relation("ContractRejectedBy")
+  terminatedContracts          ContractorContract[]   @relation("ContractTerminatedBy")
+  createdContractorLabour      ContractorLabour[]     @relation("ContractorLabourCreatedBy")
+  updatedContractorLabour      ContractorLabour[]     @relation("ContractorLabourUpdatedBy")
+  createdLeaveEntitlements     LeaveEntitlement[]     @relation("LeaveEntitlementCreatedBy")
+  updatedLeaveEntitlements     LeaveEntitlement[]     @relation("LeaveEntitlementUpdatedBy")
+  createdLeaveRequests         LeaveRequest[]         @relation("LeaveRequestCreatedBy")
+  updatedLeaveRequests         LeaveRequest[]         @relation("LeaveRequestUpdatedBy")
+  submittedLeaveRequests       LeaveRequest[]         @relation("LeaveRequestSubmittedBy")
+  approvedLeaveRequests        LeaveRequest[]         @relation("LeaveRequestApprovedBy")
+  rejectedLeaveRequests        LeaveRequest[]         @relation("LeaveRequestRejectedBy")
+  cancelledLeaveRequests       LeaveRequest[]         @relation("LeaveRequestCancelledBy")
+  createdBenefitTypes          BenefitType[]          @relation("BenefitTypeCreatedBy")
+  updatedBenefitTypes          BenefitType[]          @relation("BenefitTypeUpdatedBy")
+  createdBenefitEntitlements   BenefitEntitlement[]   @relation("BenefitEntitlementCreatedBy")
+  updatedBenefitEntitlements   BenefitEntitlement[]   @relation("BenefitEntitlementUpdatedBy")
+  submittedBenefitEntitlements BenefitEntitlement[]   @relation("BenefitEntitlementSubmittedBy")
+  approvedBenefitEntitlements  BenefitEntitlement[]   @relation("BenefitEntitlementApprovedBy")
+  rejectedBenefitEntitlements  BenefitEntitlement[]   @relation("BenefitEntitlementRejectedBy")
+  createdBenefitIssues         BenefitIssue[]         @relation("BenefitIssueCreatedBy")
+  updatedBenefitIssues         BenefitIssue[]         @relation("BenefitIssueUpdatedBy")
+  submittedBenefitIssues       BenefitIssue[]         @relation("BenefitIssueSubmittedBy")
+  approvedBenefitIssues        BenefitIssue[]         @relation("BenefitIssueApprovedBy")
+  rejectedBenefitIssues        BenefitIssue[]         @relation("BenefitIssueRejectedBy")
+  createdWelfareCases          WelfareCase[]          @relation("WelfareCaseCreatedBy")
+  updatedWelfareCases          WelfareCase[]          @relation("WelfareCaseUpdatedBy")
+  submittedWelfareCases        WelfareCase[]          @relation("WelfareCaseSubmittedBy")
+  approvedWelfareCases         WelfareCase[]          @relation("WelfareCaseApprovedBy")
+  rejectedWelfareCases         WelfareCase[]          @relation("WelfareCaseRejectedBy")
+  updatedPersons               Person[]               @relation("PersonUpdatedBy")
+  createdPersonDependents      PersonDependent[]      @relation("PersonDependentCreatedBy")
+  updatedPersonDependents      PersonDependent[]      @relation("PersonDependentUpdatedBy")
+  createdReligions             Religion[]             @relation("ReligionCreatedBy")
+  updatedReligions             Religion[]             @relation("ReligionUpdatedBy")
+  createdEducationLevels       EducationLevel[]       @relation("EducationLevelCreatedBy")
+  updatedEducationLevels       EducationLevel[]       @relation("EducationLevelUpdatedBy")
+  createdSkills                Skill[]                @relation("SkillCreatedBy")
+  updatedSkills                Skill[]                @relation("SkillUpdatedBy")
+  createdLanguages             Language[]             @relation("LanguageCreatedBy")
+  updatedLanguages             Language[]             @relation("LanguageUpdatedBy")
+  updatedImportBatches         ImportBatch[]          @relation("ImportBatchUpdatedBy")
+  createdIrrigationSources     IrrigationSource[]     @relation("IrrigationSourceCreatedBy")
+  updatedIrrigationSources     IrrigationSource[]     @relation("IrrigationSourceUpdatedBy")
+  createdSoilTypes             SoilType[]             @relation("SoilTypeCreatedBy")
+  updatedSoilTypes             SoilType[]             @relation("SoilTypeUpdatedBy")
+  createdDrainageClasses       DrainageClass[]        @relation("DrainageClassCreatedBy")
+  updatedDrainageClasses       DrainageClass[]        @relation("DrainageClassUpdatedBy")
+  updatedAmenities             Amenity[]              @relation("AmenityUpdatedBy")
+  createdEstateAmenities       EstateAmenity[]        @relation("EstateAmenityCreatedBy")
+  updatedLandTypes             LandType[]             @relation("LandTypeUpdatedBy")
+  createdAdjustmentReasons     AdjustmentReason[]     @relation("AdjustmentReasonCreatedBy")
+  updatedAdjustmentReasons     AdjustmentReason[]     @relation("AdjustmentReasonUpdatedBy")
+  createdQualityGrades         QualityGrade[]         @relation("QualityGradeCreatedBy")
+  updatedQualityGrades         QualityGrade[]         @relation("QualityGradeUpdatedBy")
+  createdCollectionPointTypes  CollectionPointType[]  @relation("CollectionPointTypeCreatedBy")
+  updatedCollectionPointTypes  CollectionPointType[]  @relation("CollectionPointTypeUpdatedBy")
+  createdTeaTypes              TeaType[]              @relation("TeaTypeCreatedBy")
+  updatedTeaTypes              TeaType[]              @relation("TeaTypeUpdatedBy")
+  createdTeaGrades             TeaGrade[]             @relation("TeaGradeCreatedBy")
+  updatedTeaGrades             TeaGrade[]             @relation("TeaGradeUpdatedBy")
+  createdActivityTypes         ActivityType[]         @relation("ActivityTypeCreatedBy")
+  updatedActivityTypes         ActivityType[]         @relation("ActivityTypeUpdatedBy")
+  createdShifts                Shift[]                @relation("ShiftCreatedBy")
+  updatedShifts                Shift[]                @relation("ShiftUpdatedBy")
+  createdUomCategorys          UomCategory[]          @relation("UomCategoryCreatedBy")
+  updatedUomCategorys          UomCategory[]          @relation("UomCategoryUpdatedBy")
+  createdTeaVarietys           TeaVariety[]           @relation("TeaVarietyCreatedBy")
+  updatedTeaVarietys           TeaVariety[]           @relation("TeaVarietyUpdatedBy")
+  createdUoms                  Uom[]                  @relation("UomCreatedBy")
+  updatedUoms                  Uom[]                  @relation("UomUpdatedBy")
+  createdCurrencys             Currency[]             @relation("CurrencyCreatedBy")
+  updatedCurrencys             Currency[]             @relation("CurrencyUpdatedBy")
+  createdCountrys              Country[]              @relation("CountryCreatedBy")
+  updatedCountrys              Country[]              @relation("CountryUpdatedBy")
 
   scopes               UserScope[]          @relation("UserScopeUser")
   grantedScopes        UserScope[]          @relation("UserScopeGrantedBy")
@@ -710,6 +727,7 @@ model Estate {
   registeredContractors Contractor[]
   contractorContracts   ContractorContract[]
   leaveRequests         LeaveRequest[]
+  welfareCases          WelfareCase[]
   manager               EmploymentProfile?     @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
   shifts                Shift[]                @relation("ShiftEstate")
 
@@ -1783,6 +1801,8 @@ model Uom {
   updater                 User?          @relation("UomUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_uom_updated_by")
   activityTypeDefaultUoms ActivityType[] @relation("ActivityTypeDefaultUom")
   uomCategoryBaseUoms     UomCategory[]  @relation("UomCategoryBaseUom")
+
+  benefitTypes BenefitType[]
 
   @@unique([code], map: "ux_uom_code")
   @@unique([baseKey], map: "ux_uom_base")
@@ -2950,26 +2970,28 @@ model EmploymentProfile {
   updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  person             Person                 @relation(fields: [personId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_person")
-  estate             Estate                 @relation("ProfileEstate", fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_estate")
-  workerCategory     WorkerCategory?        @relation(fields: [workerCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_worker_category")
-  employeeCategory   EmployeeCategory?      @relation(fields: [employeeCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_employee_category")
-  jobGrade           JobGrade?              @relation(fields: [jobGradeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_job_grade")
-  supervisor         EmploymentProfile?     @relation("ProfileSupervisor", fields: [supervisorProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_supervisor")
-  reports            EmploymentProfile[]    @relation("ProfileSupervisor")
-  assignments        EmploymentAssignment[]
-  teamMemberships    TeamMember[]
-  supervisedTeams    WorkerTeam[]           @relation("TeamSupervisor")
-  leaveEntitlements  LeaveEntitlement[]
-  leaveRequests      LeaveRequest[]         @relation("LeaveRequestProfile")
-  coveringLeave      LeaveRequest[]         @relation("LeaveRequestCovering")
-  users              User[]                 @relation("UserProfile")
-  managedEstates     Estate[]               @relation("EstateManager")
-  managedDivisions   Division[]             @relation("DivisionManager")
-  supervisedSections Section[]              @relation("SectionSupervisor")
-  managedFactories   Factory[]              @relation("FactoryManager")
-  creator            User                   @relation("EmploymentProfileCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_created_by")
-  updater            User?                  @relation("EmploymentProfileUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_updated_by")
+  person              Person                 @relation(fields: [personId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_person")
+  estate              Estate                 @relation("ProfileEstate", fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_estate")
+  workerCategory      WorkerCategory?        @relation(fields: [workerCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_worker_category")
+  employeeCategory    EmployeeCategory?      @relation(fields: [employeeCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_employee_category")
+  jobGrade            JobGrade?              @relation(fields: [jobGradeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_job_grade")
+  supervisor          EmploymentProfile?     @relation("ProfileSupervisor", fields: [supervisorProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_supervisor")
+  reports             EmploymentProfile[]    @relation("ProfileSupervisor")
+  assignments         EmploymentAssignment[]
+  teamMemberships     TeamMember[]
+  supervisedTeams     WorkerTeam[]           @relation("TeamSupervisor")
+  leaveEntitlements   LeaveEntitlement[]
+  leaveRequests       LeaveRequest[]         @relation("LeaveRequestProfile")
+  coveringLeave       LeaveRequest[]         @relation("LeaveRequestCovering")
+  benefitEntitlements BenefitEntitlement[]
+  issuedBenefits      BenefitIssue[]         @relation("BenefitIssueIssuedBy")
+  users               User[]                 @relation("UserProfile")
+  managedEstates      Estate[]               @relation("EstateManager")
+  managedDivisions    Division[]             @relation("DivisionManager")
+  supervisedSections  Section[]              @relation("SectionSupervisor")
+  managedFactories    Factory[]              @relation("FactoryManager")
+  creator             User                   @relation("EmploymentProfileCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_created_by")
+  updater             User?                  @relation("EmploymentProfileUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_updated_by")
 
   @@unique([estateId, profileNumber], map: "ux_profile_number")
   @@unique([activeKey], map: "ux_profile_active")
@@ -3529,4 +3551,222 @@ model LeaveRequest {
   @@index([rejectedBy], map: "ix_leave_request_rejected_by")
   @@index([cancelledBy], map: "ix_leave_request_cancelled_by")
   @@map("leave_request")
+}
+
+/// P2.08 (Spec P3 §23.1): a kind of benefit (housing, ration, medical …). Common lookup shape. A benefit
+/// is an entitlement with an employer cost; it becomes a payroll earning ONLY by explicit configuration
+/// (payroll_treatment, with its pay component type), which opens with payroll (Phase 9, D-2.08-2).
+model BenefitType {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code                String    @db.VarChar(20)
+  name                String    @db.VarChar(150)
+  description         String?   @db.VarChar(500)
+  sortOrder           Int       @default(0) @map("sort_order")
+  isSystem            Boolean   @default(false) @map("is_system")
+  /// housing | medical | transport | ration | education | utility | other
+  benefitCategory     String    @map("benefit_category") @db.VarChar(30)
+  /// one_time | weekly | monthly | quarterly | annual | on_demand
+  issueFrequency      String?   @map("issue_frequency") @db.VarChar(30)
+  /// Indicative unit cost; the actual is recorded per issue.
+  defaultEmployerCost Decimal?  @map("default_employer_cost") @db.Decimal(18, 4)
+  /// For measurable benefits such as ration (kg).
+  uomId               BigInt?   @map("uom_id") @db.UnsignedBigInt
+  /// not_payroll | taxable_perquisite | cash_component. Default not_payroll.
+  payrollTreatment    String    @default("not_payroll") @map("payroll_treatment") @db.VarChar(30)
+  /// The pay component type: required when payroll_treatment is not not_payroll. No FK until Phase 9.
+  componentTypeId     BigInt?   @map("component_type_id") @db.UnsignedBigInt
+  /// No FK until the chart of accounts (Phase 3).
+  expenseAccountId    BigInt?   @map("expense_account_id") @db.UnsignedBigInt
+  /// active | inactive
+  status              String    @default("active") @db.VarChar(30)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy           BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  uom          Uom?                 @relation(fields: [uomId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_type_uom")
+  entitlements BenefitEntitlement[]
+  creator      User                 @relation("BenefitTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_type_created_by")
+  updater      User?                @relation("BenefitTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_type_updated_by")
+
+  @@unique([code], map: "ux_benefit_type_code")
+  @@index([benefitCategory], map: "ix_benefit_type_category")
+  @@index([uomId], map: "ix_benefit_type_uom")
+  @@index([status], map: "ix_benefit_type_status")
+  @@index([createdBy], map: "ix_benefit_type_created_by")
+  @@index([updatedBy], map: "ix_benefit_type_updated_by")
+  @@map("benefit_type")
+}
+
+/// P2.08 (Spec P3 §23.2; the design's Ration Card tab): a profile's entitlement to a benefit for a
+/// period. Approvable (operational): draft → submitted → approved, or rejected; an approved one may be
+/// withdrawn (effective_to and a reason).
+model BenefitEntitlement {
+  id                    BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  employmentProfileId   BigInt    @map("employment_profile_id") @db.UnsignedBigInt
+  /// The profile's estate, copied: scope and the approval place read it.
+  estateId              BigInt    @map("estate_id") @db.UnsignedBigInt
+  benefitTypeId         BigInt    @map("benefit_type_id") @db.UnsignedBigInt
+  /// The design's Issue Date.
+  effectiveFrom         DateTime  @map("effective_from") @db.Date
+  /// The design's Valid Till; set on withdrawal.
+  effectiveTo           DateTime? @map("effective_to") @db.Date
+  quantityPerPeriod     Decimal?  @map("quantity_per_period") @db.Decimal(14, 3)
+  employerCostPerPeriod Decimal?  @map("employer_cost_per_period") @db.Decimal(18, 4)
+  employeeContribution  Decimal   @default(0) @map("employee_contribution") @db.Decimal(18, 4)
+  /// The design's Ration Card No. (or a quarter / house number).
+  allocationReference   String?   @map("allocation_reference") @db.VarChar(50)
+  /// The design's Ration Dealer / Office.
+  issuingOffice         String?   @map("issuing_office") @db.VarChar(150)
+  /// Homestead land (P5.03). No FK until land allocations exist.
+  landAllocationId      BigInt?   @map("land_allocation_id") @db.UnsignedBigInt
+  withdrawalReason      String?   @map("withdrawal_reason") @db.VarChar(300)
+  /// draft | submitted | approved | rejected | withdrawn
+  state                 String    @default("draft") @db.VarChar(30)
+  stateChangedAt        DateTime? @map("state_changed_at") @db.DateTime(0)
+  submittedAt           DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy           BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt            DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy            BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt            DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy            BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason       String?   @map("rejection_reason") @db.VarChar(500)
+  version               Int       @default(1)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy             BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt             DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy             BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  profile     EmploymentProfile @relation(fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_entitlement_profile")
+  benefitType BenefitType       @relation(fields: [benefitTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_entitlement_type")
+  issues      BenefitIssue[]
+  creator     User              @relation("BenefitEntitlementCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_entitlement_created_by")
+  updater     User?             @relation("BenefitEntitlementUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_entitlement_updated_by")
+  submitter   User?             @relation("BenefitEntitlementSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_entitlement_submitted_by")
+  approver    User?             @relation("BenefitEntitlementApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_entitlement_approved_by")
+  rejecter    User?             @relation("BenefitEntitlementRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_entitlement_rejected_by")
+
+  @@unique([employmentProfileId, benefitTypeId, effectiveFrom], map: "ux_benefit_entitlement")
+  @@index([estateId], map: "ix_benefit_entitlement_estate")
+  @@index([benefitTypeId], map: "ix_benefit_entitlement_type")
+  @@index([effectiveFrom], map: "ix_benefit_entitlement_from")
+  @@index([effectiveTo], map: "ix_benefit_entitlement_to")
+  @@index([state], map: "ix_benefit_entitlement_state")
+  @@index([createdBy], map: "ix_benefit_entitlement_created_by")
+  @@index([updatedBy], map: "ix_benefit_entitlement_updated_by")
+  @@index([submittedBy], map: "ix_benefit_entitlement_submitted_by")
+  @@index([approvedBy], map: "ix_benefit_entitlement_approved_by")
+  @@index([rejectedBy], map: "ix_benefit_entitlement_rejected_by")
+  @@map("benefit_entitlement")
+}
+
+/// P2.08 (Spec P3 §23.3): one issue of a benefit under an approved entitlement (this month's ration).
+/// Approvable (financial: it carries an employer cost). Stock consumption for ration (P4.04) and the
+/// posting block (Phase 3) join later; stock_movement_id and payroll_component_id have no FK yet.
+model BenefitIssue {
+  id                   BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  benefitEntitlementId BigInt    @map("benefit_entitlement_id") @db.UnsignedBigInt
+  estateId             BigInt    @map("estate_id") @db.UnsignedBigInt
+  issueDate            DateTime  @map("issue_date") @db.Date
+  /// The month or week the issue covers, e.g. 2026-10.
+  periodReference      String?   @map("period_reference") @db.VarChar(30)
+  quantity             Decimal?  @db.Decimal(14, 3)
+  employerCost         Decimal   @map("employer_cost") @db.Decimal(18, 4)
+  employeeContribution Decimal   @default(0) @map("employee_contribution") @db.Decimal(18, 4)
+  stockMovementId      BigInt?   @map("stock_movement_id") @db.UnsignedBigInt
+  payrollComponentId   BigInt?   @map("payroll_component_id") @db.UnsignedBigInt
+  issuedByProfileId    BigInt?   @map("issued_by_profile_id") @db.UnsignedBigInt
+  /// draft | submitted | approved | rejected
+  state                String    @default("draft") @db.VarChar(30)
+  stateChangedAt       DateTime? @map("state_changed_at") @db.DateTime(0)
+  submittedAt          DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy          BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt           DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy           BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt           DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy           BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason      String?   @map("rejection_reason") @db.VarChar(500)
+  version              Int       @default(1)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy            BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt            DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy            BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  entitlement BenefitEntitlement @relation(fields: [benefitEntitlementId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_issue_entitlement")
+  issuedBy    EmploymentProfile? @relation("BenefitIssueIssuedBy", fields: [issuedByProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_issue_issued_by")
+  creator     User               @relation("BenefitIssueCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_issue_created_by")
+  updater     User?              @relation("BenefitIssueUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_issue_updated_by")
+  submitter   User?              @relation("BenefitIssueSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_issue_submitted_by")
+  approver    User?              @relation("BenefitIssueApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_issue_approved_by")
+  rejecter    User?              @relation("BenefitIssueRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_issue_rejected_by")
+
+  @@unique([benefitEntitlementId, issueDate], map: "ux_benefit_issue")
+  @@index([estateId], map: "ix_benefit_issue_estate")
+  @@index([issueDate], map: "ix_benefit_issue_date")
+  @@index([state], map: "ix_benefit_issue_state")
+  @@index([issuedByProfileId], map: "ix_benefit_issue_issued_by")
+  @@index([createdBy], map: "ix_benefit_issue_created_by")
+  @@index([updatedBy], map: "ix_benefit_issue_updated_by")
+  @@index([submittedBy], map: "ix_benefit_issue_submitted_by")
+  @@index([approvedBy], map: "ix_benefit_issue_approved_by")
+  @@index([rejectedBy], map: "ix_benefit_issue_rejected_by")
+  @@map("benefit_issue")
+}
+
+/// P2.08 (Spec P3 §23.4): a welfare case (medical help, education, disaster relief …) for a worker, a
+/// person or the community. Approvable (financial, requested amount); then disbursed up to the approved
+/// amount and closed with its outcome. budget_head_id has no FK until budgets (Phase 3).
+model WelfareCase {
+  id              BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  caseNumber      String    @map("case_number") @db.VarChar(30)
+  estateId        BigInt    @map("estate_id") @db.UnsignedBigInt
+  /// employment_profile | person | community
+  beneficiaryType String    @map("beneficiary_type") @db.VarChar(30)
+  /// NULL for a community case.
+  beneficiaryId   BigInt?   @map("beneficiary_id") @db.UnsignedBigInt
+  /// medical | education | disaster | bereavement | community | other
+  welfareCategory String    @map("welfare_category") @db.VarChar(30)
+  caseDate        DateTime  @map("case_date") @db.Date
+  description     String    @db.VarChar(500)
+  requestedAmount Decimal?  @map("requested_amount") @db.Decimal(18, 4)
+  approvedAmount  Decimal?  @map("approved_amount") @db.Decimal(18, 4)
+  disbursedAmount Decimal   @default(0) @map("disbursed_amount") @db.Decimal(18, 4)
+  budgetHeadId    BigInt?   @map("budget_head_id") @db.UnsignedBigInt
+  outcome         String?   @db.VarChar(500)
+  /// draft | submitted | approved | rejected | closed
+  state           String    @default("draft") @db.VarChar(30)
+  stateChangedAt  DateTime? @map("state_changed_at") @db.DateTime(0)
+  submittedAt     DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy     BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt      DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy      BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt      DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy      BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason String?   @map("rejection_reason") @db.VarChar(500)
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy       BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt       DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy       BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  estate    Estate @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_estate")
+  creator   User   @relation("WelfareCaseCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_created_by")
+  updater   User?  @relation("WelfareCaseUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_updated_by")
+  submitter User?  @relation("WelfareCaseSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_submitted_by")
+  approver  User?  @relation("WelfareCaseApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_approved_by")
+  rejecter  User?  @relation("WelfareCaseRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_rejected_by")
+
+  @@unique([caseNumber], map: "ux_welfare_case_number")
+  @@index([estateId], map: "ix_welfare_case_estate")
+  @@index([beneficiaryType, beneficiaryId], map: "ix_welfare_case_beneficiary")
+  @@index([welfareCategory], map: "ix_welfare_case_category")
+  @@index([caseDate], map: "ix_welfare_case_date")
+  @@index([state], map: "ix_welfare_case_state")
+  @@index([createdBy], map: "ix_welfare_case_created_by")
+  @@index([updatedBy], map: "ix_welfare_case_updated_by")
+  @@index([submittedBy], map: "ix_welfare_case_submitted_by")
+  @@index([approvedBy], map: "ix_welfare_case_approved_by")
+  @@index([rejectedBy], map: "ix_welfare_case_rejected_by")
+  @@map("welfare_case")
 }

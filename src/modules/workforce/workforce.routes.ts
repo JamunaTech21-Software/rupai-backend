@@ -23,6 +23,28 @@ import {
   WAGE_BASES,
 } from './assignment.schema.js';
 import { assignmentService } from './assignment.service.js';
+import {
+  BenefitEntitlementOut,
+  BenefitIssueOut,
+  BENEFICIARY_TYPES,
+  CASE_STATES,
+  CloseBody,
+  CreateCaseBody,
+  CreateEntitlementBody as CreateBenefitEntitlementBody,
+  CreateIssueBody,
+  DisburseBody,
+  ENTITLEMENT_STATES as BENEFIT_ENTITLEMENT_STATES,
+  GenerateIssuesBody,
+  GenerateIssuesOut,
+  IdParams as BenefitParams,
+  ISSUE_STATES,
+  PatchCaseBody,
+  PatchEntitlementBody as PatchBenefitEntitlementBody,
+  WELFARE_CATEGORIES,
+  WelfareCaseOut,
+  WithdrawBody,
+} from './benefit.schema.js';
+import { benefitService } from './benefit.service.js';
 import { contactsService } from '../facilities/contacts.service.js';
 import { contactRoutes } from '../facilities/facilities.routes.js';
 import {
@@ -117,7 +139,8 @@ import { profileService } from './profile.service.js';
 
 /**
  * HTTP surface of the workforce module: persons (P2.01), employment profiles (P2.02), employment
- * assignments (P2.03), worker teams (P2.04), contractors (P2.05) and leave (P2.07); Spec P4 §8.3, §6.5.
+ * assignments (P2.03), worker teams (P2.04), contractors (P2.05), leave (P2.07) and benefits and welfare
+ * (P2.08); Spec P4 §8.3, §6.5.
  */
 
 export interface WorkforceDeps {
@@ -1477,6 +1500,421 @@ function leaveModules({ db, platform, authz, accessLog, config }: WorkforceDeps)
   return [e.build(), r.build()];
 }
 
+function benefitModules({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule[] {
+  const svc = benefitService({ db, accessLog, timezone: config.timezone });
+  for (const a of svc.adapters) registerApprovalAdapter(a);
+  const byId = { params: BenefitParams };
+  const page = (q: ListQuery) => q.page ?? { page: 1, perPage: 25 };
+  const listOf = (filters: Record<string, object>, sorts: string[], defaultSort: string[]) => ({
+    pagination: 'page' as const,
+    filters: filters as never,
+    sorts,
+    defaultSort,
+    maxPageSize: 500,
+  });
+
+  // ---- entitlements ------------------------------------------------------------------------------------
+  const e = defineModule({
+    name: 'benefit-entitlements',
+    path: '/benefit-entitlements',
+    tag: 'Workforce',
+    platform,
+    authz,
+    accessLog,
+  });
+  e.route({
+    method: 'get',
+    path: '/',
+    summary: 'List benefit entitlements',
+    description:
+      'Ration cards, housing, medical … per profile. Filters: profile, estate, benefit type, state, effective_from. Everyone sees their own.',
+    auth: { permission: 'benefit.view' },
+    list: listOf(
+      {
+        employment_profile_id: { type: 'id', ops: ['eq', 'in'] },
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        benefit_type_id: { type: 'id', ops: ['eq', 'in'] },
+        state: { type: { enum: BENEFIT_ENTITLEMENT_STATES }, ops: ['eq', 'in'] },
+        effective_from: { type: 'date', ops: ['from', 'to'] },
+      },
+      ['effective_from'],
+      ['-effective_from'],
+    ),
+    success: { status: 200, description: 'A page of entitlements', schema: BenefitEntitlementOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.entitlements.list(q);
+      sendPage(req, res, items, { pagination: page(q), total, appliedScope: await appliedScope() });
+    },
+  });
+  e.route({
+    method: 'post',
+    path: '/',
+    summary: 'Draft a benefit entitlement',
+    description:
+      'The design’s Ration Card tab: benefit_type_id (RATION), allocation_reference (Ration Card No.), effective_from (Issue Date), ' +
+      'effective_to (Valid Till), issuing_office (Ration Dealer / Office); quantity and employer cost per period. The card itself is ' +
+      'uploaded to /persons/{id}/documents as RATION_CARD. No overlap with the same benefit. Submit it for approval.',
+    auth: { permission: 'benefit.create' },
+    body: CreateBenefitEntitlementBody,
+    success: { status: 201, description: 'Drafted', schema: BenefitEntitlementOut },
+    errors: ['DUPLICATE_KEY', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateBenefitEntitlementBody });
+      const x = await svc.entitlements.create(body, currentActorId());
+      sendCreated(res, x, `/api/v1/benefit-entitlements/${x.id}`, x.version);
+    },
+  });
+  e.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get a benefit entitlement',
+    auth: { permission: 'benefit.view' },
+    ...byId,
+    success: { status: 200, description: 'The entitlement', schema: BenefitEntitlementOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.entitlements.get(params.id);
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  e.route({
+    method: 'patch',
+    path: '/:id',
+    summary: 'Change a draft entitlement',
+    auth: { permission: 'benefit.edit' },
+    ...byId,
+    body: PatchBenefitEntitlementBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Changed', schema: BenefitEntitlementOut },
+    errors: ['INVALID_TRANSITION', 'DUPLICATE_KEY', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: PatchBenefitEntitlementBody });
+      const x = await svc.entitlements.update(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  e.route({
+    method: 'delete',
+    path: '/:id',
+    summary: 'Delete a draft entitlement',
+    auth: { permission: 'benefit.delete' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      await svc.entitlements.remove(params.id, currentActorId());
+      sendNoContent(res);
+    },
+  });
+  e.route({
+    method: 'post',
+    path: '/:id/submit',
+    summary: 'Submit an entitlement for approval',
+    description:
+      'Routed through the benefit_entitlement workflow; decided with POST /approvals/{approval_id}/approve|reject|return.',
+    auth: { permission: 'benefit.submit' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 200, description: 'Submitted', schema: BenefitEntitlementOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED', 'RULE_AMBIGUOUS'],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.entitlements.submit(params.id, requireIfMatch(req), currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  e.route({
+    method: 'post',
+    path: '/:id/withdraw',
+    summary: 'Withdraw an approved entitlement',
+    description: 'From a date (its last day), with a reason. Refused while issues fall after that date.',
+    auth: { permission: 'benefit.approve' },
+    ...byId,
+    body: WithdrawBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Withdrawn', schema: BenefitEntitlementOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: WithdrawBody });
+      const x = await svc.entitlements.withdraw(
+        params.id,
+        requireIfMatch(req),
+        body.effective_to,
+        body.reason,
+        currentActorId(),
+      );
+      sendOne(res, x, { version: x.version });
+    },
+  });
+
+  // ---- issues ------------------------------------------------------------------------------------------
+  const i = defineModule({
+    name: 'benefit-issues',
+    path: '/benefit-issues',
+    tag: 'Workforce',
+    platform,
+    authz,
+    accessLog,
+  });
+  i.route({
+    method: 'get',
+    path: '/',
+    summary: 'List benefit issues',
+    description: 'Filters: entitlement, profile, benefit type, estate, state, issue date, period.',
+    auth: { permission: 'benefit.view' },
+    list: listOf(
+      {
+        benefit_entitlement_id: { type: 'id', ops: ['eq'] },
+        employment_profile_id: { type: 'id', ops: ['eq'] },
+        benefit_type_id: { type: 'id', ops: ['eq'] },
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        state: { type: { enum: ISSUE_STATES }, ops: ['eq', 'in'] },
+        issue_date: { type: 'date', ops: ['from', 'to'] },
+        period_reference: { type: 'string', ops: ['eq'] },
+      },
+      ['issue_date'],
+      ['-issue_date'],
+    ),
+    success: { status: 200, description: 'A page of issues', schema: BenefitIssueOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.issues.list(q);
+      sendPage(req, res, items, { pagination: page(q), total, appliedScope: await appliedScope() });
+    },
+  });
+  i.route({
+    method: 'post',
+    path: '/',
+    summary: 'Draft a benefit issue',
+    description:
+      'Under an approved entitlement in force on issue_date; quantity and cost default from the entitlement (cost from the type).',
+    auth: { permission: 'benefit.create' },
+    body: CreateIssueBody,
+    success: { status: 201, description: 'Drafted', schema: BenefitIssueOut },
+    errors: ['DUPLICATE_KEY', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateIssueBody });
+      const x = await svc.issues.create(body, currentActorId());
+      sendCreated(res, x, `/api/v1/benefit-issues/${x.id}`, x.version);
+    },
+  });
+  i.route({
+    method: 'post',
+    path: '/generate',
+    summary: 'Draft this period’s issues',
+    description:
+      'One draft issue for every entitlement of the benefit type at the estate in force on issue_date (e.g. this week’s ration). Existing ones are kept.',
+    auth: { permission: 'benefit.create' },
+    body: GenerateIssuesBody,
+    success: { status: 200, description: 'Generated', schema: GenerateIssuesOut },
+    errors: ['SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: GenerateIssuesBody });
+      sendOne(res, await svc.issues.generate(body, currentActorId()));
+    },
+  });
+  i.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get a benefit issue',
+    auth: { permission: 'benefit.view' },
+    ...byId,
+    success: { status: 200, description: 'The issue', schema: BenefitIssueOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.issues.get(params.id);
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  i.route({
+    method: 'delete',
+    path: '/:id',
+    summary: 'Delete a draft issue',
+    auth: { permission: 'benefit.delete' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      await svc.issues.remove(params.id, currentActorId());
+      sendNoContent(res);
+    },
+  });
+  i.route({
+    method: 'post',
+    path: '/:id/submit',
+    summary: 'Submit an issue for approval',
+    description: 'Routed through the benefit_issue workflow (financial: never self-approved).',
+    auth: { permission: 'benefit.submit' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 200, description: 'Submitted', schema: BenefitIssueOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED', 'RULE_AMBIGUOUS'],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.issues.submit(params.id, requireIfMatch(req), currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+
+  // ---- welfare cases -----------------------------------------------------------------------------------
+  const w = defineModule({
+    name: 'welfare-cases',
+    path: '/welfare-cases',
+    tag: 'Workforce',
+    platform,
+    authz,
+    accessLog,
+  });
+  w.route({
+    method: 'get',
+    path: '/',
+    summary: 'List welfare cases',
+    auth: { permission: 'welfare.view' },
+    list: listOf(
+      {
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        beneficiary_type: { type: { enum: BENEFICIARY_TYPES }, ops: ['eq', 'in'] },
+        beneficiary_id: { type: 'id', ops: ['eq'] },
+        welfare_category: { type: { enum: WELFARE_CATEGORIES }, ops: ['eq', 'in'] },
+        state: { type: { enum: CASE_STATES }, ops: ['eq', 'in'] },
+        case_date: { type: 'date', ops: ['from', 'to'] },
+      },
+      ['case_date', 'case_number'],
+      ['-case_date'],
+    ),
+    success: { status: 200, description: 'A page of cases', schema: WelfareCaseOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.cases.list(q);
+      sendPage(req, res, items, { pagination: page(q), total, appliedScope: await appliedScope() });
+    },
+  });
+  w.route({
+    method: 'post',
+    path: '/',
+    summary: 'Open a welfare case',
+    description:
+      'For a profile or a person of the estate, or the community; numbered WC-… per estate and year. A draft: submit it with its requested amount.',
+    auth: { permission: 'welfare.create' },
+    body: CreateCaseBody,
+    success: { status: 201, description: 'Opened', schema: WelfareCaseOut },
+    errors: ['SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateCaseBody });
+      const x = await svc.cases.create(body, currentActorId());
+      sendCreated(res, x, `/api/v1/welfare-cases/${x.id}`, x.version);
+    },
+  });
+  w.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get a welfare case',
+    auth: { permission: 'welfare.view' },
+    ...byId,
+    success: { status: 200, description: 'The case', schema: WelfareCaseOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.cases.get(params.id);
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  w.route({
+    method: 'patch',
+    path: '/:id',
+    summary: 'Change a draft case',
+    auth: { permission: 'welfare.edit' },
+    ...byId,
+    body: PatchCaseBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Changed', schema: WelfareCaseOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: PatchCaseBody });
+      const x = await svc.cases.update(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  w.route({
+    method: 'delete',
+    path: '/:id',
+    summary: 'Delete a draft case',
+    auth: { permission: 'welfare.delete' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      await svc.cases.remove(params.id, currentActorId());
+      sendNoContent(res);
+    },
+  });
+  w.route({
+    method: 'post',
+    path: '/:id/submit',
+    summary: 'Submit a case for approval',
+    description: 'Needs the requested amount. Approval grants it (approved_amount).',
+    auth: { permission: 'welfare.submit' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 200, description: 'Submitted', schema: WelfareCaseOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED', 'RULE_AMBIGUOUS'],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.cases.submit(params.id, requireIfMatch(req), currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  w.route({
+    method: 'post',
+    path: '/:id/disburse',
+    summary: 'Record a disbursement',
+    description:
+      'Part of the approved amount paid out; the total never exceeds it. Payments post to the ledger from Phase 3.',
+    auth: { permission: 'welfare.edit' },
+    ...byId,
+    body: DisburseBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Recorded', schema: WelfareCaseOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: DisburseBody });
+      const x = await svc.cases.disburse(params.id, requireIfMatch(req), body.amount, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  w.route({
+    method: 'post',
+    path: '/:id/close',
+    summary: 'Close a case',
+    description: 'With its outcome.',
+    auth: { permission: 'welfare.edit' },
+    ...byId,
+    body: CloseBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Closed', schema: WelfareCaseOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: CloseBody });
+      const x = await svc.cases.close(params.id, requireIfMatch(req), body.outcome, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+
+  return [e.build(), i.build(), w.build()];
+}
+
 function assignmentsModule({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule {
   const svc = assignmentService({ db, accessLog, timezone: config.timezone });
   registerApprovalAdapter(svc.adapter);
@@ -1622,5 +2060,6 @@ export function workforceModules(deps: WorkforceDeps): ApiModule[] {
     teamsModule(deps),
     ...contractorsModule(deps),
     ...leaveModules(deps),
+    ...benefitModules(deps),
   ];
 }

@@ -159,6 +159,32 @@ export const LOOKUP_TYPES: readonly LookupType[] = [
       filter: true,
     },
   ]),
+  // P2.08 (P3 §23.1): housing, ration, medical …; payroll_treatment stays not_payroll until pay
+  // component types exist (Phase 9): a benefit never becomes an earning by default (D-2.08-2).
+  common('benefit_type', 'benefit type', { permission: 'benefit' }, [
+    {
+      name: 'benefit_category',
+      type: {
+        kind: 'enum',
+        values: ['housing', 'medical', 'transport', 'ration', 'education', 'utility', 'other'],
+      },
+      required: true,
+      filter: true,
+    },
+    {
+      name: 'issue_frequency',
+      type: { kind: 'enum', values: ['one_time', 'weekly', 'monthly', 'quarterly', 'annual', 'on_demand'] },
+      default: null,
+    },
+    { name: 'default_employer_cost', type: { kind: 'decimal', decimal: 'money' }, default: null },
+    { name: 'uom_id', type: { kind: 'ref', table: 'uom', label: 'unit of measure' }, default: null },
+    {
+      name: 'payroll_treatment',
+      type: { kind: 'enum', values: ['not_payroll', 'taxable_perquisite', 'cash_component'] },
+      default: 'not_payroll',
+      readOnly: true,
+    },
+  ]),
   common('activity_type', 'activity type', { permission: 'activity_type' }, [
     { name: 'cost_category', type: { kind: 'enum', values: COST_CATEGORIES }, required: true, filter: true },
     { name: 'default_uom_id', type: { kind: 'ref', table: 'uom', label: 'unit of measure' }, default: null },
