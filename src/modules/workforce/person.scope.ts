@@ -5,6 +5,8 @@ import { businessDateToDb, todayIn } from '../../core/time/dates.js';
  * Data scope of the workforce (P2.01–P2.03, BACKLOG D-2.01-2, D-2.02-3, D-2.03-4).
  *
  *   employment_assignment  the profile's estate, and the division, section or department it names; self.
+ *   worker_team            its estate, division or section (P2.04).
+ *   team_member            as its team; also the member's own profile (self).
  *   employment_profile     an estate grant sees the profiles of that estate; a division or section grant
  *                          the profiles whose CURRENT assignment is there (approved, in force today, in
  *                          the organisation's timezone); everyone sees their own (self).
@@ -35,14 +37,27 @@ const assignedTo = (where: Record<string, unknown>) => {
   };
 };
 
-SCOPED_MODELS.register('EmploymentAssignment', {
+SCOPED_MODELS.register('WorkerTeam', {
   estate: byColumn('estateId'),
   division: byColumn('divisionId'),
   section: byColumn('sectionId'),
-  department: byColumn('departmentId'),
-  self: byColumn('employmentProfileId'),
   createsCheckedBy: 'service',
 })
+  .register('TeamMember', {
+    estate: (ids) => ({ team: { estateId: inIds(ids) } }),
+    division: (ids) => ({ team: { divisionId: inIds(ids) } }),
+    section: (ids) => ({ team: { sectionId: inIds(ids) } }),
+    self: byColumn('employmentProfileId'),
+    createsCheckedBy: 'service',
+  })
+  .register('EmploymentAssignment', {
+    estate: byColumn('estateId'),
+    division: byColumn('divisionId'),
+    section: byColumn('sectionId'),
+    department: byColumn('departmentId'),
+    self: byColumn('employmentProfileId'),
+    createsCheckedBy: 'service',
+  })
   .register('EmploymentProfile', {
     estate: (ids) => ({ estateId: inIds(ids) }),
     division: (ids) => assignedTo({ divisionId: inIds(ids) }),
