@@ -1,6 +1,6 @@
 import type { RequestHandler } from 'express';
 
-import { getRequestContext } from '../context/request-context.js';
+import { getRequestContext, runWithRequestContext } from '../context/request-context.js';
 import type { Database } from '../db/prisma.js';
 import type { AccessLog } from '../audit/access-log.js';
 import { AppError } from '../errors/app-error.js';
@@ -64,6 +64,29 @@ export function staticPermissionResolver(
   const set = permissions === 'all' ? null : new Set(permissions);
   const all: ReadonlySet<string> = { has: () => true } as unknown as ReadonlySet<string>;
   return { permissionsOf: () => Promise.resolve(set ?? all), scopeOf: () => Promise.resolve(scope) };
+}
+
+/**
+ * Runs `work` as this user: their id is the actor and their data scope applies, as in a request they
+ * made. For jobs that act for the person who asked for them (a workforce import, P2.06); outside one, the
+ * job's own context (unscoped) is not inherited.
+ */
+export function runAsUser<T>(
+  resolver: PermissionResolver,
+  userId: bigint,
+  work: () => Promise<T>,
+): Promise<T> {
+  const outer = getRequestContext();
+  let pending: Promise<ResolvedScope> | undefined;
+  return runWithRequestContext(
+    {
+      requestId: outer?.requestId ?? 'system',
+      ...(outer?.logger ? { logger: outer.logger } : {}),
+      actorId: userId.toString(),
+      loadScope: () => (pending ??= resolver.scopeOf(userId)),
+    },
+    async () => await work(),
+  );
 }
 
 /** Lets the scope extension resolve the actor's scope on first use, once per request. */

@@ -126,7 +126,8 @@ export const TRIGGERS: readonly TriggerDefinition[] = [
     description: 'A contractor or supply contract ends within lead_days.',
     recipientRules: PEOPLE,
     usesLeadDays: true,
-    evaluated: false,
+    // P2.05: contractor contracts (contractor.jobs.ts); supply contracts join with procurement.
+    evaluated: true,
     arrivesWith: 'Contractors (Phase 2)',
   },
   {

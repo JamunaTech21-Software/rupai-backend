@@ -205,6 +205,18 @@ model User {
   updatedWorkerTeams          WorkerTeam[]           @relation("WorkerTeamUpdatedBy")
   createdTeamMembers          TeamMember[]           @relation("TeamMemberCreatedBy")
   updatedTeamMembers          TeamMember[]           @relation("TeamMemberUpdatedBy")
+  createdTradeCategories      TradeCategory[]        @relation("TradeCategoryCreatedBy")
+  updatedTradeCategories      TradeCategory[]        @relation("TradeCategoryUpdatedBy")
+  createdContractors          Contractor[]           @relation("ContractorCreatedBy")
+  updatedContractors          Contractor[]           @relation("ContractorUpdatedBy")
+  createdContracts            ContractorContract[]   @relation("ContractCreatedBy")
+  updatedContracts            ContractorContract[]   @relation("ContractUpdatedBy")
+  submittedContracts          ContractorContract[]   @relation("ContractSubmittedBy")
+  approvedContracts           ContractorContract[]   @relation("ContractApprovedBy")
+  rejectedContracts           ContractorContract[]   @relation("ContractRejectedBy")
+  terminatedContracts         ContractorContract[]   @relation("ContractTerminatedBy")
+  createdContractorLabour     ContractorLabour[]     @relation("ContractorLabourCreatedBy")
+  updatedContractorLabour     ContractorLabour[]     @relation("ContractorLabourUpdatedBy")
   updatedPersons              Person[]               @relation("PersonUpdatedBy")
   createdPersonDependents     PersonDependent[]      @relation("PersonDependentCreatedBy")
   updatedPersonDependents     PersonDependent[]      @relation("PersonDependentUpdatedBy")
@@ -674,21 +686,23 @@ model Estate {
   updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  organisation Organisation           @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_organisation")
-  creator      User                   @relation("EstateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_created_by")
-  updater      User?                  @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
-  divisions    Division[]
-  fields       Field[]
-  country      Country?               @relation(fields: [countryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_country")
-  amenityLinks EstateAmenity[]
-  factories    Factory[]
-  seasons      Season[]
-  persons      Person[]
-  profiles     EmploymentProfile[]    @relation("ProfileEstate")
-  assignments  EmploymentAssignment[]
-  workerTeams  WorkerTeam[]
-  manager      EmploymentProfile?     @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
-  shifts       Shift[]                @relation("ShiftEstate")
+  organisation          Organisation           @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_organisation")
+  creator               User                   @relation("EstateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_created_by")
+  updater               User?                  @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
+  divisions             Division[]
+  fields                Field[]
+  country               Country?               @relation(fields: [countryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_country")
+  amenityLinks          EstateAmenity[]
+  factories             Factory[]
+  seasons               Season[]
+  persons               Person[]
+  profiles              EmploymentProfile[]    @relation("ProfileEstate")
+  assignments           EmploymentAssignment[]
+  workerTeams           WorkerTeam[]
+  registeredContractors Contractor[]
+  contractorContracts   ContractorContract[]
+  manager               EmploymentProfile?     @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
+  shifts                Shift[]                @relation("ShiftEstate")
 
   workflows Workflow[]
 
@@ -721,13 +735,14 @@ model Division {
   updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  estate      Estate                 @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_estate")
-  creator     User                   @relation("DivisionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_created_by")
-  updater     User?                  @relation("DivisionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_updated_by")
-  sections    Section[]
-  assignments EmploymentAssignment[]
-  workerTeams WorkerTeam[]
-  manager     EmploymentProfile?     @relation("DivisionManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_manager")
+  estate              Estate                 @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_estate")
+  creator             User                   @relation("DivisionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_created_by")
+  updater             User?                  @relation("DivisionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_updated_by")
+  sections            Section[]
+  assignments         EmploymentAssignment[]
+  workerTeams         WorkerTeam[]
+  contractorContracts ContractorContract[]
+  manager             EmploymentProfile?     @relation("DivisionManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_manager")
 
   @@unique([estateId, code], map: "ux_division_code")
   @@index([status], map: "ix_division_status")
@@ -1174,7 +1189,8 @@ model Designation {
   creator User  @relation("DesignationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_designation_created_by")
   updater User? @relation("DesignationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_designation_updated_by")
 
-  assignments EmploymentAssignment[]
+  assignments        EmploymentAssignment[]
+  reportingContracts ContractorContract[]
 
   @@unique([code], map: "ux_designation_code")
   @@index([status], map: "ix_designation_status")
@@ -3150,4 +3166,236 @@ model TeamMember {
   @@index([createdBy], map: "ix_team_member_created_by")
   @@index([updatedBy], map: "ix_team_member_updated_by")
   @@map("team_member")
+}
+
+/// P2.05 (the manager's design, Add New Contractor, D-2-4): Trade / Work Category. Common lookup shape,
+/// client-editable.
+model TradeCategory {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String    @db.VarChar(20)
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  sortOrder   Int       @default(0) @map("sort_order")
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// active | inactive
+  status      String    @default("active") @db.VarChar(30)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  contractors Contractor[]
+  creator     User         @relation("TradeCategoryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_trade_category_created_by")
+  updater     User?        @relation("TradeCategoryUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_trade_category_updated_by")
+
+  @@unique([code], map: "ux_trade_category_code")
+  @@index([status], map: "ix_trade_category_status")
+  @@index([createdBy], map: "ix_trade_category_created_by")
+  @@index([updatedBy], map: "ix_trade_category_updated_by")
+  @@map("trade_category")
+}
+
+/// P2.05 (Spec P3 §8.6 + the manager's design, D-2-4): a contractor supplying labour or services. Not an
+/// employer of record: its people are contractor_labour, never employment profiles (P1 §5.5.1).
+/// contact_person / designation are a cache of the primary party_contact (owner_type contractor).
+model Contractor {
+  id                    BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// The design's Contractor ID, numbered by the `contractor` format.
+  code                  String    @db.VarChar(20)
+  name                  String    @db.VarChar(150)
+  shortName             String?   @map("short_name") @db.VarChar(50)
+  /// individual | company | supplier
+  contractorType        String    @map("contractor_type") @db.VarChar(30)
+  tradeCategoryId       BigInt?   @map("trade_category_id") @db.UnsignedBigInt
+  /// proprietorship | partnership | private_ltd | public_ltd | other
+  legalStatus           String?   @map("legal_status") @db.VarChar(30)
+  registrationType      String?   @map("registration_type") @db.VarChar(100)
+  contractorSince       DateTime? @map("contractor_since") @db.Date
+  description           String?   @db.VarChar(1000)
+  /// Cache of the primary contact (party_contact is authoritative).
+  contactPerson         String?   @map("contact_person") @db.VarChar(150)
+  designation           String?   @db.VarChar(100)
+  phone                 String?   @db.VarChar(30)
+  phoneAlt              String?   @map("phone_alt") @db.VarChar(30)
+  email                 String?   @db.VarChar(150)
+  addressLine1          String?   @map("address_line1") @db.VarChar(300)
+  presentDistrict       String?   @map("present_district") @db.VarChar(100)
+  presentUpazila        String?   @map("present_upazila") @db.VarChar(100)
+  presentPostalCode     String?   @map("present_postal_code") @db.VarChar(10)
+  permanentAddress      String?   @map("permanent_address") @db.VarChar(300)
+  permanentDistrict     String?   @map("permanent_district") @db.VarChar(100)
+  permanentUpazila      String?   @map("permanent_upazila") @db.VarChar(100)
+  permanentPostalCode   String?   @map("permanent_postal_code") @db.VarChar(10)
+  nationalId            String?   @map("national_id") @db.VarChar(30)
+  /// Company registration no.
+  registrationNumber    String?   @map("registration_number") @db.VarChar(50)
+  tradeLicenceNumber    String?   @map("trade_licence_number") @db.VarChar(50)
+  tradeLicenceExpiry    DateTime? @map("trade_licence_expiry") @db.Date
+  bin                   String?   @db.VarChar(30)
+  tin                   String?   @db.VarChar(30)
+  vatRegistrationNumber String?   @map("vat_registration_number") @db.VarChar(50)
+  registrationDate      DateTime? @map("registration_date") @db.Date
+  renewalDate           DateTime? @map("renewal_date") @db.Date
+  bankName              String?   @map("bank_name") @db.VarChar(150)
+  bankBranch            String?   @map("bank_branch") @db.VarChar(150)
+  bankAccountName       String?   @map("bank_account_name") @db.VarChar(150)
+  bankAccountNumber     String?   @map("bank_account_number") @db.VarChar(40)
+  bankRoutingNumber     String?   @map("bank_routing_number") @db.VarChar(20)
+  /// bkash | nagad | rocket | upay | other
+  mobileBankingProvider String?   @map("mobile_banking_provider") @db.VarChar(30)
+  mobileBankingNumber   String?   @map("mobile_banking_number") @db.VarChar(30)
+  equipmentOwned        String?   @map("equipment_owned") @db.VarChar(1000)
+  yearsOfExperience     Int?      @map("years_of_experience") @db.UnsignedSmallInt
+  /// compliant | partially_compliant | non_compliant
+  safetyCompliance      String?   @map("safety_compliance") @db.VarChar(30)
+  /// excellent | good | average | poor
+  qualityRating         String?   @map("quality_rating") @db.VarChar(30)
+  remarks               String?   @db.VarChar(500)
+  emergencyContactName  String?   @map("emergency_contact_name") @db.VarChar(150)
+  /// father | mother | spouse | son | daughter | brother | sister | other
+  emergencyRelation     String?   @map("emergency_relation") @db.VarChar(30)
+  emergencyPhone        String?   @map("emergency_phone") @db.VarChar(30)
+  emergencyPhoneAlt     String?   @map("emergency_phone_alt") @db.VarChar(30)
+  emergencyAddress      String?   @map("emergency_address") @db.VarChar(300)
+  /// The estate that registered it: who sees and changes it besides the estates it has contracts in.
+  registeredEstateId    BigInt?   @map("registered_estate_id") @db.UnsignedBigInt
+  /// active | inactive | blacklisted
+  status                String    @default("active") @db.VarChar(30)
+  blacklistReason       String?   @map("blacklist_reason") @db.VarChar(500)
+  version               Int       @default(1)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy             BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt             DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy             BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  tradeCategory    TradeCategory?       @relation(fields: [tradeCategoryId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contractor_trade_category")
+  registeredEstate Estate?              @relation(fields: [registeredEstateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contractor_registered_estate")
+  contracts        ContractorContract[]
+  creator          User                 @relation("ContractorCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contractor_created_by")
+  updater          User?                @relation("ContractorUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contractor_updated_by")
+
+  @@unique([code], map: "ux_contractor_code")
+  @@index([name], map: "ix_contractor_name")
+  @@index([contractorType], map: "ix_contractor_type")
+  @@index([tradeCategoryId], map: "ix_contractor_trade_category")
+  @@index([registeredEstateId], map: "ix_contractor_registered_estate")
+  @@index([status], map: "ix_contractor_status")
+  @@index([tradeLicenceExpiry], map: "ix_contractor_licence_expiry")
+  @@index([createdBy], map: "ix_contractor_created_by")
+  @@index([updatedBy], map: "ix_contractor_updated_by")
+  @@map("contractor")
+}
+
+/// P2.05 (Spec P3 §8.7 + the design's Contract Information): a contract of a contractor at an estate.
+/// Approvable (P7 §9.5): draft → submitted → approved, or rejected; an approved contract may be
+/// terminated. It is "completed" once its end date has passed (computed, not stored).
+model ContractorContract {
+  id                       BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  contractorId             BigInt    @map("contractor_id") @db.UnsignedBigInt
+  estateId                 BigInt    @map("estate_id") @db.UnsignedBigInt
+  /// Numbered by the `contractor_contract` format.
+  contractNumber           String    @map("contract_number") @db.VarChar(30)
+  /// The design's Contract Reference No.: the contractor's own or the paper agreement's reference.
+  referenceNumber          String?   @map("reference_number") @db.VarChar(50)
+  /// labour_supply | plucking | field_work | construction | transport | service | other
+  workType                 String    @map("work_type") @db.VarChar(30)
+  /// per_day | per_kg | per_unit | lump_sum
+  rateBasis                String    @map("rate_basis") @db.VarChar(30)
+  rate                     Decimal   @db.Decimal(18, 4)
+  startDate                DateTime  @map("start_date") @db.Date
+  /// Drives the contract-expiry alert.
+  endDate                  DateTime  @map("end_date") @db.Date
+  /// Required for a lump-sum contract; the estimated value otherwise.
+  contractValue            Decimal?  @map("contract_value") @db.Decimal(18, 4)
+  retentionPercentage      Decimal?  @map("retention_percentage") @db.Decimal(9, 4)
+  /// advance | monthly | quarterly | milestone
+  paymentTerms             String?   @map("payment_terms") @db.VarChar(30)
+  /// estate | factory | office | field
+  workLocation             String?   @map("work_location") @db.VarChar(30)
+  divisionId               BigInt?   @map("division_id") @db.UnsignedBigInt
+  /// The design's Reporting To (Estate Manager, HR Manager …): a designation.
+  reportingToDesignationId BigInt?   @map("reporting_to_designation_id") @db.UnsignedBigInt
+  terms                    String?   @db.Text
+  // ---- state block (P3 §3.2): draft | submitted | approved | rejected | terminated ----
+  state                    String    @default("draft") @db.VarChar(30)
+  stateChangedAt           DateTime? @map("state_changed_at") @db.DateTime(0)
+  terminatedOn             DateTime? @map("terminated_on") @db.Date
+  terminatedAt             DateTime? @map("terminated_at") @db.DateTime(0)
+  terminatedBy             BigInt?   @map("terminated_by") @db.UnsignedBigInt
+  terminationReason        String?   @map("termination_reason") @db.VarChar(500)
+  // ---- approval block (P3 §3.3) ----
+  submittedAt              DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy              BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt               DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy               BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt               DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy               BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason          String?   @map("rejection_reason") @db.VarChar(500)
+  version                  Int       @default(1)
+  createdAt                DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy                BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt                DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy                BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  contractor  Contractor         @relation(fields: [contractorId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contract_contractor")
+  estate      Estate             @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contract_estate")
+  division    Division?          @relation(fields: [divisionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contract_division")
+  reportingTo Designation?       @relation(fields: [reportingToDesignationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contract_reporting_to")
+  labour      ContractorLabour[]
+  creator     User               @relation("ContractCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contract_created_by")
+  updater     User?              @relation("ContractUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contract_updated_by")
+  submitter   User?              @relation("ContractSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contract_submitted_by")
+  approver    User?              @relation("ContractApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contract_approved_by")
+  rejecter    User?              @relation("ContractRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contract_rejected_by")
+  terminator  User?              @relation("ContractTerminatedBy", fields: [terminatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contract_terminated_by")
+
+  @@unique([contractNumber], map: "ux_contract_number")
+  @@index([contractorId], map: "ix_contract_contractor")
+  @@index([estateId], map: "ix_contract_estate")
+  @@index([divisionId], map: "ix_contract_division")
+  @@index([reportingToDesignationId], map: "ix_contract_reporting_to")
+  @@index([startDate], map: "ix_contract_start")
+  @@index([endDate], map: "ix_contract_end")
+  @@index([state], map: "ix_contract_state")
+  @@index([createdBy], map: "ix_contract_created_by")
+  @@index([updatedBy], map: "ix_contract_updated_by")
+  @@index([submittedBy], map: "ix_contract_submitted_by")
+  @@index([approvedBy], map: "ix_contract_approved_by")
+  @@index([rejectedBy], map: "ix_contract_rejected_by")
+  @@index([terminatedBy], map: "ix_contract_terminated_by")
+  @@map("contractor_contract")
+}
+
+/// P2.05 (Spec P3 §8.8): named people supplied under a contract, for attendance, safety and output.
+/// They have NO employment profile and NO payroll relationship (P1 §5.5.1): no payroll table may ever
+/// reference this one. Contractor cost reaches the ledger through a contractor bill and a payable.
+model ContractorLabour {
+  id                   BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  contractorContractId BigInt    @map("contractor_contract_id") @db.UnsignedBigInt
+  /// Unique within the contract.
+  labourCode           String    @map("labour_code") @db.VarChar(20)
+  name                 String    @db.VarChar(150)
+  nationalId           String?   @map("national_id") @db.VarChar(30)
+  phone                String?   @db.VarChar(30)
+  engagedFrom          DateTime? @map("engaged_from") @db.Date
+  engagedTo            DateTime? @map("engaged_to") @db.Date
+  /// active | inactive
+  status               String    @default("active") @db.VarChar(30)
+  version              Int       @default(1)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy            BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt            DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy            BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  contract ContractorContract @relation(fields: [contractorContractId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contractor_labour_contract")
+  creator  User               @relation("ContractorLabourCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contractor_labour_created_by")
+  updater  User?              @relation("ContractorLabourUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_contractor_labour_updated_by")
+
+  @@unique([contractorContractId, labourCode], map: "ux_contractor_labour")
+  @@index([status], map: "ix_contractor_labour_status")
+  @@index([nationalId], map: "ix_contractor_labour_nid")
+  @@index([createdBy], map: "ix_contractor_labour_created_by")
+  @@index([updatedBy], map: "ix_contractor_labour_updated_by")
+  @@map("contractor_labour")
 }

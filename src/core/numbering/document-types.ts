@@ -69,6 +69,9 @@ export const DOCUMENT_TYPES: readonly DocumentType[] = [
   // P2.02: the design's Worker ID and Employee ID, per estate.
   op('worker_profile', 'Worker ID', 'WRK', ['estate']),
   op('employee_profile', 'Employee ID', 'EMP', ['estate']),
+  // P2.05: the design's Contractor ID, and contractor contracts per estate and year.
+  op('contractor', 'Contractor ID', 'CON', []),
+  op('contractor_contract', 'Contractor contract', 'CC', ESTATE_FY),
   op('leave', 'Leave', 'LV', ESTATE_FY),
   fin('payroll_run', 'Payroll run', 'PAY', ESTATE_FY),
   fin('payroll_payment', 'Payroll payment', 'PP', ESTATE_FY),

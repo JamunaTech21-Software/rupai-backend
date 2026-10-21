@@ -3,7 +3,7 @@ import type { AccessLog } from '../../core/audit/access-log.js';
 import { currentActorId, type PermissionResolver } from '../../core/auth/authorize.js';
 import type { Database } from '../../core/db/prisma.js';
 import { requireIfMatch } from '../../core/http/concurrency.js';
-import { getListQuery } from '../../core/http/list-query.js';
+import { getListQuery, type ListQuery } from '../../core/http/list-query.js';
 import { masterItemRoutes } from '../../core/http/master.js';
 import { sendCreated, sendNoContent, sendOne, sendPage } from '../../core/http/response.js';
 import { defineModule } from '../../core/http/route.js';
@@ -23,6 +23,35 @@ import {
   WAGE_BASES,
 } from './assignment.schema.js';
 import { assignmentService } from './assignment.service.js';
+import { contactsService } from '../facilities/contacts.service.js';
+import { contactRoutes } from '../facilities/facilities.routes.js';
+import {
+  BlacklistBody,
+  CONTRACT_STATES,
+  CONTRACT_STATUSES,
+  CONTRACTOR_STATUSES,
+  CONTRACTOR_TYPES,
+  ContractOut,
+  ContractorOut,
+  ContractorSummaryOut,
+  CreateContractBody,
+  CreateContractorBody,
+  CreateLabourBody,
+  IdParams as ContractorParams,
+  LabourOut,
+  LabourParams,
+  PatchContractBody,
+  PatchContractorBody,
+  PatchLabourBody,
+  RATE_BASES,
+  ReplaceContractBody,
+  ReplaceContractorBody,
+  SummaryQuery as ContractorSummaryQuery,
+  TerminateBody,
+  WORK_LOCATIONS as CONTRACT_WORK_LOCATIONS,
+  WORK_TYPES,
+} from './contractor.schema.js';
+import { contractorService } from './contractor.service.js';
 import { setWorkforceScopeTimezone } from './person.scope.js';
 import {
   AddMembersBody,
@@ -75,7 +104,7 @@ import { profileService } from './profile.service.js';
 
 /**
  * HTTP surface of the workforce module: persons (P2.01), employment profiles (P2.02), employment
- * assignments (P2.03) and worker teams (P2.04); Spec P4 §8.3, §6.5.
+ * assignments (P2.03), worker teams (P2.04) and contractors (P2.05); Spec P4 §8.3, §6.5.
  */
 
 export interface WorkforceDeps {
@@ -778,6 +807,405 @@ function teamsModule({ db, platform, authz, accessLog, config }: WorkforceDeps):
   return m.build();
 }
 
+function contractorsModule({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule[] {
+  const svc = contractorService({ db, accessLog, timezone: config.timezone });
+  registerApprovalAdapter(svc.adapter);
+  const byId = { params: ContractorParams };
+  const byLabour = { params: LabourParams };
+  const m = defineModule({
+    name: 'contractors',
+    path: '/contractors',
+    tag: 'Workforce',
+    platform,
+    authz,
+    accessLog,
+  });
+
+  m.route({
+    method: 'get',
+    path: '/',
+    summary: 'List contractors',
+    description:
+      'Contractor Management: filter by contractor type, trade category, status, registering estate, and by ' +
+      'where their contracts are (estate_id, division_id, work_location). filter[q]=… searches ID, name, short ' +
+      'name and mobile. Each row carries current_contract (start, end, value, location) and number_of_workers.',
+    auth: { permission: 'contractor.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        q: { type: 'string', ops: ['eq'] },
+        contractor_type: { type: { enum: CONTRACTOR_TYPES }, ops: ['eq', 'in'] },
+        trade_category_id: { type: 'id', ops: ['eq', 'in'] },
+        status: { type: { enum: CONTRACTOR_STATUSES }, ops: ['eq', 'in'] },
+        registered_estate_id: { type: 'id', ops: ['eq', 'in'] },
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        division_id: { type: 'id', ops: ['eq', 'in'] },
+        work_location: { type: { enum: CONTRACT_WORK_LOCATIONS }, ops: ['eq', 'in'] },
+        name: { type: 'string', ops: ['like'] },
+        created_at: { type: 'datetime', ops: ['from', 'to'] },
+      },
+      sorts: ['code', 'name', 'created_at'],
+      defaultSort: ['code'],
+      maxPageSize: 500,
+    },
+    success: { status: 200, description: 'A page of contractors', schema: ContractorOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.list(q);
+      sendPage(req, res, items, {
+        pagination: q.page ?? { page: 1, perPage: 25 },
+        total,
+        appliedScope: await appliedScope(),
+      });
+    },
+  });
+
+  m.route({
+    method: 'get',
+    path: '/summary',
+    summary: 'The contractor figures',
+    description:
+      'The cards and charts of Contractor Management, within your scope: total, active, inactive, contracts ' +
+      'expiring (within expiring_days, default 30), new this month, total contract value (contracts in force), by ' +
+      'contractor type, work type, trade category and status, top contractors by value, expiry alerts, licences expiring.',
+    auth: { permission: 'contractor.view' },
+    query: ContractorSummaryQuery,
+    success: { status: 200, description: 'The figures', schema: ContractorSummaryOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { query } = getValidated(res, { query: ContractorSummaryQuery });
+      sendOne(res, await svc.summary(query.estate_id, query.expiring_days));
+    },
+  });
+
+  m.route({
+    method: 'post',
+    path: '/',
+    summary: 'Register a contractor',
+    description:
+      'The Add New Contractor form in one request: the contractor (code numbered CON-… when omitted), its contact ' +
+      'person (the primary contact) and, optionally, first_contract (a DRAFT contract: submit it with POST ' +
+      '/contractor-contracts/{id}/submit). Documents follow with POST /contractors/{id}/documents.',
+    auth: { permission: 'contractor.create' },
+    body: CreateContractorBody,
+    success: { status: 201, description: 'Registered', schema: ContractorOut },
+    errors: ['DUPLICATE_KEY', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateContractorBody });
+      const c = await svc.create(body, currentActorId());
+      sendCreated(res, c, `/api/v1/contractors/${c.id}`, c.version);
+    },
+  });
+
+  masterItemRoutes(m, {
+    module: 'contractor',
+    label: 'contractor',
+    out: ContractorOut,
+    replace: ReplaceContractorBody,
+    patch: PatchContractorBody,
+    svc,
+    updateErrors: ['DUPLICATE_KEY'],
+    deleteHelp:
+      'Only a contractor registered in error, with no contract. Otherwise deactivate or blacklist it.',
+  });
+
+  m.route({
+    method: 'post',
+    path: '/:id/blacklist',
+    summary: 'Blacklist a contractor',
+    description:
+      'The design’s "Blacklist Contractor": with a reason. A blacklisted contractor takes no new contract; reactivate lifts it.',
+    auth: { permission: 'contractor.approve' },
+    ...byId,
+    body: BlacklistBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Blacklisted', schema: ContractorOut },
+    errors: ['SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: BlacklistBody });
+      const c = await svc.setStatus(
+        params.id,
+        requireIfMatch(req),
+        'blacklisted',
+        currentActorId(),
+        body.reason,
+      );
+      sendOne(res, c, { version: c.version });
+    },
+  });
+
+  m.route({
+    method: 'get',
+    path: '/:id/contracts',
+    summary: 'A contractor’s contracts',
+    auth: { permission: 'contractor.view' },
+    ...byId,
+    success: { status: 200, description: 'The contracts', schema: ContractOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      await svc.get(params.id);
+      const q: ListQuery = {
+        filters: [{ field: 'contractor_id', op: 'eq', value: params.id.toString() }],
+        sort: [{ field: 'start_date', direction: 'desc' }],
+        include: [],
+        fields: {},
+        page: { page: 1, perPage: 500 },
+      };
+      const { items, total } = await svc.contracts.list(q);
+      sendPage(req, res, items, { pagination: { page: 1, perPage: Math.max(items.length, 1) }, total });
+    },
+  });
+
+  contactRoutes(m, contactsService(db, svc.contactOwner), 'contractor', '/contractors');
+
+  const c = defineModule({
+    name: 'contractor-contracts',
+    path: '/contractor-contracts',
+    tag: 'Workforce',
+    platform,
+    authz,
+    accessLog,
+  });
+
+  c.route({
+    method: 'get',
+    path: '/',
+    summary: 'List contractor contracts',
+    description:
+      'Filters: contractor, estate, division, state, status (pending, upcoming, active, completed, terminated, ' +
+      'rejected), work type, rate basis, work location, start / end date ranges, expiring_within_days=30.',
+    auth: { permission: 'contractor.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        contractor_id: { type: 'id', ops: ['eq', 'in'] },
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        division_id: { type: 'id', ops: ['eq', 'in'] },
+        state: { type: { enum: CONTRACT_STATES }, ops: ['eq', 'in'] },
+        status: { type: { enum: CONTRACT_STATUSES }, ops: ['eq', 'in'] },
+        work_type: { type: { enum: WORK_TYPES }, ops: ['eq', 'in'] },
+        rate_basis: { type: { enum: RATE_BASES }, ops: ['eq', 'in'] },
+        work_location: { type: { enum: CONTRACT_WORK_LOCATIONS }, ops: ['eq', 'in'] },
+        start_date: { type: 'date', ops: ['from', 'to'] },
+        end_date: { type: 'date', ops: ['from', 'to'] },
+        expiring_within_days: { type: 'int', ops: ['eq'] },
+      },
+      sorts: ['contract_number', 'start_date', 'end_date', 'created_at'],
+      defaultSort: ['-start_date'],
+      maxPageSize: 500,
+    },
+    success: { status: 200, description: 'A page of contracts', schema: ContractOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.contracts.list(q);
+      sendPage(req, res, items, {
+        pagination: q.page ?? { page: 1, perPage: 25 },
+        total,
+        appliedScope: await appliedScope(),
+      });
+    },
+  });
+
+  c.route({
+    method: 'post',
+    path: '/',
+    summary: 'Draft a contractor contract',
+    description:
+      'At an estate you may change, for an active contractor: numbered CC-… per estate and year. contract_value is ' +
+      'required for lump_sum. Submit it to route it through the contractor_contract workflow (P7 §9.5).',
+    auth: { permission: 'contractor.create' },
+    body: CreateContractBody,
+    success: { status: 201, description: 'Drafted', schema: ContractOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateContractBody });
+      const k = await svc.contracts.create(body, currentActorId());
+      sendCreated(res, k, `/api/v1/contractor-contracts/${k.id}`, k.version);
+    },
+  });
+
+  c.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get a contractor contract',
+    auth: { permission: 'contractor.view' },
+    ...byId,
+    success: { status: 200, description: 'The contract', schema: ContractOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const k = await svc.contracts.get(params.id);
+      sendOne(res, k, { version: k.version });
+    },
+  });
+
+  for (const [method, body, summary] of [
+    ['put', ReplaceContractBody, 'Replace a draft contract'],
+    ['patch', PatchContractBody, 'Change some of a draft contract'],
+  ] as const) {
+    c.route({
+      method,
+      path: '/:id',
+      summary,
+      description: 'Drafts only (a returned one is a draft again): 409 INVALID_TRANSITION otherwise.',
+      auth: { permission: 'contractor.edit' },
+      ...byId,
+      body,
+      ifMatch: true,
+      success: { status: 200, description: 'Changed', schema: ContractOut },
+      errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+      handler: async (req, res) => {
+        const { params, body: changes } = getValidated(res, { ...byId, body: PatchContractBody });
+        const k = await svc.contracts.update(params.id, requireIfMatch(req), changes, currentActorId());
+        sendOne(res, k, { version: k.version });
+      },
+    });
+  }
+
+  c.route({
+    method: 'delete',
+    path: '/:id',
+    summary: 'Delete a draft contract',
+    auth: { permission: 'contractor.delete' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      await svc.contracts.remove(params.id, currentActorId());
+      sendNoContent(res);
+    },
+  });
+
+  c.route({
+    method: 'post',
+    path: '/:id/submit',
+    summary: 'Submit a contract for approval',
+    description:
+      'Routed through the contractor_contract workflow (P7 §9.5: estate manager always; finance manager when ' +
+      'contract_value ≥ T2; managing director ≥ T3 or a long term). The result is `submitted` with approval_id, ' +
+      'decided with POST /approvals/{approval_id}/approve|reject|return; with no workflow it is approved at once.',
+    auth: { permission: 'contractor.create' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 200, description: 'Submitted', schema: ContractOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED', 'RULE_AMBIGUOUS'],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const k = await svc.contracts.submit(params.id, requireIfMatch(req), currentActorId());
+      sendOne(res, k, { version: k.version });
+    },
+  });
+
+  c.route({
+    method: 'post',
+    path: '/:id/terminate',
+    summary: 'Terminate an approved contract',
+    description:
+      'Ends it early: the last day of work (within the contract) and the reason. Its labour is ended that day.',
+    auth: { permission: 'contractor.approve' },
+    ...byId,
+    body: TerminateBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Terminated', schema: ContractOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: TerminateBody });
+      const k = await svc.contracts.terminate(
+        params.id,
+        requireIfMatch(req),
+        body.terminated_on,
+        body.reason,
+        currentActorId(),
+      );
+      sendOne(res, k, { version: k.version });
+    },
+  });
+
+  c.route({
+    method: 'get',
+    path: '/:id/labour',
+    summary: 'The labour of a contract',
+    description:
+      'Named people supplied under the contract. They have no employment profile and no payroll (P1 §5.5.1).',
+    auth: { permission: 'contractor.view' },
+    ...byId,
+    success: { status: 200, description: 'The labour', schema: LabourOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const items = await svc.labour.list(params.id);
+      sendPage(req, res, items, {
+        pagination: { page: 1, perPage: Math.max(items.length, 1) },
+        total: items.length,
+      });
+    },
+  });
+
+  c.route({
+    method: 'post',
+    path: '/:id/labour',
+    summary: 'Add labour to a contract',
+    description:
+      'labour_code is numbered L-0001 … within the contract when omitted; engagement within the contract dates.',
+    auth: { permission: 'contractor.edit' },
+    ...byId,
+    body: CreateLabourBody,
+    success: { status: 201, description: 'Added', schema: LabourOut },
+    errors: ['DUPLICATE_KEY', 'INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: CreateLabourBody });
+      const l = await svc.labour.add(params.id, body, currentActorId());
+      sendCreated(res, l, `/api/v1/contractor-contracts/${params.id.toString()}/labour/${l.id}`, l.version);
+    },
+  });
+
+  c.route({
+    method: 'patch',
+    path: '/:id/labour/:labourId',
+    summary: 'Change a labourer’s details',
+    description: 'Name, ID, phone, engagement dates; status inactive when they stop working.',
+    auth: { permission: 'contractor.edit' },
+    ...byLabour,
+    body: PatchLabourBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Changed', schema: LabourOut },
+    errors: ['DUPLICATE_KEY', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byLabour, body: PatchLabourBody });
+      const l = await svc.labour.update(
+        params.id,
+        params.labourId,
+        requireIfMatch(req),
+        body,
+        currentActorId(),
+      );
+      sendOne(res, l, { version: l.version });
+    },
+  });
+
+  c.route({
+    method: 'delete',
+    path: '/:id/labour/:labourId',
+    summary: 'Delete labour entered in error',
+    auth: { permission: 'contractor.edit' },
+    ...byLabour,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['REFERENCED_RECORD', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byLabour);
+      await svc.labour.remove(params.id, params.labourId, currentActorId());
+      sendNoContent(res);
+    },
+  });
+
+  return [m.build(), c.build()];
+}
+
 function assignmentsModule({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule {
   const svc = assignmentService({ db, accessLog, timezone: config.timezone });
   registerApprovalAdapter(svc.adapter);
@@ -916,5 +1344,11 @@ function assignmentsModule({ db, platform, authz, accessLog, config }: Workforce
 
 export function workforceModules(deps: WorkforceDeps): ApiModule[] {
   setWorkforceScopeTimezone(deps.config.timezone);
-  return [personsModule(deps), profilesModule(deps), assignmentsModule(deps), teamsModule(deps)];
+  return [
+    personsModule(deps),
+    profilesModule(deps),
+    assignmentsModule(deps),
+    teamsModule(deps),
+    ...contractorsModule(deps),
+  ];
 }

@@ -495,54 +495,57 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
     },
 
     async create(body: z.infer<typeof CreateProfileBody>, actorId: bigint) {
-      return withTransaction(db, async (tx) => {
-        const person = await tx.person.findUnique({
-          where: { id: body.person_id },
-          select: { id: true, status: true },
-        });
-        const estate = await tx.estate.findUnique({
-          where: { id: body.estate_id },
-          select: { id: true, code: true, status: true },
-        });
-        const problems: ErrorDetail[] = [];
-        if (!person) problems.push(invalid('person_id', 'No such person.'));
-        else if (person.status !== 'active') problems.push(invalid('person_id', 'The person is inactive.'));
-        if (!estate) problems.push(invalid('estate_id', 'No such estate.'));
-        else if (estate.status !== 'active') problems.push(invalid('estate_id', 'The estate is inactive.'));
-        if (problems.length > 0 || !estate) throw Errors.validation(problems);
-        await canWrite({ id: null, estateId: estate.id }, 'create');
-        await check(tx, body, { type: body.employment_type, estateId: estate.id });
-        const number =
-          body.profile_number ??
-          (
-            await allocateNumber(
-              tx,
-              body.employment_type === 'worker' ? 'worker_profile' : 'employee_profile',
-              { date: today(), estateCode: estate.code },
-              'draft',
-            )
-          ).number;
-        const { id } = await tx.employmentProfile
-          .create({
-            data: {
-              ...(data(body, body.employment_type) as Prisma.EmploymentProfileUncheckedCreateInput),
-              personId: body.person_id,
-              estateId: estate.id,
-              employmentType: body.employment_type,
-              profileNumber: number,
-              engagementType: body.engagement_type,
-              joiningDate: businessDateToDb(body.joining_date),
-              status: 'active',
-              createdBy: actorId,
-            },
-            select: { id: true },
-          })
-          .catch(onUnique(number));
-        const out = await outOf(await orNotFound(tx, id));
-        await auditCreate(tx, PROFILE_AUDIT, id, out, { actorId });
-        await recordStatusChange(tx, PROFILE_AUDIT.type, id, null, 'active', { actorId });
-        return out;
+      return withTransaction(db, (tx) => this.createIn(tx, body, actorId));
+    },
+
+    /** The same inside the caller's transaction (the workforce import, P2.06). */
+    async createIn(tx: Tx, body: z.infer<typeof CreateProfileBody>, actorId: bigint) {
+      const person = await tx.person.findUnique({
+        where: { id: body.person_id },
+        select: { id: true, status: true },
       });
+      const estate = await tx.estate.findUnique({
+        where: { id: body.estate_id },
+        select: { id: true, code: true, status: true },
+      });
+      const problems: ErrorDetail[] = [];
+      if (!person) problems.push(invalid('person_id', 'No such person.'));
+      else if (person.status !== 'active') problems.push(invalid('person_id', 'The person is inactive.'));
+      if (!estate) problems.push(invalid('estate_id', 'No such estate.'));
+      else if (estate.status !== 'active') problems.push(invalid('estate_id', 'The estate is inactive.'));
+      if (problems.length > 0 || !estate) throw Errors.validation(problems);
+      await canWrite({ id: null, estateId: estate.id }, 'create');
+      await check(tx, body, { type: body.employment_type, estateId: estate.id });
+      const number =
+        body.profile_number ??
+        (
+          await allocateNumber(
+            tx,
+            body.employment_type === 'worker' ? 'worker_profile' : 'employee_profile',
+            { date: today(), estateCode: estate.code },
+            'draft',
+          )
+        ).number;
+      const { id } = await tx.employmentProfile
+        .create({
+          data: {
+            ...(data(body, body.employment_type) as Prisma.EmploymentProfileUncheckedCreateInput),
+            personId: body.person_id,
+            estateId: estate.id,
+            employmentType: body.employment_type,
+            profileNumber: number,
+            engagementType: body.engagement_type,
+            joiningDate: businessDateToDb(body.joining_date),
+            status: 'active',
+            createdBy: actorId,
+          },
+          select: { id: true },
+        })
+        .catch(onUnique(number));
+      const out = await outOf(await orNotFound(tx, id));
+      await auditCreate(tx, PROFILE_AUDIT, id, out, { actorId });
+      await recordStatusChange(tx, PROFILE_AUDIT.type, id, null, 'active', { actorId });
+      return out;
     },
 
     async update(

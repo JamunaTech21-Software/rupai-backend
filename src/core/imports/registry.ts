@@ -1,3 +1,4 @@
+import type { Database } from '../db/prisma.js';
 import type { Tx } from '../db/transaction.js';
 
 /**
@@ -30,6 +31,15 @@ export type RowCheck<V> =
   | { readonly ok: true; readonly value: V; readonly key?: string }
   | { readonly ok: false; readonly errors: readonly RowError[] };
 
+export interface CommitRequest {
+  readonly db: Database;
+  readonly batchId: bigint;
+  readonly uploadedBy: bigint;
+  readonly actorId: bigint;
+  /** Whether the committer holds a permission. */
+  holds(permission: string): Promise<boolean>;
+}
+
 export interface ImportType<V = unknown> {
   /** module.thing, e.g. lookup.amenity. Appears in paths: /imports/templates/{key}. */
   readonly key: string;
@@ -39,6 +49,17 @@ export interface ImportType<V = unknown> {
   readonly columns: readonly ImportColumn[];
   /** Rows per file. */
   readonly maxRows: number;
+  /**
+   * The rows belong to estates (P2.06): validation runs with the UPLOADER's data scope and commit with the
+   * COMMITTER's, so a row naming an estate they cannot change is refused, as it would be on a form.
+   * Without it the jobs run unscoped (organisation-level lists).
+   */
+  readonly actsAsUser?: boolean;
+  /**
+   * Called when someone asks to commit a validated batch, before anything is saved: throw an AppError to
+   * refuse (P2.06: salaries in a file are approved by whoever commits it, who must not have uploaded it).
+   */
+  authoriseCommit?(c: CommitRequest): Promise<void>;
   /**
    * Checks one row (text per column; an empty cell is ""). Reads the database but never writes.
    * `key`, when given, must be unique within the file: a second row with the same key is refused.

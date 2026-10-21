@@ -101,7 +101,8 @@ export const MODULES: readonly CatalogueModule[] = [
     // Separating an employment is approved (P4 §8.3: POST /employment-profiles/{id}/separate).
     ['employment', 'Employment profiles', ['approve']],
     ['team', 'Teams'],
-    ['contractor', 'Contractors'],
+    // A contractor contract is approved through its workflow (P7 §9.5).
+    ['contractor', 'Contractors', ['approve']],
   ]),
   ...m('Attendance', 'operational', [
     ['attendance', 'Attendance'],

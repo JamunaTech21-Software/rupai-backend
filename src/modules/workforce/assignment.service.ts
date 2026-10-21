@@ -759,49 +759,52 @@ export function assignmentService({ db, accessLog, timezone }: AssignmentService
     },
 
     async create(profileId: bigint, body: z.infer<typeof CreateAssignmentBody>, actorId: bigint) {
-      return withTransaction(db, async (tx) => {
-        const p = await profileOrNotFound(tx, profileId);
-        await canWrite(p.estateId, null, 'create');
-        notSeparated(p);
-        const previous = await latestApproved(tx, profileId);
-        const blank: Terms = {
-          departmentId: null,
-          designationId: null,
-          divisionId: null,
-          sectionId: null,
-          activityTypeId: null,
-          costCentreId: null,
-          defaultShiftId: null,
-          wageBasis: p.employmentType === 'worker' ? 'daily' : 'monthly',
-          baseRate: null,
-          effectiveFrom: body.effective_from,
-          changeReason: previous ? 'other' : 'joining',
-          remarks: null,
-          payLines: [],
-        };
-        // A later assignment carries over what it does not change; its reason and remarks are its own.
-        const base = previous ? { ...termsOf(previous), changeReason: 'other', remarks: null } : blank;
-        const terms = await withDivision(tx, merge(base, sectionLeads(body)));
-        await validate(tx, terms, p, previous);
-        const { id } = await tx.employmentAssignment
-          .create({
-            data: {
-              ...columns(terms),
-              employmentProfileId: profileId,
-              estateId: p.estateId,
-              state: 'draft',
-              stateChangedAt: new Date(),
-              createdBy: actorId,
-            },
-            select: { id: true },
-          })
-          .catch(onUnique);
-        await replaceLines(tx, id, terms.payLines);
-        const out = await outOf(tx, await orNotFound(tx, id));
-        await auditCreate(tx, ASSIGNMENT_AUDIT, id, out, { actorId });
-        await recordStatusChange(tx, ASSIGNMENT_AUDIT.type, id, null, 'draft', { actorId });
-        return out;
-      });
+      return withTransaction(db, (tx) => this.createIn(tx, profileId, body, actorId));
+    },
+
+    /** The same inside the caller's transaction (the workforce import, P2.06). */
+    async createIn(tx: Tx, profileId: bigint, body: z.infer<typeof CreateAssignmentBody>, actorId: bigint) {
+      const p = await profileOrNotFound(tx, profileId);
+      await canWrite(p.estateId, null, 'create');
+      notSeparated(p);
+      const previous = await latestApproved(tx, profileId);
+      const blank: Terms = {
+        departmentId: null,
+        designationId: null,
+        divisionId: null,
+        sectionId: null,
+        activityTypeId: null,
+        costCentreId: null,
+        defaultShiftId: null,
+        wageBasis: p.employmentType === 'worker' ? 'daily' : 'monthly',
+        baseRate: null,
+        effectiveFrom: body.effective_from,
+        changeReason: previous ? 'other' : 'joining',
+        remarks: null,
+        payLines: [],
+      };
+      // A later assignment carries over what it does not change; its reason and remarks are its own.
+      const base = previous ? { ...termsOf(previous), changeReason: 'other', remarks: null } : blank;
+      const terms = await withDivision(tx, merge(base, sectionLeads(body)));
+      await validate(tx, terms, p, previous);
+      const { id } = await tx.employmentAssignment
+        .create({
+          data: {
+            ...columns(terms),
+            employmentProfileId: profileId,
+            estateId: p.estateId,
+            state: 'draft',
+            stateChangedAt: new Date(),
+            createdBy: actorId,
+          },
+          select: { id: true },
+        })
+        .catch(onUnique);
+      await replaceLines(tx, id, terms.payLines);
+      const out = await outOf(tx, await orNotFound(tx, id));
+      await auditCreate(tx, ASSIGNMENT_AUDIT, id, out, { actorId });
+      await recordStatusChange(tx, ASSIGNMENT_AUDIT.type, id, null, 'draft', { actorId });
+      return out;
     },
 
     async update(id: bigint, expectedVersion: number, changes: Body, actorId: bigint) {
@@ -845,42 +848,55 @@ export function assignmentService({ db, accessLog, timezone }: AssignmentService
      * effect at once. Either way the result says where it stands (state, approval_id).
      */
     async submit(id: bigint, expectedVersion: number, actorId: bigint) {
-      return withTransaction(db, async (tx) => {
-        await lockRowsForUpdate(tx, 'employment_assignment', { id });
-        const a = await orNotFound(tx, id);
-        await canWrite(a.estateId, id, 'submit');
-        if (a.version !== expectedVersion) versionConflict(a, await outOf(tx, a));
-        draftOnly(a, 'submitted');
-        const p = await profileOrNotFound(tx, a.employmentProfileId);
-        notSeparated(p);
-        const terms = termsOf(a);
-        const previous = await latestApproved(tx, p.id);
-        await validate(tx, terms, p, previous);
-        const wage = isWageChange(terms, previous ? termsOf(previous) : null);
-        const t = today();
-        const now = new Date();
-        await tx.employmentAssignment.update({
-          where: { id },
-          data: {
-            state: 'submitted',
-            stateChangedAt: now,
-            submittedAt: now,
-            submittedBy: actorId,
-            isWageChange: wage,
-            isRetrospective: terms.effectiveFrom < t,
-            version: { increment: 1 },
-            updatedAt: now,
-            updatedBy: actorId,
-          },
-        });
-        await recordStatusChange(tx, ASSIGNMENT_AUDIT.type, id, 'draft', 'submitted', { actorId });
-        if (wage) {
-          await submitForApproval(tx, { timezone }, ASSIGNMENT_DOCUMENT, id, { actorId, date: t });
-        } else {
-          await putIntoEffect(tx, id, actorId, null);
-        }
-        return outOf(tx, await orNotFound(tx, id));
+      return withTransaction(db, (tx) => this.submitIn(tx, id, expectedVersion, actorId));
+    },
+
+    /**
+     * The same inside the caller's transaction. `wageApprovedBy`: the workforce import's commit, where
+     * whoever commits a file with salaries approves them (D-2.06-3): the wage change takes effect, approved
+     * by them, instead of waiting in the queue.
+     */
+    async submitIn(
+      tx: Tx,
+      id: bigint,
+      expectedVersion: number | null,
+      actorId: bigint,
+      opts: { readonly wageApprovedBy?: bigint } = {},
+    ) {
+      await lockRowsForUpdate(tx, 'employment_assignment', { id });
+      const a = await orNotFound(tx, id);
+      await canWrite(a.estateId, id, 'submit');
+      if (expectedVersion !== null && a.version !== expectedVersion) versionConflict(a, await outOf(tx, a));
+      draftOnly(a, 'submitted');
+      const p = await profileOrNotFound(tx, a.employmentProfileId);
+      notSeparated(p);
+      const terms = termsOf(a);
+      const previous = await latestApproved(tx, p.id);
+      await validate(tx, terms, p, previous);
+      const wage = isWageChange(terms, previous ? termsOf(previous) : null);
+      const t = today();
+      const now = new Date();
+      await tx.employmentAssignment.update({
+        where: { id },
+        data: {
+          state: 'submitted',
+          stateChangedAt: now,
+          submittedAt: now,
+          submittedBy: actorId,
+          isWageChange: wage,
+          isRetrospective: terms.effectiveFrom < t,
+          version: { increment: 1 },
+          updatedAt: now,
+          updatedBy: actorId,
+        },
       });
+      await recordStatusChange(tx, ASSIGNMENT_AUDIT.type, id, 'draft', 'submitted', { actorId });
+      if (wage && opts.wageApprovedBy === undefined) {
+        await submitForApproval(tx, { timezone }, ASSIGNMENT_DOCUMENT, id, { actorId, date: t });
+      } else {
+        await putIntoEffect(tx, id, opts.wageApprovedBy ?? actorId, null);
+      }
+      return outOf(tx, await orNotFound(tx, id));
     },
   };
 }
