@@ -62,6 +62,7 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['country', 'view'],
   ['person', 'view'],
   ['employment', 'view'],
+  ['team', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -90,6 +91,7 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     'country',
     'person',
     'employment',
+    'team',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
   ['accounting_period', 'view'],
   ['accounting_period', 'edit'],
@@ -103,6 +105,7 @@ const DEMO_APPROVER_PERMISSIONS = [
   ['employment', 'view'],
   ['employment', 'approve'],
   ['person', 'view'],
+  ['team', 'view'],
   ['workflow', 'view'],
   ['workflow', 'approve'],
   ['purchase_order', 'view'],
@@ -250,6 +253,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoProfilesSeeder,
     demoShapesSeeder,
     demoAssignmentsSeeder,
+    demoTeamsSeeder,
   ];
 }
 
@@ -749,6 +753,93 @@ const demoAssignmentsSeeder: Seeder = {
         } else {
           await create(p.joiningDate, null, 'joining', item.section);
         }
+      }
+      return { inserted, updated: 0 };
+    }),
+};
+
+/**
+ * P2.04: two teams on DEMO-A under the field supervisor: a plucking gang in the first section (WRK-A-0001
+ * its leader, WRK-A-0003) and a field team (WRK-A-0002, and WRK-A-0004, who moved over from the plucking
+ * gang on 2025-07-01: the members of a date in the first half of 2025 differ). Added once.
+ */
+const demoTeamsSeeder: Seeder = {
+  name: 'demo: P2.04 worker teams and memberships on DEMO-A',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const estate = await tx.estate.findFirst({ where: { code: 'DEMO-A' }, select: { id: true } });
+      if (!estate) return { inserted, updated: 0 };
+      if ((await tx.workerTeam.count({ where: { estateId: estate.id } })) > 0)
+        return { inserted, updated: 0 };
+      const profile = async (number: string) =>
+        (
+          await tx.employmentProfile.findFirst({
+            where: { estateId: estate.id, profileNumber: number, status: { not: 'separated' } },
+            select: { id: true },
+          })
+        )?.id ?? null;
+      const sections = await tx.section.findMany({
+        where: { division: { estateId: estate.id } },
+        select: { id: true, divisionId: true },
+        orderBy: { id: 'asc' },
+      });
+      const supervisor = await profile('EMP-A-0001');
+      const date = (d: string) => businessDateToDb(d as BusinessDate);
+      const make = async (
+        code: string,
+        name: string,
+        teamType: string,
+        s: (typeof sections)[number] | undefined,
+      ) => {
+        const t = await tx.workerTeam.create({
+          data: {
+            estateId: estate.id,
+            code,
+            name,
+            teamType,
+            supervisorProfileId: supervisor,
+            divisionId: s?.divisionId ?? null,
+            sectionId: s?.id ?? null,
+            createdBy: by,
+          },
+        });
+        await tx.statusHistory.create({
+          data: {
+            recordType: 'worker_team',
+            recordId: t.id.toString(),
+            toState: 'active',
+            changedBy: by,
+            comment: 'Demo seed',
+          },
+        });
+        inserted += 1;
+        return t.id;
+      };
+      const gang = await make('PG-NORTH', 'Plucking Gang North', 'plucking', sections[0]);
+      const field = await make('FT-SOUTH', 'Field Team South', 'field', sections[2] ?? sections[1]);
+      const plan = [
+        [gang, 'WRK-A-0001', '2020-01-01', null, 'leader'],
+        [gang, 'WRK-A-0003', '2026-10-01', null, 'member'],
+        [gang, 'WRK-A-0004', '2021-01-10', '2025-06-30', 'member'],
+        [field, 'WRK-A-0004', '2025-07-01', null, 'member'],
+        [field, 'WRK-A-0002', '2025-01-01', null, 'leader'],
+      ] as const;
+      for (const [teamId, number, from, to, roleInTeam] of plan) {
+        const p = await profile(number);
+        if (p === null) continue;
+        await tx.teamMember.create({
+          data: {
+            workerTeamId: teamId,
+            employmentProfileId: p,
+            effectiveFrom: date(from),
+            effectiveTo: to === null ? null : date(to),
+            roleInTeam,
+            createdBy: by,
+          },
+        });
+        inserted += 1;
       }
       return { inserted, updated: 0 };
     }),

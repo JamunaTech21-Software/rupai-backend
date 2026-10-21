@@ -201,6 +201,10 @@ model User {
   submittedAssignments        EmploymentAssignment[] @relation("AssignmentSubmittedBy")
   approvedAssignments         EmploymentAssignment[] @relation("AssignmentApprovedBy")
   rejectedAssignments         EmploymentAssignment[] @relation("AssignmentRejectedBy")
+  createdWorkerTeams          WorkerTeam[]           @relation("WorkerTeamCreatedBy")
+  updatedWorkerTeams          WorkerTeam[]           @relation("WorkerTeamUpdatedBy")
+  createdTeamMembers          TeamMember[]           @relation("TeamMemberCreatedBy")
+  updatedTeamMembers          TeamMember[]           @relation("TeamMemberUpdatedBy")
   updatedPersons              Person[]               @relation("PersonUpdatedBy")
   createdPersonDependents     PersonDependent[]      @relation("PersonDependentCreatedBy")
   updatedPersonDependents     PersonDependent[]      @relation("PersonDependentUpdatedBy")
@@ -682,6 +686,7 @@ model Estate {
   persons      Person[]
   profiles     EmploymentProfile[]    @relation("ProfileEstate")
   assignments  EmploymentAssignment[]
+  workerTeams  WorkerTeam[]
   manager      EmploymentProfile?     @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
   shifts       Shift[]                @relation("ShiftEstate")
 
@@ -721,6 +726,7 @@ model Division {
   updater     User?                  @relation("DivisionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_updated_by")
   sections    Section[]
   assignments EmploymentAssignment[]
+  workerTeams WorkerTeam[]
   manager     EmploymentProfile?     @relation("DivisionManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_division_manager")
 
   @@unique([estateId, code], map: "ux_division_code")
@@ -763,6 +769,7 @@ model Section {
   updater     User?                  @relation("SectionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_section_updated_by")
   fields      Field[]
   assignments EmploymentAssignment[]
+  workerTeams WorkerTeam[]
 
   @@unique([divisionId, code], map: "ux_section_code")
   @@index([status], map: "ix_section_status")
@@ -2913,6 +2920,8 @@ model EmploymentProfile {
   supervisor         EmploymentProfile?     @relation("ProfileSupervisor", fields: [supervisorProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_supervisor")
   reports            EmploymentProfile[]    @relation("ProfileSupervisor")
   assignments        EmploymentAssignment[]
+  teamMemberships    TeamMember[]
+  supervisedTeams    WorkerTeam[]           @relation("TeamSupervisor")
   users              User[]                 @relation("UserProfile")
   managedEstates     Estate[]               @relation("EstateManager")
   managedDivisions   Division[]             @relation("DivisionManager")
@@ -3068,4 +3077,77 @@ model AssignmentPayLine {
 
   @@unique([assignmentId, component], map: "ux_pay_line_component")
   @@map("assignment_pay_line")
+}
+
+/// P2.04 (Spec P3 §8.4): a team of workers at an estate (a plucking gang under its sardar, a field or
+/// factory team). Membership is effective-dated (team_member), so a distribution dated in March resolves
+/// March's members.
+model WorkerTeam {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  estateId            BigInt    @map("estate_id") @db.UnsignedBigInt
+  code                String    @db.VarChar(20)
+  name                String    @db.VarChar(150)
+  /// plucking | field | factory | general
+  teamType            String    @map("team_type") @db.VarChar(30)
+  /// The sardar or supervisor accountable for the team: a profile of the same estate.
+  supervisorProfileId BigInt?   @map("supervisor_profile_id") @db.UnsignedBigInt
+  divisionId          BigInt?   @map("division_id") @db.UnsignedBigInt
+  sectionId           BigInt?   @map("section_id") @db.UnsignedBigInt
+  description         String?   @db.VarChar(500)
+  /// active | inactive
+  status              String    @default("active") @db.VarChar(30)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy           BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  estate     Estate             @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_team_estate")
+  supervisor EmploymentProfile? @relation("TeamSupervisor", fields: [supervisorProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_team_supervisor")
+  division   Division?          @relation(fields: [divisionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_team_division")
+  section    Section?           @relation(fields: [sectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_team_section")
+  members    TeamMember[]
+  creator    User               @relation("WorkerTeamCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_team_created_by")
+  updater    User?              @relation("WorkerTeamUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_team_updated_by")
+
+  @@unique([estateId, code], map: "ux_team_code")
+  @@index([supervisorProfileId], map: "ix_team_supervisor")
+  @@index([divisionId], map: "ix_team_division")
+  @@index([sectionId], map: "ix_team_section")
+  @@index([teamType], map: "ix_team_type")
+  @@index([status], map: "ix_team_status")
+  @@index([createdBy], map: "ix_team_created_by")
+  @@index([updatedBy], map: "ix_team_updated_by")
+  @@map("worker_team")
+}
+
+/// P2.04 (Spec P3 §8.5): who is in a team, from when to when. NULL effective_to: a current member. A worker
+/// is in one team at a time (checked by the service under a lock on the profile: MySQL has no exclusion
+/// constraint).
+model TeamMember {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  workerTeamId        BigInt    @map("worker_team_id") @db.UnsignedBigInt
+  employmentProfileId BigInt    @map("employment_profile_id") @db.UnsignedBigInt
+  effectiveFrom       DateTime  @map("effective_from") @db.Date
+  effectiveTo         DateTime? @map("effective_to") @db.Date
+  /// member | leader | assistant
+  roleInTeam          String    @default("member") @map("role_in_team") @db.VarChar(30)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy           BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  team    WorkerTeam        @relation(fields: [workerTeamId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_team_member_team")
+  profile EmploymentProfile @relation(fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_team_member_profile")
+  creator User              @relation("TeamMemberCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_team_member_created_by")
+  updater User?             @relation("TeamMemberUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_team_member_updated_by")
+
+  @@unique([workerTeamId, employmentProfileId, effectiveFrom], map: "ux_team_member")
+  @@index([employmentProfileId, effectiveFrom], map: "ix_team_member_profile")
+  @@index([workerTeamId, effectiveFrom], map: "ix_team_member_team")
+  @@index([effectiveTo], map: "ix_team_member_to")
+  @@index([createdBy], map: "ix_team_member_created_by")
+  @@index([updatedBy], map: "ix_team_member_updated_by")
+  @@map("team_member")
 }

@@ -31,6 +31,7 @@ import {
 } from '../organisation/common.js';
 import { currentAssignmentInclude, currentAssignmentOut, inForce } from './assignment.service.js';
 import { ageOn } from './person.service.js';
+import { endMembershipsOnSeparation } from './team.service.js';
 import type {
   CreateProfileBody,
   LinkUserBody,
@@ -422,6 +423,7 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
     operation: string,
     change: (p: ProfileRow) => Prisma.EmploymentProfileUncheckedUpdateInput,
     reason: string | null,
+    effects?: (tx: Tx) => Promise<void>,
   ) {
     return withTransaction(db, async (tx) => {
       const before = await orNotFound(tx, id);
@@ -429,6 +431,7 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
       if (before.version !== expectedVersion) versionConflict(before, await outOf(before));
       readOnly(before);
       await tx.employmentProfile.update({ where: { id }, data: { ...change(before), ...stamp(actorId) } });
+      await effects?.(tx);
       const after = await orNotFound(tx, id);
       const [b, a] = [await outOf(before), await outOf(after)];
       await auditUpdate(tx, PROFILE_AUDIT, id, b, a, { actorId, reason });
@@ -587,6 +590,8 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
           separationReason: b.reason,
         }),
         b.reason,
+        // A separated worker leaves their team on the separation date (P2.04).
+        (tx) => endMembershipsOnSeparation(tx, id, b.separation_date, actorId),
       );
     },
 

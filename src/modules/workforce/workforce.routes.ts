@@ -25,6 +25,22 @@ import {
 import { assignmentService } from './assignment.service.js';
 import { setWorkforceScopeTimezone } from './person.scope.js';
 import {
+  AddMembersBody,
+  CreateTeamBody,
+  EndMemberBody,
+  MemberOut,
+  MemberParams,
+  MembersQuery,
+  PatchMemberBody,
+  PatchTeamBody,
+  ReplaceTeamBody,
+  TEAM_STATUSES,
+  TEAM_TYPES,
+  TeamOut,
+  TeamParams,
+} from './team.schema.js';
+import { teamService } from './team.service.js';
+import {
   CreateDependentBody,
   CreatePersonBody,
   DependentOut,
@@ -58,8 +74,8 @@ import {
 import { profileService } from './profile.service.js';
 
 /**
- * HTTP surface of the workforce module: persons (P2.01), employment profiles (P2.02) and employment
- * assignments (P2.03); Spec P4 §8.3, §6.5.
+ * HTTP surface of the workforce module: persons (P2.01), employment profiles (P2.02), employment
+ * assignments (P2.03) and worker teams (P2.04); Spec P4 §8.3, §6.5.
  */
 
 export interface WorkforceDeps {
@@ -547,6 +563,218 @@ function profilesModule({ db, platform, authz, accessLog, config }: WorkforceDep
     },
   });
 
+  const teams = teamService({ db, accessLog, timezone: config.timezone });
+  m.route({
+    method: 'get',
+    path: '/:id/teams',
+    summary: 'A worker’s team memberships',
+    description: 'Every team the worker was, is or will be in, latest first; is_current marks today’s.',
+    auth: { permission: 'team.view' },
+    ...byId,
+    success: { status: 200, description: 'The memberships', schema: MemberOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const items = await teams.ofProfile(params.id);
+      sendPage(req, res, items, {
+        pagination: { page: 1, perPage: Math.max(items.length, 1) },
+        total: items.length,
+      });
+    },
+  });
+
+  return m.build();
+}
+
+function teamsModule({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule {
+  const svc = teamService({ db, accessLog, timezone: config.timezone });
+  const m = defineModule({
+    name: 'worker-teams',
+    path: '/worker-teams',
+    tag: 'Workforce',
+    platform,
+    authz,
+    accessLog,
+  });
+  const byMember = { params: MemberParams };
+
+  m.route({
+    method: 'get',
+    path: '/',
+    summary: 'List worker teams',
+    description:
+      'Teams in your scope, with today’s member count and leader: filter by estate, division, section, type, ' +
+      'supervisor, status; filter[name] / filter[code] like.',
+    auth: { permission: 'team.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        division_id: { type: 'id', ops: ['eq', 'in'] },
+        section_id: { type: 'id', ops: ['eq', 'in'] },
+        supervisor_profile_id: { type: 'id', ops: ['eq'] },
+        team_type: { type: { enum: TEAM_TYPES }, ops: ['eq', 'in'] },
+        status: { type: { enum: TEAM_STATUSES } },
+        code: { type: 'string', ops: ['eq', 'like'] },
+        name: { type: 'string', ops: ['like'] },
+      },
+      sorts: ['code', 'name'],
+      defaultSort: ['code'],
+      maxPageSize: 500,
+    },
+    success: { status: 200, description: 'A page of teams', schema: TeamOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.list(q);
+      sendPage(req, res, items, {
+        pagination: q.page ?? { page: 1, perPage: 25 },
+        total,
+        appliedScope: await appliedScope(),
+      });
+    },
+  });
+
+  m.route({
+    method: 'post',
+    path: '/',
+    summary: 'Create a worker team',
+    description:
+      'A plucking, field, factory or general team of an estate: code unique within the estate, an optional ' +
+      'sardar / supervisor (a profile of the estate), division and section (the division follows the section).',
+    auth: { permission: 'team.create' },
+    body: CreateTeamBody,
+    success: { status: 201, description: 'Created', schema: TeamOut },
+    errors: ['DUPLICATE_KEY', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateTeamBody });
+      const t = await svc.create(body, currentActorId());
+      sendCreated(res, t, `/api/v1/worker-teams/${t.id}`, t.version);
+    },
+  });
+
+  masterItemRoutes(m, {
+    module: 'team',
+    label: 'team',
+    out: TeamOut,
+    replace: ReplaceTeamBody,
+    patch: PatchTeamBody,
+    svc,
+    updateErrors: ['DUPLICATE_KEY'],
+    deleteHelp: 'Only a team that never had a member. Otherwise end the memberships and deactivate it.',
+  });
+
+  m.route({
+    method: 'get',
+    path: '/:id/members',
+    summary: 'A team’s members',
+    description:
+      'The members on as_of (today when omitted), leader first: what a team distribution of that date uses. ' +
+      'history=true lists every membership, past and future, latest first.',
+    auth: { permission: 'team.view' },
+    params: TeamParams,
+    query: MembersQuery,
+    success: { status: 200, description: 'The members', schema: MemberOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { params, query } = getValidated(res, { params: TeamParams, query: MembersQuery });
+      const items = await svc.members(params.id, query.as_of, query.history === 'true');
+      sendPage(req, res, items, {
+        pagination: { page: 1, perPage: Math.max(items.length, 1) },
+        total: items.length,
+      });
+    },
+  });
+
+  m.route({
+    method: 'post',
+    path: '/:id/members',
+    summary: 'Add members',
+    description:
+      'Workers join from effective_from, as member, leader or assistant (one leader at a time). Each must be a ' +
+      'worker profile of the team’s estate, not separated, joined by then. A worker is in one team at a time: ' +
+      'one still in another team is refused (422 DUPLICATE_KEY, naming it) unless move_from_other_team, which ' +
+      'ends that membership the day before. All or nothing.',
+    auth: { permission: 'team.edit' },
+    params: TeamParams,
+    body: AddMembersBody,
+    success: { status: 200, description: 'The memberships added', schema: MemberOut },
+    errors: ['DUPLICATE_KEY', 'INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { params: TeamParams, body: AddMembersBody });
+      const items = await svc.addMembers(params.id, body, currentActorId());
+      sendPage(req, res, items, {
+        pagination: { page: 1, perPage: Math.max(items.length, 1) },
+        total: items.length,
+      });
+    },
+  });
+
+  m.route({
+    method: 'post',
+    path: '/:id/members/:memberId/end',
+    summary: 'End a membership',
+    description:
+      'effective_to is the worker’s last day in the team. The membership itself stays in the history.',
+    auth: { permission: 'team.edit' },
+    ...byMember,
+    body: EndMemberBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Ended', schema: MemberOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byMember, body: EndMemberBody });
+      const m2 = await svc.endMember(
+        params.id,
+        params.memberId,
+        requireIfMatch(req),
+        body.effective_to,
+        currentActorId(),
+      );
+      sendOne(res, m2, { version: m2.version });
+    },
+  });
+
+  m.route({
+    method: 'patch',
+    path: '/:id/members/:memberId',
+    summary: 'Change a member’s role',
+    description: 'member, leader or assistant: one leader at a time over the membership’s dates.',
+    auth: { permission: 'team.edit' },
+    ...byMember,
+    body: PatchMemberBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Changed', schema: MemberOut },
+    errors: ['SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byMember, body: PatchMemberBody });
+      const m2 = await svc.setRole(
+        params.id,
+        params.memberId,
+        requireIfMatch(req),
+        body.role_in_team,
+        currentActorId(),
+      );
+      sendOne(res, m2, { version: m2.version });
+    },
+  });
+
+  m.route({
+    method: 'delete',
+    path: '/:id/members/:memberId',
+    summary: 'Delete a membership entered in error',
+    description: 'A worker who left is ended (POST …/end), not deleted.',
+    auth: { permission: 'team.edit' },
+    ...byMember,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byMember);
+      await svc.removeMember(params.id, params.memberId, currentActorId());
+      sendNoContent(res);
+    },
+  });
+
   return m.build();
 }
 
@@ -688,5 +916,5 @@ function assignmentsModule({ db, platform, authz, accessLog, config }: Workforce
 
 export function workforceModules(deps: WorkforceDeps): ApiModule[] {
   setWorkforceScopeTimezone(deps.config.timezone);
-  return [personsModule(deps), profilesModule(deps), assignmentsModule(deps)];
+  return [personsModule(deps), profilesModule(deps), assignmentsModule(deps), teamsModule(deps)];
 }
