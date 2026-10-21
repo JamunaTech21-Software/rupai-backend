@@ -135,7 +135,7 @@ describe('seed data (P3 Table 31.1)', () => {
     expect(await codes('/tea-grades')).toEqual(
       expect.arrayContaining(['BOP', 'BOPF', 'BP', 'PF', 'PD', 'DUST', 'OF', 'OP', 'FOP']),
     );
-    expect(await codes('/lookups/activity_type')).toHaveLength(9);
+    expect(await codes('/lookups/activity_type')).toHaveLength(12);
     expect(await codes('/lookups/land_type')).toHaveLength(7);
     expect(await codes('/lookups/adjustment_reason')).toContain('OPENING_BALANCE');
     expect((await api.get('/lookups/country?per_page=1')).body.meta.pagination.total).toBe(249);

@@ -1,8 +1,12 @@
 import type { Logger } from 'pino';
 import { z } from 'zod';
 
-import { resolveApprovers, type DocumentPlace } from '../../core/approval/approvers.js';
-import type { ApproverRule } from '../../core/approval/definition.js';
+import {
+  placeOfRequest,
+  resolveApprovers,
+  stepRule,
+  type DocumentPlace,
+} from '../../core/approval/approvers.js';
 import {
   approvableDocument,
   NEVER_SELF_APPROVE,
@@ -49,14 +53,7 @@ export function recheckUnresolvedJob(db: Database) {
           const step = r.currentStep;
           if (!document || !step) continue;
           const nobody =
-            (
-              await resolveApprovers(
-                db,
-                document,
-                { approverRule: step.approverRule as ApproverRule, roleId: step.roleId, userId: step.userId },
-                { estateId: r.estateId, factoryId: r.factoryId, warehouseId: r.warehouseId },
-              )
-            ).users.length === 0;
+            (await resolveApprovers(db, document, stepRule(step), placeOfRequest(r))).users.length === 0;
           checked += 1;
           if (nobody) unresolved += 1;
           if (nobody !== r.isUnresolved) {
@@ -87,6 +84,7 @@ const stepSelect = {
   approverRule: true,
   roleId: true,
   userId: true,
+  reportingLevel: true,
   allowSelfApproval: true,
 } as const;
 
@@ -128,21 +126,10 @@ export function approvalNotifyJob(db: Database, timezone: string) {
           take: 200,
         });
       type Row = Awaited<ReturnType<typeof page>>[number];
-      const placeOf = (r: Row): DocumentPlace => ({
-        estateId: r.estateId,
-        factoryId: r.factoryId,
-        warehouseId: r.warehouseId,
-      });
+      const placeOf = (r: Row): DocumentPlace => placeOfRequest(r);
       const resolve = async (document: ApprovableDocument, step: Row['currentStep'], r: Row) =>
         step
-          ? (
-              await resolveApprovers(
-                db,
-                document,
-                { approverRule: step.approverRule as ApproverRule, roleId: step.roleId, userId: step.userId },
-                placeOf(r),
-              )
-            ).users.map((u) => BigInt(u.id))
+          ? (await resolveApprovers(db, document, stepRule(step), placeOf(r))).users.map((u) => BigInt(u.id))
           : [];
 
       /** Who may act on the step now: P7 §4, §11.1, §12.2, as the queue decides it. */

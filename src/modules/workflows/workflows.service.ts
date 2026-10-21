@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 
-import { resolveApprovers } from '../../core/approval/approvers.js';
+import { resolveApprovers, stepRule } from '../../core/approval/approvers.js';
 import {
   CLASS_OPERATORS,
   fieldOf,
@@ -656,12 +656,7 @@ export function workflowsService({ db, accessLog, timezone }: WorkflowsDeps) {
       const out: z.infer<typeof PreviewOut>['steps'] = [];
       for (const [i, row] of steps.entries()) {
         const fires = path.includes(i);
-        const resolved = await resolveApprovers(
-          db,
-          document,
-          { approverRule: row.approverRule as ApproverRule, roleId: row.roleId, userId: row.userId },
-          place,
-        );
+        const resolved = await resolveApprovers(db, document, stepRule(row), place);
         out.push({
           step_number: row.stepNumber,
           name: row.name,

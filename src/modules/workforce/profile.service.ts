@@ -29,6 +29,7 @@ import {
   versionConflict,
   writable,
 } from '../organisation/common.js';
+import { currentAssignmentInclude, currentAssignmentOut, inForce } from './assignment.service.js';
 import { ageOn } from './person.service.js';
 import type {
   CreateProfileBody,
@@ -77,10 +78,11 @@ type ProfileRow = EmploymentProfile & {
   supervisor: { id: bigint; profileNumber: string; person: { fullName: string } } | null;
   users: { id: bigint; username: string }[];
   creator: { id: bigint; username: string };
+  assignments: Parameters<typeof currentAssignmentOut>[0];
 };
 
 const ref = { select: { id: true, code: true, name: true } } as const;
-export const profileInclude = {
+const baseInclude = {
   person: {
     select: {
       id: true,
@@ -101,6 +103,9 @@ export const profileInclude = {
   users: { select: { id: true, username: true }, orderBy: { id: 'asc' } },
   creator: { select: { id: true, username: true } },
 } as const satisfies Prisma.EmploymentProfileInclude;
+/** With the assignment in force on the date (the lists' Department, Designation, Section columns). */
+export const profileInclude = (today: BusinessDate) =>
+  ({ ...baseInclude, assignments: currentAssignmentInclude(today) }) as const;
 
 export const PROFILE_AUDIT: AuditedRecord = {
   type: 'employment_profile',
@@ -150,6 +155,15 @@ export const PROFILE_LIST_FIELDS: ListFieldMap = {
   job_grade_id: { field: 'jobGradeId', convert: (v) => BigInt(String(v)) },
   supervisor_profile_id: { field: 'supervisorProfileId', convert: (v) => BigInt(String(v)) },
 };
+
+/** List filters answered by the current assignment. */
+const ASSIGNED = {
+  department_id: 'departmentId',
+  designation_id: 'designationId',
+  division_id: 'divisionId',
+  section_id: 'sectionId',
+  activity_type_id: 'activityTypeId',
+} as const;
 
 const invalid = (field: string, message: string): ErrorDetail => ({
   field,
@@ -248,6 +262,7 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
       nominee_phone: p.nomineePhone,
       nominee_address: p.nomineeAddress,
       remarks: p.remarks,
+      current_assignment: currentAssignmentOut(p.assignments),
       status: p.status as ProfileOutT['status'],
       user: p.users[0] ? { id: p.users[0].id.toString(), username: p.users[0].username } : null,
       created_by: { id: p.creator.id.toString(), username: p.creator.username },
@@ -261,7 +276,7 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
   }
 
   async function orNotFound(tx: Database | Tx, id: bigint): Promise<ProfileRow> {
-    const p = await tx.employmentProfile.findUnique({ where: { id }, include: profileInclude });
+    const p = await tx.employmentProfile.findUnique({ where: { id }, include: profileInclude(today()) });
     if (!p) throw Errors.notFound('Employment profile not found.');
     return p;
   }
@@ -332,6 +347,17 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
     ] as const) {
       if (v !== null && joining !== null && v < joining)
         problems.push(invalid(field, 'Cannot be before the joining date.'));
+    }
+    // The first assignment starts on the joining date (P2.03): once one is approved, the date is fixed.
+    if (cur && b.joining_date !== undefined && b.joining_date !== businessDateFromDb(cur.joiningDate)) {
+      const placed = await tx.employmentAssignment.count({
+        where: { employmentProfileId: cur.id, state: { in: ['submitted', 'approved'] } },
+      });
+      if (placed > 0) {
+        problems.push(
+          invalid('joining_date', 'The profile has assignments from its joining date: it is fixed.'),
+        );
+      }
     }
     if (b.nominee_date_of_birth && b.nominee_date_of_birth > today()) {
       problems.push(invalid('nominee_date_of_birth', 'Cannot be in the future.'));
@@ -417,7 +443,13 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
     async list(q: ListQuery) {
       const search = q.filters.find((f) => f.field === 'q');
       const category = q.filters.find((f) => f.field === 'category_id');
-      const rest = { ...q, filters: q.filters.filter((f) => f.field !== 'q' && f.field !== 'category_id') };
+      const placed = q.filters.filter((f) => f.field in ASSIGNED);
+      const rest = {
+        ...q,
+        filters: q.filters.filter(
+          (f) => f.field !== 'q' && f.field !== 'category_id' && !(f.field in ASSIGNED),
+        ),
+      };
       const where = toWhere(rest, PROFILE_LIST_FIELDS) as Prisma.EmploymentProfileWhereInput;
       const and: Prisma.EmploymentProfileWhereInput[] = [where];
       if (search) {
@@ -431,17 +463,21 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
           ],
         });
       }
+      const idsOf = (v: unknown) => (Array.isArray(v) ? v : [v]).map((x) => BigInt(String(x)));
+      // Department, designation, division, section, job / task: of the assignment in force today.
+      for (const f of placed) {
+        const column = ASSIGNED[f.field as keyof typeof ASSIGNED];
+        and.push({ assignments: { some: { ...inForce(today()), [column]: { in: idsOf(f.value) } } } });
+      }
       if (category) {
-        const ids = (Array.isArray(category.value) ? category.value : [category.value]).map((v) =>
-          BigInt(String(v)),
-        );
+        const ids = idsOf(category.value);
         and.push({ OR: [{ workerCategoryId: { in: ids } }, { employeeCategoryId: { in: ids } }] });
       }
       const filter = { AND: and };
       const [rows, total] = await Promise.all([
         db.employmentProfile.findMany({
           where: filter,
-          include: profileInclude,
+          include: profileInclude(today()),
           orderBy: [...toOrderBy(q.sort, PROFILE_LIST_FIELDS), { id: 'asc' }],
           ...toPaging(q),
         }),
@@ -661,7 +697,7 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
       }
       const rows = await db.employmentProfile.findMany({
         where: { personId },
-        include: profileInclude,
+        include: profileInclude(today()),
         orderBy: [{ joiningDate: 'desc' }, { id: 'desc' }],
       });
       const pics = await photos([personId]);
@@ -722,6 +758,7 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
           workerCategory: ref,
           employeeCategory: ref,
           person: { select: { fullName: true, gender: true, dateOfBirth: true } },
+          assignments: { where: inForce(t), select: { department: ref }, take: 1 },
         },
       });
       const current = rows.filter((r) => r.status !== 'separated');
@@ -792,6 +829,10 @@ export function profileService({ db, accessLog, authz, timezone }: ProfileServic
         by_category: bucket(current, (r) => {
           const c = r.employmentType === 'worker' ? r.workerCategory : r.employeeCategory;
           return c ? [c.code, c.name] : ['none', 'Not set'];
+        }),
+        by_department: bucket(current, (r) => {
+          const dep = r.assignments[0]?.department;
+          return dep ? [dep.code, dep.name] : ['none', 'Not set'];
         }),
         by_engagement_type: bucket(current, (r) => [r.engagementType, r.engagementType]),
         by_gender: bucket(current, (r) => [r.person.gender ?? 'unknown', r.person.gender ?? 'Not set']),
