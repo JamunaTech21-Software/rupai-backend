@@ -13,6 +13,7 @@ import { businessDateToDb, todayIn } from '../../core/time/dates.js';
  *                          itself (self: everyone sees and files their own leave, P2.07).
  *   benefit_entitlement / benefit_issue  their estate, and the profile itself (self); welfare_case its
  *                          estate (P2.08).
+ *   training_program       its estate; training_participant as its programme, and the profile itself (P2.09).
  *   employment_profile     an estate grant sees the profiles of that estate; a division or section grant
  *                          the profiles whose CURRENT assignment is there (approved, in force today, in
  *                          the organisation's timezone); everyone sees their own (self).
@@ -43,11 +44,17 @@ const assignedTo = (where: Record<string, unknown>) => {
   };
 };
 
-SCOPED_MODELS.register('BenefitEntitlement', {
-  estate: byColumn('estateId'),
-  self: byColumn('employmentProfileId'),
-  createsCheckedBy: 'service',
-})
+SCOPED_MODELS.register('TrainingProgram', { estate: byColumn('estateId'), createsCheckedBy: 'service' })
+  .register('TrainingParticipant', {
+    estate: (ids) => ({ program: { estateId: inIds(ids) } }),
+    self: byColumn('employmentProfileId'),
+    createsCheckedBy: 'service',
+  })
+  .register('BenefitEntitlement', {
+    estate: byColumn('estateId'),
+    self: byColumn('employmentProfileId'),
+    createsCheckedBy: 'service',
+  })
   .register('BenefitIssue', {
     estate: byColumn('estateId'),
     self: (ids) => ({ entitlement: { employmentProfileId: inIds(ids) } }),

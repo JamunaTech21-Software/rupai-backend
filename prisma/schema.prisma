@@ -242,6 +242,13 @@ model User {
   submittedWelfareCases        WelfareCase[]          @relation("WelfareCaseSubmittedBy")
   approvedWelfareCases         WelfareCase[]          @relation("WelfareCaseApprovedBy")
   rejectedWelfareCases         WelfareCase[]          @relation("WelfareCaseRejectedBy")
+  createdTrainingPrograms      TrainingProgram[]      @relation("TrainingProgramCreatedBy")
+  updatedTrainingPrograms      TrainingProgram[]      @relation("TrainingProgramUpdatedBy")
+  submittedTrainingPrograms    TrainingProgram[]      @relation("TrainingProgramSubmittedBy")
+  approvedTrainingPrograms     TrainingProgram[]      @relation("TrainingProgramApprovedBy")
+  rejectedTrainingPrograms     TrainingProgram[]      @relation("TrainingProgramRejectedBy")
+  createdTrainingParticipants  TrainingParticipant[]  @relation("TrainingParticipantCreatedBy")
+  updatedTrainingParticipants  TrainingParticipant[]  @relation("TrainingParticipantUpdatedBy")
   updatedPersons               Person[]               @relation("PersonUpdatedBy")
   createdPersonDependents      PersonDependent[]      @relation("PersonDependentCreatedBy")
   updatedPersonDependents      PersonDependent[]      @relation("PersonDependentUpdatedBy")
@@ -728,6 +735,7 @@ model Estate {
   contractorContracts   ContractorContract[]
   leaveRequests         LeaveRequest[]
   welfareCases          WelfareCase[]
+  trainingPrograms      TrainingProgram[]
   manager               EmploymentProfile?     @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
   shifts                Shift[]                @relation("ShiftEstate")
 
@@ -2985,6 +2993,7 @@ model EmploymentProfile {
   coveringLeave       LeaveRequest[]         @relation("LeaveRequestCovering")
   benefitEntitlements BenefitEntitlement[]
   issuedBenefits      BenefitIssue[]         @relation("BenefitIssueIssuedBy")
+  trainings           TrainingParticipant[]
   users               User[]                 @relation("UserProfile")
   managedEstates      Estate[]               @relation("EstateManager")
   managedDivisions    Division[]             @relation("DivisionManager")
@@ -3769,4 +3778,100 @@ model WelfareCase {
   @@index([approvedBy], map: "ix_welfare_case_approved_by")
   @@index([rejectedBy], map: "ix_welfare_case_rejected_by")
   @@map("welfare_case")
+}
+
+/// P2.09 (Spec P3 §24.1): a training programme at an estate. Approvable (operational: its cost):
+/// draft → submitted → approved (planned), or rejected; an approved one is completed once its
+/// participants' attendance is recorded, or cancelled. budget_head_id has no FK until budgets (Phase 3).
+model TrainingProgram {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// Numbered TP-… per estate and year when not given.
+  programCode        String    @map("program_code") @db.VarChar(30)
+  estateId           BigInt    @map("estate_id") @db.UnsignedBigInt
+  title              String    @db.VarChar(200)
+  /// induction | safety | technical | skill | compliance | health | leadership | other
+  trainingType       String    @map("training_type") @db.VarChar(30)
+  trainerName        String?   @map("trainer_name") @db.VarChar(150)
+  /// internal | external
+  trainerType        String    @default("internal") @map("trainer_type") @db.VarChar(30)
+  venue              String?   @db.VarChar(200)
+  startDate          DateTime  @map("start_date") @db.Date
+  endDate            DateTime  @map("end_date") @db.Date
+  durationHours      Decimal?  @map("duration_hours") @db.Decimal(9, 4)
+  /// The most participants; NULL: no limit.
+  capacity           Int?      @db.UnsignedSmallInt
+  cost               Decimal?  @db.Decimal(18, 4)
+  budgetHeadId       BigInt?   @map("budget_head_id") @db.UnsignedBigInt
+  description        String?   @db.VarChar(1000)
+  /// draft | submitted | approved | rejected | completed | cancelled
+  state              String    @default("draft") @db.VarChar(30)
+  stateChangedAt     DateTime? @map("state_changed_at") @db.DateTime(0)
+  cancellationReason String?   @map("cancellation_reason") @db.VarChar(500)
+  submittedAt        DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy        BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt         DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy         BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt         DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy         BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason    String?   @map("rejection_reason") @db.VarChar(500)
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  estate       Estate                @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_program_estate")
+  participants TrainingParticipant[]
+  creator      User                  @relation("TrainingProgramCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_program_created_by")
+  updater      User?                 @relation("TrainingProgramUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_program_updated_by")
+  submitter    User?                 @relation("TrainingProgramSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_program_submitted_by")
+  approver     User?                 @relation("TrainingProgramApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_program_approved_by")
+  rejecter     User?                 @relation("TrainingProgramRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_program_rejected_by")
+
+  @@unique([programCode], map: "ux_training_program_code")
+  @@index([estateId], map: "ix_training_program_estate")
+  @@index([startDate], map: "ix_training_program_start")
+  @@index([trainingType], map: "ix_training_program_type")
+  @@index([state], map: "ix_training_program_state")
+  @@index([createdBy], map: "ix_training_program_created_by")
+  @@index([updatedBy], map: "ix_training_program_updated_by")
+  @@index([submittedBy], map: "ix_training_program_submitted_by")
+  @@index([approvedBy], map: "ix_training_program_approved_by")
+  @@index([rejectedBy], map: "ix_training_program_rejected_by")
+  @@map("training_program")
+}
+
+/// P2.09 (Spec P3 §24.1): a profile in a training programme: attendance, score, result, certificate,
+/// feedback. One row per programme and profile (ux_training_participant: the verification).
+model TrainingParticipant {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  trainingProgramId   BigInt    @map("training_program_id") @db.UnsignedBigInt
+  employmentProfileId BigInt    @map("employment_profile_id") @db.UnsignedBigInt
+  /// registered | attended | absent | withdrawn
+  attendanceStatus    String    @default("registered") @map("attendance_status") @db.VarChar(30)
+  /// 0 – 100.
+  score               Decimal?  @db.Decimal(9, 4)
+  /// pass | fail | not_assessed
+  result              String    @default("not_assessed") @db.VarChar(30)
+  certificateNumber   String?   @map("certificate_number") @db.VarChar(50)
+  certificateIssuedOn DateTime? @map("certificate_issued_on") @db.Date
+  /// 1 – 5.
+  feedbackRating      Int?      @map("feedback_rating") @db.UnsignedTinyInt
+  remarks             String?   @db.VarChar(500)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy           BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  program TrainingProgram   @relation(fields: [trainingProgramId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_participant_program")
+  profile EmploymentProfile @relation(fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_participant_profile")
+  creator User              @relation("TrainingParticipantCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_participant_created_by")
+  updater User?             @relation("TrainingParticipantUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_participant_updated_by")
+
+  @@unique([trainingProgramId, employmentProfileId], map: "ux_training_participant")
+  @@index([employmentProfileId], map: "ix_training_participant_profile")
+  @@index([createdBy], map: "ix_training_participant_created_by")
+  @@index([updatedBy], map: "ix_training_participant_updated_by")
+  @@map("training_participant")
 }

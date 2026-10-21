@@ -45,6 +45,21 @@ import {
   WithdrawBody,
 } from './benefit.schema.js';
 import { benefitService } from './benefit.service.js';
+import {
+  AddParticipantsBody,
+  CancelProgramBody,
+  CreateProgramBody,
+  IdParams as TrainingParams,
+  ParticipantOut,
+  ParticipantParams,
+  PatchProgramBody,
+  PROGRAM_STATES,
+  ProgramOut,
+  RecordParticipantBody,
+  TRAINER_TYPES,
+  TRAINING_TYPES,
+} from './training.schema.js';
+import { trainingService } from './training.service.js';
 import { contactsService } from '../facilities/contacts.service.js';
 import { contactRoutes } from '../facilities/facilities.routes.js';
 import {
@@ -140,7 +155,7 @@ import { profileService } from './profile.service.js';
 /**
  * HTTP surface of the workforce module: persons (P2.01), employment profiles (P2.02), employment
  * assignments (P2.03), worker teams (P2.04), contractors (P2.05), leave (P2.07) and benefits and welfare
- * (P2.08); Spec P4 §8.3, §6.5.
+ * (P2.08), and training (P2.09); Spec P4 §8.3, §6.5.
  */
 
 export interface WorkforceDeps {
@@ -625,6 +640,27 @@ function profilesModule({ db, platform, authz, accessLog, config }: WorkforceDep
       const { params, body } = getValidated(res, { ...byId, body: CreateAssignmentBody });
       const a = await assignments.create(params.id, body, currentActorId());
       sendCreated(res, a, `/api/v1/employment-assignments/${a.id}`, a.version);
+    },
+  });
+
+  const training = trainingService({ db, accessLog, timezone: config.timezone });
+  m.route({
+    method: 'get',
+    path: '/:id/trainings',
+    summary: 'A profile’s training history',
+    description:
+      'Every programme the profile took part in, latest first, with attendance, result and certificate.',
+    auth: { permission: 'training.view' },
+    ...byId,
+    success: { status: 200, description: 'The trainings', schema: ParticipantOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      const items = await training.participants.ofProfile(params.id);
+      sendPage(req, res, items, {
+        pagination: { page: 1, perPage: Math.max(items.length, 1) },
+        total: items.length,
+      });
     },
   });
 
@@ -1915,6 +1951,246 @@ function benefitModules({ db, platform, authz, accessLog, config }: WorkforceDep
   return [e.build(), i.build(), w.build()];
 }
 
+function trainingModule({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule {
+  const svc = trainingService({ db, accessLog, timezone: config.timezone });
+  registerApprovalAdapter(svc.adapter);
+  const byId = { params: TrainingParams };
+  const byParticipant = { params: ParticipantParams };
+  const m = defineModule({
+    name: 'training-programs',
+    path: '/training-programs',
+    tag: 'Workforce',
+    platform,
+    authz,
+    accessLog,
+  });
+  const all = (
+    req: Parameters<typeof sendPage>[0],
+    res: Parameters<typeof sendPage>[1],
+    items: readonly unknown[],
+  ) => {
+    sendPage(req, res, items, {
+      pagination: { page: 1, perPage: Math.max(items.length, 1) },
+      total: items.length,
+    });
+  };
+
+  m.route({
+    method: 'get',
+    path: '/',
+    summary: 'List training programmes',
+    description: 'Filters: estate, training type, trainer type, state, start date range; filter[title] like.',
+    auth: { permission: 'training.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        estate_id: { type: 'id', ops: ['eq', 'in'] },
+        training_type: { type: { enum: TRAINING_TYPES }, ops: ['eq', 'in'] },
+        trainer_type: { type: { enum: TRAINER_TYPES } },
+        state: { type: { enum: PROGRAM_STATES }, ops: ['eq', 'in'] },
+        start_date: { type: 'date', ops: ['from', 'to'] },
+        title: { type: 'string', ops: ['like'] },
+      },
+      sorts: ['start_date', 'program_code', 'title'],
+      defaultSort: ['-start_date'],
+      maxPageSize: 500,
+    },
+    success: { status: 200, description: 'A page of programmes', schema: ProgramOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await svc.programs.list(q);
+      sendPage(req, res, items, {
+        pagination: q.page ?? { page: 1, perPage: 25 },
+        total,
+        appliedScope: await appliedScope(),
+      });
+    },
+  });
+  m.route({
+    method: 'post',
+    path: '/',
+    summary: 'Plan a training programme',
+    description:
+      'A draft at an estate: numbered TP-… when program_code is omitted. Submit it for approval (its cost).',
+    auth: { permission: 'training.create' },
+    body: CreateProgramBody,
+    success: { status: 201, description: 'Planned', schema: ProgramOut },
+    errors: ['DUPLICATE_KEY', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateProgramBody });
+      const x = await svc.programs.create(body, currentActorId());
+      sendCreated(res, x, `/api/v1/training-programs/${x.id}`, x.version);
+    },
+  });
+  m.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get a training programme',
+    auth: { permission: 'training.view' },
+    ...byId,
+    success: { status: 200, description: 'The programme', schema: ProgramOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const x = await svc.programs.get(params.id);
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  m.route({
+    method: 'patch',
+    path: '/:id',
+    summary: 'Change a draft programme',
+    auth: { permission: 'training.edit' },
+    ...byId,
+    body: PatchProgramBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Changed', schema: ProgramOut },
+    errors: ['DUPLICATE_KEY', 'INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: PatchProgramBody });
+      const x = await svc.programs.update(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  m.route({
+    method: 'delete',
+    path: '/:id',
+    summary: 'Delete a draft programme',
+    auth: { permission: 'training.delete' },
+    ...byId,
+    ifMatch: true,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      await svc.programs.remove(params.id, currentActorId());
+      sendNoContent(res);
+    },
+  });
+  for (const [action, summary, description, permission] of [
+    [
+      'submit',
+      'Submit a programme for approval',
+      'Routed through the training_program workflow (cost and cost centre are its condition fields).',
+      'training.submit',
+    ],
+    [
+      'complete',
+      'Complete a programme',
+      'From its end date, once every participant’s attendance is recorded.',
+      'training.edit',
+    ],
+  ] as const) {
+    m.route({
+      method: 'post',
+      path: `/:id/${action}`,
+      summary,
+      description,
+      auth: { permission },
+      ...byId,
+      ifMatch: true,
+      success: { status: 200, description: 'Done', schema: ProgramOut },
+      errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+      handler: async (req, res) => {
+        const { params } = getValidated(res, byId);
+        const v = requireIfMatch(req);
+        const x =
+          action === 'submit'
+            ? await svc.programs.submit(params.id, v, currentActorId())
+            : await svc.programs.complete(params.id, v, currentActorId());
+        sendOne(res, x, { version: x.version });
+      },
+    });
+  }
+  m.route({
+    method: 'post',
+    path: '/:id/cancel',
+    summary: 'Cancel a programme',
+    description: 'A draft or approved programme, with the reason.',
+    auth: { permission: 'training.edit' },
+    ...byId,
+    body: CancelProgramBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Cancelled', schema: ProgramOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: CancelProgramBody });
+      const x = await svc.programs.cancel(params.id, requireIfMatch(req), body.reason, currentActorId());
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  m.route({
+    method: 'get',
+    path: '/:id/participants',
+    summary: 'A programme’s participants',
+    auth: { permission: 'training.view' },
+    ...byId,
+    success: { status: 200, description: 'The participants', schema: ParticipantOut },
+    errors: [],
+    handler: async (req, res) => {
+      const { params } = getValidated(res, byId);
+      all(req, res, await svc.participants.list(params.id));
+    },
+  });
+  m.route({
+    method: 'post',
+    path: '/:id/participants',
+    summary: 'Register participants',
+    description:
+      'Current profiles of the programme’s estate, within its capacity; a profile once per programme (422 DUPLICATE_KEY). All or nothing.',
+    auth: { permission: 'training.edit' },
+    ...byId,
+    body: AddParticipantsBody,
+    success: { status: 200, description: 'The participants added', schema: ParticipantOut },
+    errors: ['DUPLICATE_KEY', 'INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: AddParticipantsBody });
+      all(req, res, await svc.participants.add(params.id, body, currentActorId()));
+    },
+  });
+  m.route({
+    method: 'patch',
+    path: '/:id/participants/:participantId',
+    summary: 'Record attendance and results',
+    description:
+      'Attendance (from the start date), score 0–100, result, certificate, feedback 1–5. Only someone who attended is assessed or certified.',
+    auth: { permission: 'training.edit' },
+    ...byParticipant,
+    body: RecordParticipantBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Recorded', schema: ParticipantOut },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byParticipant, body: RecordParticipantBody });
+      const x = await svc.participants.record(
+        params.id,
+        params.participantId,
+        requireIfMatch(req),
+        body,
+        currentActorId(),
+      );
+      sendOne(res, x, { version: x.version });
+    },
+  });
+  m.route({
+    method: 'delete',
+    path: '/:id/participants/:participantId',
+    summary: 'Remove a participant registered in error',
+    description: 'One who dropped out is marked withdrawn instead.',
+    auth: { permission: 'training.edit' },
+    ...byParticipant,
+    success: { status: 204, description: 'Removed' },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byParticipant);
+      await svc.participants.remove(params.id, params.participantId, currentActorId());
+      sendNoContent(res);
+    },
+  });
+  return m.build();
+}
+
 function assignmentsModule({ db, platform, authz, accessLog, config }: WorkforceDeps): ApiModule {
   const svc = assignmentService({ db, accessLog, timezone: config.timezone });
   registerApprovalAdapter(svc.adapter);
@@ -2061,5 +2337,6 @@ export function workforceModules(deps: WorkforceDeps): ApiModule[] {
     ...contractorsModule(deps),
     ...leaveModules(deps),
     ...benefitModules(deps),
+    trainingModule(deps),
   ];
 }
