@@ -938,62 +938,65 @@ export function contractorService({ db, accessLog, timezone }: ContractorService
     },
 
     async create(b: z.infer<typeof CreateContractorBody>, actorId: bigint) {
-      return withTransaction(db, async (tx) => {
-        const registered =
-          b.registered_estate_id !== undefined
-            ? idIn(b.registered_estate_id)
-            : (b.first_contract?.estate_id ?? null);
-        await canChangeContractor({ id: null, registeredEstateId: registered }, 'create');
-        await checkContractor(tx, b);
-        const code = b.code ?? (await allocateNumber(tx, 'contractor', { date: today() }, 'draft')).number;
-        const { id: cid } = await tx.contractor
-          .create({
-            data: {
-              ...(contractorData(b) as Prisma.ContractorUncheckedCreateInput),
-              code,
-              name: b.name,
-              contractorType: b.contractor_type,
-              registeredEstateId: registered,
-              contactPerson: b.contact_person.contact_name,
-              designation: b.contact_person.designation ?? null,
-              status: 'active',
-              createdBy: actorId,
-            },
-            select: { id: true },
-          })
-          .catch(duplicate('code', `Contractor ID ${code}`));
-        const contact = await tx.partyContact.create({
+      return withTransaction(db, (tx) => this.createIn(tx, b, actorId));
+    },
+
+    /** The same inside the caller's transaction (the workforce import, P2.06). */
+    async createIn(tx: Tx, b: z.infer<typeof CreateContractorBody>, actorId: bigint) {
+      const registered =
+        b.registered_estate_id !== undefined
+          ? idIn(b.registered_estate_id)
+          : (b.first_contract?.estate_id ?? null);
+      await canChangeContractor({ id: null, registeredEstateId: registered }, 'create');
+      await checkContractor(tx, b);
+      const code = b.code ?? (await allocateNumber(tx, 'contractor', { date: today() }, 'draft')).number;
+      const { id: cid } = await tx.contractor
+        .create({
           data: {
-            ownerType: 'contractor',
-            ownerId: cid,
-            contactName: b.contact_person.contact_name,
+            ...(contractorData(b) as Prisma.ContractorUncheckedCreateInput),
+            code,
+            name: b.name,
+            contractorType: b.contractor_type,
+            registeredEstateId: registered,
+            contactPerson: b.contact_person.contact_name,
             designation: b.contact_person.designation ?? null,
-            contactType: 'primary',
-            phone: b.contact_person.phone,
-            email: b.contact_person.email ?? null,
-            isPrimary: true,
+            status: 'active',
             createdBy: actorId,
           },
-        });
-        await auditCreate(
-          tx,
-          CONTACT_AUDIT,
-          contact.id,
-          {
-            owner_type: 'contractor',
-            owner_id: cid.toString(),
-            contact_name: contact.contactName,
-            is_primary: true,
-          },
-          { actorId },
-        );
-        if (b.first_contract)
-          await insertContract(tx, cid, blank(b.first_contract), actorId, 'first_contract.');
-        const out = await contractorOut(tx, await contractorOrNotFound(tx, cid));
-        await auditCreate(tx, CONTRACTOR_AUDIT, cid, out, { actorId });
-        await recordStatusChange(tx, CONTRACTOR_AUDIT.type, cid, null, 'active', { actorId });
-        return out;
+          select: { id: true },
+        })
+        .catch(duplicate('code', `Contractor ID ${code}`));
+      const contact = await tx.partyContact.create({
+        data: {
+          ownerType: 'contractor',
+          ownerId: cid,
+          contactName: b.contact_person.contact_name,
+          designation: b.contact_person.designation ?? null,
+          contactType: 'primary',
+          phone: b.contact_person.phone,
+          email: b.contact_person.email ?? null,
+          isPrimary: true,
+          createdBy: actorId,
+        },
       });
+      await auditCreate(
+        tx,
+        CONTACT_AUDIT,
+        contact.id,
+        {
+          owner_type: 'contractor',
+          owner_id: cid.toString(),
+          contact_name: contact.contactName,
+          is_primary: true,
+        },
+        { actorId },
+      );
+      if (b.first_contract)
+        await insertContract(tx, cid, blank(b.first_contract), actorId, 'first_contract.');
+      const out = await contractorOut(tx, await contractorOrNotFound(tx, cid));
+      await auditCreate(tx, CONTRACTOR_AUDIT, cid, out, { actorId });
+      await recordStatusChange(tx, CONTRACTOR_AUDIT.type, cid, null, 'active', { actorId });
+      return out;
     },
 
     async update(

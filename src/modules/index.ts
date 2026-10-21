@@ -29,7 +29,9 @@ import { facilitiesModules } from './facilities/facilities.routes.js';
 import { healthModule } from './health/health.routes.js';
 import { commitImportJob, validateImportJob } from './imports/imports.jobs.js';
 import { importsModule } from './imports/imports.routes.js';
+import { dbPermissionResolver } from '../core/auth/authorize.js';
 import { registerLookupImports } from './lookups/lookup.import.js';
+import { registerWorkforceImports } from './workforce/workforce.import.js';
 import {
   deliverJob,
   NOTIFICATION_SCHEDULES,
@@ -111,6 +113,7 @@ export function registerJobs(deps: {
   const { db, config, mailer, storage, accessLog } = deps;
   // Import types first: the import jobs look them up (P1.17).
   registerLookupImports(db, accessLog);
+  registerWorkforceImports({ db, accessLog, authz: dbPermissionResolver(db), timezone: config.timezone });
   registerJob(validateImportJob(db, storage));
   registerJob(commitImportJob(db));
   registerJob(selfTestJob(db));

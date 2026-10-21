@@ -507,29 +507,32 @@ export function personService(db: Database, accessLog: AccessLog, timezone: stri
     },
 
     async create(body: z.infer<typeof CreatePersonBody>, actorId: bigint) {
-      return withTransaction(db, async (tx) => {
-        await assertWritable({ id: null, registeredEstateId: body.registered_estate_id ?? null }, 'create');
-        await check(tx, body);
-        const { number } = await allocateNumber(tx, 'person', { date: today() }, 'draft');
-        const { id } = await tx.person
-          .create({
-            data: {
-              ...(data(body) as Prisma.PersonUncheckedCreateInput),
-              personCode: number,
-              firstName: body.first_name,
-              fullName: fullNameOf(body.first_name, body.middle_name ?? null, body.last_name ?? null),
-              status: 'active',
-              createdBy: actorId,
-            },
-            select: { id: true },
-          })
-          .catch(nidTaken);
-        await setLinks(tx, id, body.skill_ids, body.language_ids);
-        const out = toOut(await orNotFound(tx, id));
-        await auditCreate(tx, PERSON_AUDIT, id, out, { actorId });
-        await recordStatusChange(tx, PERSON_AUDIT.type, id, null, out.status, { actorId });
-        return out;
-      });
+      return withTransaction(db, (tx) => this.createIn(tx, body, actorId));
+    },
+
+    /** The same inside the caller's transaction (the workforce import, P2.06). */
+    async createIn(tx: Tx, body: z.infer<typeof CreatePersonBody>, actorId: bigint) {
+      await assertWritable({ id: null, registeredEstateId: body.registered_estate_id ?? null }, 'create');
+      await check(tx, body);
+      const { number } = await allocateNumber(tx, 'person', { date: today() }, 'draft');
+      const { id } = await tx.person
+        .create({
+          data: {
+            ...(data(body) as Prisma.PersonUncheckedCreateInput),
+            personCode: number,
+            firstName: body.first_name,
+            fullName: fullNameOf(body.first_name, body.middle_name ?? null, body.last_name ?? null),
+            status: 'active',
+            createdBy: actorId,
+          },
+          select: { id: true },
+        })
+        .catch(nidTaken);
+      await setLinks(tx, id, body.skill_ids, body.language_ids);
+      const out = toOut(await orNotFound(tx, id));
+      await auditCreate(tx, PERSON_AUDIT, id, out, { actorId });
+      await recordStatusChange(tx, PERSON_AUDIT.type, id, null, out.status, { actorId });
+      return out;
     },
 
     async update(

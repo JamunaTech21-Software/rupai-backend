@@ -377,6 +377,13 @@ export function importsService({ db, storage, queue, authz, accessLog }: Imports
           { code: 'VALIDATION_FAILED', message: 'Nothing to commit.' },
         ]);
       }
+      await t.authoriseCommit?.({
+        db,
+        batchId: id,
+        uploadedBy: b.createdBy,
+        actorId,
+        holds: (permission) => holdsPermission(authz, permission),
+      });
       await withTransaction(db, async (tx) => {
         const { count } = await tx.importBatch.updateMany({
           where: { id, state: 'validated' },

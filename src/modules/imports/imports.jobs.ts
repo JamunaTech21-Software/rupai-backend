@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { recordStatusChange } from '../../core/audit/audit.js';
+import { dbPermissionResolver, runAsUser } from '../../core/auth/authorize.js';
 import type { Database } from '../../core/db/prisma.js';
 import { withTransaction } from '../../core/db/transaction.js';
 import { AppError } from '../../core/errors/app-error.js';
@@ -78,7 +79,18 @@ async function reject(db: Database, batchId: bigint, actorId: bigint | null, pro
   return { result: { batch_id: batchId.toString(), state: 'rejected', problems } };
 }
 
+/**
+ * A type whose rows belong to estates runs its check and commit as the user (D-2.06-2); others in the
+ * job's unscoped context.
+ */
+function runner(db: Database) {
+  const resolver = dbPermissionResolver(db);
+  return <T>(type: ImportType, userId: bigint, work: () => Promise<T>): Promise<T> =>
+    type.actsAsUser ? runAsUser(resolver, userId, work) : work();
+}
+
 export function validateImportJob(db: Database, storage: FileStorage) {
+  const asUser = runner(db);
   return defineJob({
     type: VALIDATE_JOB,
     label: 'Check an import file',
@@ -130,7 +142,7 @@ export function validateImportJob(db: Database, storage: FileStorage) {
               const row = Object.fromEntries(
                 type.columns.map((c) => [c.name, r.cells[header.index.get(c.name) ?? -1] ?? '']),
               );
-              const check = await type.check(row, tx);
+              const check = await asUser(type, ctx.requestedBy ?? batch.createdBy, () => type.check(row, tx));
               let errors: RowError[] = check.ok ? [] : [...check.errors];
               if (check.ok && check.key !== undefined) {
                 const first = seen.get(check.key);
@@ -199,6 +211,7 @@ const refusalOf = (err: AppError): RowError[] =>
     : [{ column: null, code: err.code, message: err.message }];
 
 export function commitImportJob(db: Database) {
+  const asUser = runner(db);
   return defineJob({
     type: COMMIT_JOB,
     label: 'Import the valid rows',
@@ -229,9 +242,11 @@ export function commitImportJob(db: Database) {
           try {
             await withTransaction(db, async (tx) => {
               if (!(await ctx.once(tx, key))) return;
-              const check = await type.check(r.data as Record<string, string>, tx);
-              if (!check.ok) throw new RowRefused(check.errors);
-              const targetId = await type.commit(check.value, tx, actorId);
+              const targetId = await asUser(type, actorId, async () => {
+                const check = await type.check(r.data as Record<string, string>, tx);
+                if (!check.ok) throw new RowRefused(check.errors);
+                return type.commit(check.value, tx, actorId);
+              });
               await tx.importRow.update({
                 where: { id: r.id },
                 data: { state: 'committed', targetId, committedAt: wholeSecond() },
