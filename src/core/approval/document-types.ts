@@ -257,6 +257,8 @@ export const APPROVABLE_DOCUMENTS: readonly ApprovableDocument[] = [
     flag('is_retrospective', 'Takes effect in the past'),
     attr('change_reason', 'Reason for the change'),
     attr('employment_type', 'Worker or employee'),
+    // P3.02: where the labour cost is charged; a cost-centre-manager step follows it.
+    org('cost_centre_id', 'Cost centre'),
   ]),
   doc('supplier_bank_change', 'Supplier bank detail change', 'master', 'organisation', 'supplier'),
   doc('buyer_credit_limit', 'Buyer credit limit change', 'master', 'organisation', 'buyer', [

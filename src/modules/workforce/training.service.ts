@@ -23,6 +23,7 @@ import { scopeToCheck } from '../../core/scope/scope.js';
 import { businessDateFromDb, businessDateToDb, todayIn } from '../../core/time/dates.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { denyWrite, duplicate, idOut, iso, versionConflict } from '../organisation/common.js';
+import { assertExpenseBudgetHead } from '../accounting/dimensions.js';
 import type {
   AddParticipantsBody,
   CreateProgramBody,
@@ -64,6 +65,7 @@ export const PROGRAM_AUDIT: AuditedRecord = {
     'duration_hours',
     'capacity',
     'cost',
+    'budget_head_id',
     'description',
     'state',
     'cancellation_reason',
@@ -166,6 +168,7 @@ export function trainingService({ db, accessLog, timezone }: TrainingServiceDeps
       duration_hours: p.durationHours === null ? null : toDecimalString(p.durationHours.toString(), 'pct'),
       capacity: p.capacity,
       cost: p.cost === null ? null : toDecimalString(p.cost.toString(), 'money'),
+      budget_head_id: p.budgetHeadId?.toString() ?? null,
       description: p.description,
       participant_count: count,
       seats_left: p.capacity === null ? null : Math.max(0, p.capacity - count),
@@ -344,6 +347,7 @@ export function trainingService({ db, accessLog, timezone }: TrainingServiceDeps
                 'draft',
               )
             ).number;
+          await assertExpenseBudgetHead(tx, b.budget_head_id);
           const p = await tx.trainingProgram
             .create({
               data: {
@@ -359,6 +363,7 @@ export function trainingService({ db, accessLog, timezone }: TrainingServiceDeps
                 durationHours: b.duration_hours?.toString() ?? null,
                 capacity: b.capacity ?? null,
                 cost: b.cost?.toString() ?? null,
+                budgetHeadId: b.budget_head_id ?? null,
                 description: b.description ?? null,
                 state: 'draft',
                 stateChangedAt: new Date(),
@@ -394,6 +399,7 @@ export function trainingService({ db, accessLog, timezone }: TrainingServiceDeps
               ),
             ]);
           }
+          await assertExpenseBudgetHead(tx, b.budget_head_id);
           const data: Record<string, unknown> = {};
           const map: [keyof typeof b, string, (v: unknown) => unknown][] = [
             ['program_code', 'programCode', (v) => v],
@@ -411,6 +417,7 @@ export function trainingService({ db, accessLog, timezone }: TrainingServiceDeps
             ],
             ['capacity', 'capacity', (v) => v],
             ['cost', 'cost', (v) => (v === null ? null : (v as { toString(): string }).toString())],
+            ['budget_head_id', 'budgetHeadId', (v) => v],
             ['description', 'description', (v) => v],
           ];
           for (const [k, col, f] of map) if (b[k] !== undefined) data[col] = f(b[k]);

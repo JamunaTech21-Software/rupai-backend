@@ -232,6 +232,56 @@ export const LOOKUP_TYPES: readonly LookupType[] = [
     { name: 'is_overnight', type: { kind: 'bool' }, readOnly: true },
     { name: 'overtime_after_minutes', type: { kind: 'int', min: 0, max: 1440 }, default: null },
   ]),
+  // P3.02 (P3 §26.2, D-3.02-3/4): the cost analysis tree. estate_id empty = organisation-wide; a set one
+  // follows estate scope, like shifts. Tree, estate and manager rules in lookup.engine's hooks.
+  common('cost_centre', 'cost centre', { permission: 'accounting', estateColumn: 'estate_id' }, [
+    {
+      name: 'parent_cost_centre_id',
+      type: { kind: 'ref', table: 'cost_centre', label: 'parent cost centre' },
+      default: null,
+      filter: true,
+    },
+    {
+      name: 'estate_id',
+      type: { kind: 'ref', table: 'estate', label: 'estate' },
+      default: null,
+      filter: true,
+    },
+    {
+      name: 'centre_type',
+      type: { kind: 'enum', values: ['estate', 'division', 'factory', 'department', 'project'] },
+      required: true,
+      filter: true,
+    },
+    {
+      name: 'manager_profile_id',
+      type: { kind: 'ref', table: 'employment_profile', label: 'manager (employment profile)' },
+      default: null,
+      filter: true,
+    },
+  ]),
+  // P3.02 (P3 §26.2, D-3.02-5): what budgets are planned and consumed against. Organisation-wide.
+  common('budget_head', 'budget head', { permission: 'budget' }, [
+    {
+      name: 'parent_head_id',
+      type: { kind: 'ref', table: 'budget_head', label: 'parent budget head' },
+      default: null,
+      filter: true,
+    },
+    {
+      name: 'account_id',
+      type: { kind: 'ref', table: 'account', label: 'account' },
+      default: null,
+      filter: true,
+    },
+    {
+      name: 'head_type',
+      type: { kind: 'enum', values: ['revenue', 'expense', 'capital'] },
+      required: true,
+      filter: true,
+    },
+    { name: 'is_controlled', type: { kind: 'bool' }, default: true, filter: true },
+  ]),
   common('uom_category', 'unit category', { permission: 'uom' }, [
     /** The unit conversion factors in this category are expressed against. Set after its units exist. */
     { name: 'base_uom_id', type: { kind: 'ref', table: 'uom', label: 'unit of measure' }, default: null },

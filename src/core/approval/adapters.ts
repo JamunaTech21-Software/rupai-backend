@@ -25,6 +25,8 @@ export interface SubmittedDocument {
   readonly factoryId?: bigint | null;
   readonly warehouseId?: bigint | null;
   readonly departmentId?: bigint | null;
+  /** Its cost centre, where it has one: cost-centre-manager steps follow it (P3.02, D-3.02-8). */
+  readonly costCentreId?: bigint | null;
   /**
    * The values its workflow conditions test, by the field names of its APPROVABLE_DOCUMENTS entry.
    * Amounts in BASE currency (P7 §5.1), as decimal strings.

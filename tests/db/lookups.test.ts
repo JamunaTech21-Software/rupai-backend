@@ -72,13 +72,21 @@ async function actorWith(permissions: string[], grants: object[]): Promise<strin
   const role = await created(
     api.post('/roles', { code: unique('R_'), name: 'Lookup probe', permissions }, ADMIN),
   );
-  const current = await api.get(`/users/${id}`, ADMIN);
-  const set = await api.post(
-    `/users/${id}/roles`,
-    { roles: [{ role_id: role.id }] },
-    ADMIN,
-    one(current).version,
-  );
+  const assign = async (authorisations?: object[]) => {
+    const current = await api.get(`/users/${id}`, ADMIN);
+    return api.post(
+      `/users/${id}/roles`,
+      { roles: [{ role_id: role.id }], ...(authorisations ? { authorisations } : {}) },
+      ADMIN,
+      one(current).version,
+    );
+  };
+  // P3.01: cost centres are under accounting.*, and accounting.edit is sensitive (P6 §10).
+  let set = await assign();
+  if (set.status === 422) {
+    const details = (set.body as { error: { details: { context: { key: string } }[] } }).error.details;
+    set = await assign(details.map((d) => ({ key: d.context.key, reason: 'Lookup test manager' })));
+  }
   expect(set.status, JSON.stringify(set.body)).toBe(200);
   for (const g of grants) expect((await api.post(`/users/${id}/scopes`, g, ADMIN)).status).toBe(201);
   return id;
@@ -198,6 +206,10 @@ describe('one engine, every type (P4 §7.3)', () => {
         return { code: unique('B'), name: 'Benefit', benefit_category: 'other' };
       case 'evaluation_criteria':
         return { code: unique('C'), name: 'Criterion', criteria_group: 'other' };
+      case 'cost_centre':
+        return { code: unique('CC'), name: 'Cost centre', centre_type: 'project' };
+      case 'budget_head':
+        return { code: unique('BH'), name: 'Budget head', head_type: 'expense' };
       case 'shift':
         return { code: unique('S'), name: 'Shift', start_time: '06:00', end_time: '14:00' };
       case 'uom':

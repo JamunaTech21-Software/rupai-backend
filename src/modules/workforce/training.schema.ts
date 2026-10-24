@@ -51,6 +51,8 @@ const programFields = {
   duration_hours: nullable(zDecimal('pct', { positive: true })),
   capacity: nullable(z.number().int().min(1).max(10000)),
   cost: nullable(zDecimal('money', { min: '0' })),
+  /** P3.02: the expense budget head the cost consumes (consumption from P3.06). */
+  budget_head_id: nullable(zId),
   description: nullable(z.string().trim().max(1000)),
 };
 export const CreateProgramBody = z
@@ -97,6 +99,7 @@ export const ProgramOut = z.object({
   duration_hours: z.string().nullable(),
   capacity: z.number().int().nullable(),
   cost: z.string().nullable(),
+  budget_head_id: z.string().nullable(),
   description: z.string().nullable(),
   /** Registered participants (withdrawn ones aside). */
   participant_count: z.number().int(),

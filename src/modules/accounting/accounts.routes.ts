@@ -23,6 +23,14 @@ import {
   STATUSES,
 } from './accounts.schema.js';
 import { accountsService } from './accounts.service.js';
+import {
+  ACCOUNT_KINDS,
+  BankAccountOut,
+  CreateBankAccountBody,
+  PatchBankAccountBody,
+  ReplaceBankAccountBody,
+} from './bank-accounts.schema.js';
+import { bankAccountsService } from './bank-accounts.service.js';
 import { ACCOUNT_SUBTYPES, ACCOUNT_TYPES } from './chart.js';
 
 /** HTTP surface of the chart of accounts (Spec P4 §13.3: accounting.*). The ledger view comes with P3.04. */
@@ -201,5 +209,70 @@ export function accountingModules({ db, platform, authz, accessLog }: Accounting
       'Only an account that is not a system account, has nothing under it and nothing refers to (P8 §2.5). Otherwise deactivate it.',
   });
 
-  return [m.build()];
+  // ---- /bank-accounts (P3.02, P3 §27.2, D-3.02-6) --------------------------------------------------
+  const banks = bankAccountsService(db, accessLog);
+  const b = defineModule({
+    name: 'bank-accounts',
+    path: '/bank-accounts',
+    tag: 'Accounting',
+    platform,
+    authz,
+    accessLog,
+  });
+  b.route({
+    method: 'get',
+    path: '/',
+    summary: 'List bank accounts',
+    description:
+      'Bank, cash and mobile-money accounts, each posting to one cash-or-bank account of the chart. An organisation-wide account (no estate) is seen by everyone with the permission; an estate’s follows estate scope.',
+    auth: { permission: 'bank_account.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        code: { type: 'string', ops: ['eq', 'like'] },
+        name: { type: 'string', ops: ['like'] },
+        status: { type: { enum: STATUSES } },
+        account_kind: { type: { enum: ACCOUNT_KINDS } },
+        estate_id: { type: 'id', ops: ['eq', 'null'] },
+        currency_id: { type: 'id', ops: ['eq'] },
+      },
+      sorts: ['code', 'name'],
+      defaultSort: ['code'],
+    },
+    success: { status: 200, description: 'A page of bank accounts', schema: BankAccountOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await banks.list(q);
+      sendPage(req, res, items, { pagination: q.page ?? { page: 1, perPage: 25 }, total });
+    },
+  });
+  b.route({
+    method: 'post',
+    path: '/',
+    summary: 'Create a bank account',
+    description:
+      'account_id is a postable cash-or-bank account of the chart, with at most one bank account each. currency_id defaults to (and must be) the chart account’s currency. A bank needs bank_name and account_number.',
+    auth: { permission: 'bank_account.create' },
+    body: CreateBankAccountBody,
+    success: { status: 201, description: 'Created', schema: BankAccountOut },
+    errors: ['DUPLICATE_KEY', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateBankAccountBody });
+      const a = await banks.create(body, currentActorId());
+      sendCreated(res, a, `/api/v1/bank-accounts/${a.id}`, a.version);
+    },
+  });
+  masterItemRoutes(b, {
+    module: 'bank_account',
+    label: 'bank account',
+    out: BankAccountOut,
+    replace: ReplaceBankAccountBody,
+    patch: PatchBankAccountBody,
+    svc: banks,
+    deleteHelp:
+      'Only a bank account nothing refers to (payments and collections will). Otherwise deactivate it.',
+  });
+
+  return [m.build(), b.build()];
 }
