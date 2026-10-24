@@ -398,13 +398,16 @@ describe('references (P8 §2.5)', () => {
     );
   });
 
-  it('a referenced account is never deleted, made a group, moved or re-typed', async () => {
+  it('a referenced account is never deleted or made a group; without postings it may move', async () => {
     const housing = await account('6210');
     expect(benefit).not.toBe('');
     await refused(send('delete', `/accounts/${housing.id}`, {}), 422, 'REFERENCED_RECORD');
     await refused(patch('6210', { is_postable: false }), 422, 'REFERENCED_RECORD');
+    // Configuration follows a move (P3.03 refinement of D-3.01-8); postings would fix it (posting.test).
     const est = await account('6100');
-    await refused(patch('6210', { parent_id: est.id }), 422, 'REFERENCED_RECORD');
+    const welfare = await account('6200');
+    await ok(patch('6210', { parent_id: est.id }));
+    await ok(patch('6210', { parent_id: welfare.id }));
     // A rename is fine.
     await ok(patch('6210', { name: 'Housing and accommodation — labour lines' }));
   });
@@ -428,7 +431,12 @@ describe('replacing the seed with the estate’s chart (O-39, D-3.01-11)', () =>
     expect(codes).toContain('1200'); // its group
     expect(codes).toContain('6210'); // used by a benefit type
     expect(codes).not.toContain('1111');
-    expect(remaining.filter((a) => !a.is_system && a.is_postable).map((a) => a.code)).toEqual(['6210']);
+    // P3.03: what the seeded posting rules name stays too; every remaining non-system leaf is referenced.
+    for (const a of remaining.filter((x) => !x.is_system && x.is_postable)) {
+      const byRule = await mdb.db.postingRuleLine.count({ where: { accountId: BigInt(a.id) } });
+      const byBenefit = await mdb.db.benefitType.count({ where: { expenseAccountId: BigInt(a.id) } });
+      expect(byRule + byBenefit, String(a.code)).toBeGreaterThan(0);
+    }
   });
 
   it('imports accounts parents first, and re-codes a system account by its key', async () => {
