@@ -7,7 +7,9 @@ import type { Prisma } from '../../src/generated/prisma/client.js';
 import { businessDateFromDb, businessDateToDb, type BusinessDate } from '../../src/core/time/dates.js';
 import { activeMonths, proRata } from '../../src/modules/workforce/leave.service.js';
 import { fiscalYearCode, fiscalYearDates, periodsOf } from '../../src/modules/calendar/fiscal.service.js';
+import { activateChartIn, readSignOff } from '../../src/modules/accounting/accounts.service.js';
 import { ADMINISTRATOR_ROLE_CODE } from '../../src/modules/identity/permission-catalogue.js';
+import { requirementsFor } from '../../src/modules/identity/sod-rules.js';
 import {
   BOOTSTRAP_ADMIN_ID,
   seedAdministratorAuthorisations,
@@ -29,6 +31,9 @@ import {
  * year FY2026-27 with its 13 periods, July to October open.
  * P1.10 adds a few of the client's own lookups (departments, designations, worker categories) and three
  * shifts: one organisation-wide, one per demo estate (the viewer sees DEMO-A's, not DEMO-B's).
+ *
+ * P3.01 gives the manager the chart of accounts and records a DEMO sign-off, so staging can show an active
+ * chart (and, later, postings). It is labelled as not an accountant's sign-off; production never has it.
  *
  * Idempotent: existing users and roles are left exactly as they are (a password changed through the
  * app is never reset by a re-seed).
@@ -71,6 +76,7 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['training', 'view'],
   ['goal', 'view'],
   ['evaluation', 'view'],
+  ['accounting', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -107,6 +113,8 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     'training',
     'goal',
     'evaluation',
+    // P3.01: the chart of accounts. accounting.edit is sensitive: its authorisation is recorded below.
+    'accounting',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
   ['training', 'submit'],
   ['goal', 'submit'],
@@ -299,8 +307,53 @@ export function demoSeeders(password: string): Seeder[] {
     demoBenefitsSeeder,
     demoTrainingSeeder,
     demoPerformanceSeeder,
+    demoAccountingSeeder,
   ];
 }
+
+/**
+ * P3.01: the manager's named authorisation for accounting.edit (P6 §10), then a DEMO sign-off that
+ * activates the seeded chart on staging (D-3.01-9). Once.
+ */
+const demoAccountingSeeder: Seeder = {
+  name: 'demo: P3.01 a demo sign-off activating the chart of accounts',
+  async run(tx) {
+    let inserted = 0;
+    const manager = await tx.user.findUniqueOrThrow({ where: { username: 'manager' }, select: { id: true } });
+    for (const r of requirementsFor(new Set(['accounting.edit']))) {
+      const has = await tx.accessAuthorisation.count({
+        where: { userId: manager.id, authorisationKey: r.key },
+      });
+      if (has > 0) continue;
+      await tx.accessAuthorisation.create({
+        data: {
+          userId: manager.id,
+          kind: r.kind,
+          ruleCode: r.rule,
+          authorisationKey: r.key,
+          permissions: r.permissions.join(','),
+          reason: 'Staging demo account for manager verification. Seeded, never in production.',
+          authorisedBy: BOOTSTRAP_ADMIN_ID,
+        },
+      });
+      inserted += 1;
+    }
+    if ((await readSignOff(tx)) === null) {
+      const r = await activateChartIn(
+        tx,
+        {
+          signed_off_by: 'DEMO — not an accountant sign-off',
+          signed_off_on: '2026-10-24' as BusinessDate,
+          reference: 'STAGING-DEMO',
+          note: 'Staging only, so the chart can be shown active. Production waits for the accountant (P3 §31.3).',
+        },
+        BOOTSTRAP_ADMIN_ID,
+      );
+      inserted += 1 + r.activated;
+    }
+    return { inserted, updated: 0 };
+  },
+};
 
 /**
  * P2.01: five people registered by DEMO-A (the design's worker and employee forms), with dependents, and

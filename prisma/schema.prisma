@@ -253,6 +253,8 @@ model User {
   updatedGoals                 Goal[]                 @relation("GoalUpdatedBy")
   submittedGoals               Goal[]                 @relation("GoalSubmittedBy")
   approvedGoals                Goal[]                 @relation("GoalApprovedBy")
+  createdAccounts              Account[]              @relation("AccountCreatedBy")
+  updatedAccounts              Account[]              @relation("AccountUpdatedBy")
   rejectedGoals                Goal[]                 @relation("GoalRejectedBy")
   createdGoalProgresss         GoalProgress[]         @relation("GoalProgressCreatedBy")
   createdEvaluations           Evaluation[]           @relation("EvaluationCreatedBy")
@@ -1858,6 +1860,7 @@ model Currency {
   creator       User           @relation("CurrencyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_currency_created_by")
   updater       User?          @relation("CurrencyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_currency_updated_by")
   organisations Organisation[]
+  accounts      Account[]
 
   @@unique([code], map: "ux_currency_code")
   @@unique([baseKey], map: "ux_currency_base")
@@ -3603,7 +3606,7 @@ model BenefitType {
   payrollTreatment    String    @default("not_payroll") @map("payroll_treatment") @db.VarChar(30)
   /// The pay component type: required when payroll_treatment is not not_payroll. No FK until Phase 9.
   componentTypeId     BigInt?   @map("component_type_id") @db.UnsignedBigInt
-  /// No FK until the chart of accounts (Phase 3).
+  /// A postable expense account of the chart (P3.01).
   expenseAccountId    BigInt?   @map("expense_account_id") @db.UnsignedBigInt
   /// active | inactive
   status              String    @default("active") @db.VarChar(30)
@@ -3613,13 +3616,15 @@ model BenefitType {
   updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  uom          Uom?                 @relation(fields: [uomId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_type_uom")
-  entitlements BenefitEntitlement[]
-  creator      User                 @relation("BenefitTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_type_created_by")
-  updater      User?                @relation("BenefitTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_type_updated_by")
+  uom            Uom?                 @relation(fields: [uomId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_type_uom")
+  expenseAccount Account?             @relation(fields: [expenseAccountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_type_expense_account")
+  entitlements   BenefitEntitlement[]
+  creator        User                 @relation("BenefitTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_type_created_by")
+  updater        User?                @relation("BenefitTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_benefit_type_updated_by")
 
   @@unique([code], map: "ux_benefit_type_code")
   @@index([benefitCategory], map: "ix_benefit_type_category")
+  @@index([expenseAccountId], map: "ix_benefit_type_expense_account")
   @@index([uomId], map: "ix_benefit_type_uom")
   @@index([status], map: "ix_benefit_type_status")
   @@index([createdBy], map: "ix_benefit_type_created_by")
@@ -4113,4 +4118,68 @@ model EvaluationLine {
   @@index([createdBy], map: "ix_evaluation_line_created_by")
   @@index([updatedBy], map: "ix_evaluation_line_updated_by")
   @@map("evaluation_line")
+}
+
+// ---- P3.01 Chart of accounts (P3 §27.1, P8 §2–§13) ------------------------------------------------------
+
+/// The chart of accounts: one tree per account type, at most four levels, only leaves postable. Seeded
+/// from P8 INACTIVE until the accountant's sign-off (P3 §31.3, D-3.01-9).
+model Account {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  parentId           BigInt?   @map("parent_id") @db.UnsignedBigInt
+  code               String    @db.VarChar(30)
+  name               String    @db.VarChar(150)
+  /// asset | liability | equity | revenue | expense. A child has its parent's type (D-3.01-2).
+  accountType        String    @map("account_type") @db.VarChar(30)
+  /// current_asset | fixed_asset | current_liability | long_term_liability | operating_revenue |
+  /// other_revenue | direct_expense | operating_expense | financing. Must belong to the type (D-3.01-10).
+  accountSubtype     String?   @map("account_subtype") @db.VarChar(40)
+  /// debit | credit. Derived from the type; the opposite only for a contra account (D-3.01-6).
+  normalBalance      String    @map("normal_balance") @db.VarChar(10)
+  isPostable         Boolean   @default(false) @map("is_postable")
+  isControlAccount   Boolean   @default(false) @map("is_control_account")
+  /// receivable | payable | inventory | payroll_liability | pf_liability | advance
+  controlSubledger   String?   @map("control_subledger") @db.VarChar(30)
+  isBankOrCash       Boolean   @default(false) @map("is_bank_or_cash")
+  /// Foreign-currency bank accounts only; NULL means base currency.
+  currencyId         BigInt?   @map("currency_id") @db.UnsignedBigInt
+  requiresCostCentre Boolean   @default(false) @map("requires_cost_centre")
+  requiresEstate     Boolean   @default(false) @map("requires_estate")
+  /// Must be nil at period close (D-3.01-5).
+  isClearing         Boolean   @default(false) @map("is_clearing")
+  /// Accounts the application reaches by key (D-3.01-4). Unique where set.
+  systemKey          String?   @map("system_key") @db.VarChar(50)
+  isSystem           Boolean   @default(false) @map("is_system")
+  /// Depth in the tree, 1 to 4. Maintained on save.
+  level              Int       @db.SmallInt
+  /// Materialised path of ancestor ids and its own, "/1/5/12/" (P3 §27.1). Maintained on save.
+  path               String?   @db.VarChar(255)
+  /// active | inactive
+  status             String    @default("inactive") @db.VarChar(30)
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  parent       Account?      @relation("AccountTree", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_parent")
+  children     Account[]     @relation("AccountTree")
+  currency     Currency?     @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_currency")
+  benefitTypes BenefitType[]
+  creator      User          @relation("AccountCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_created_by")
+  updater      User?         @relation("AccountUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_updated_by")
+
+  @@unique([code], map: "ux_account_code")
+  @@unique([systemKey], map: "ux_account_system_key")
+  @@index([parentId], map: "ix_account_parent")
+  @@index([name], map: "ix_account_name")
+  @@index([accountType], map: "ix_account_type")
+  @@index([accountSubtype], map: "ix_account_subtype")
+  @@index([isPostable], map: "ix_account_postable")
+  @@index([path], map: "ix_account_path")
+  @@index([status], map: "ix_account_status")
+  @@index([currencyId], map: "ix_account_currency")
+  @@index([createdBy], map: "ix_account_created_by")
+  @@index([updatedBy], map: "ix_account_updated_by")
+  @@map("account")
 }

@@ -212,6 +212,8 @@ export const SENSITIVE_PERMISSIONS: ReadonlySet<string> = new Set([
   'payroll.post',
   'payroll.export',
   'journal.post',
+  // D-3.01-9: records the accountant's sign-off that activates the chart, and changes the chart after it.
+  'accounting.edit',
   'accounting_period.reopen',
   'statutory_rule.approve',
   'wage_rule.approve',

@@ -219,6 +219,18 @@ interface Hooks {
 }
 
 const HOOKS: Readonly<Record<string, Hooks>> = {
+  benefit_type: {
+    // P3.01 (P8 §11.1): a benefit's cost posts to a postable expense account.
+    async beforeSave(tx, values) {
+      const id = values.expense_account_id as bigint | null | undefined;
+      if (id === null || id === undefined) return;
+      const [a] = await tx.$queryRaw<{ account_type: string; is_postable: number | boolean }[]>`
+        SELECT account_type, is_postable FROM account WHERE id = ${id}`;
+      if (a && (a.account_type !== 'expense' || !a.is_postable)) {
+        throw Errors.validation([invalid('expense_account_id', 'must be a postable expense account')]);
+      }
+    },
+  },
   shift: {
     // P3 §5.2.4: where end_time is not after start_time the shift ends on the following day.
     beforeSave(_tx, values) {
