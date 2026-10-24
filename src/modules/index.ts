@@ -13,6 +13,8 @@ import type { Mailer } from '../core/mail/mailer.js';
 import type { Platform } from '../core/platform.js';
 import type { FileStorage } from '../core/storage/storage.js';
 import { APPROVAL_SCHEDULES, approvalNotifyJob, recheckUnresolvedJob } from './approvals/approvals.jobs.js';
+import { registerAccountingImports } from './accounting/accounts.import.js';
+import { accountingModules } from './accounting/accounts.routes.js';
 import { approvalsModule } from './approvals/approvals.routes.js';
 import { auditModule } from './audit/audit.routes.js';
 import { concentrationReviewJob, IDENTITY_SCHEDULES, purgeTokensJob } from './identity/identity.jobs.js';
@@ -64,7 +66,7 @@ export interface ModuleDeps {
 
 /**
  * The application's modules, in mount order. Each epic adds its module here, starting with P1.01
- * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments), P1.13 (approval workflow definitions), P1.14 (approval runtime and queue), P1.15 (jobs and schedules), P1.16 (notifications), R.5 (dashboards), P1.17 (imports), P1.18 (system health) and P2.01 (persons). server.ts mounts them, and the OpenAPI document is
+ * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments), P1.13 (approval workflow definitions), P1.14 (approval runtime and queue), P1.15 (jobs and schedules), P1.16 (notifications), R.5 (dashboards), P1.17 (imports), P1.18 (system health) P2.01 (persons) … P3.01 (chart of accounts). server.ts mounts them, and the OpenAPI document is
  * generated from them.
  */
 export function buildModules(deps: ModuleDeps): ApiModule[] {
@@ -87,6 +89,7 @@ export function buildModules(deps: ModuleDeps): ApiModule[] {
     importsModule(deps),
     healthModule(deps),
     ...workforceModules(deps),
+    ...accountingModules(deps),
   ];
 }
 
@@ -116,6 +119,7 @@ export function registerJobs(deps: {
   // Import types first: the import jobs look them up (P1.17).
   registerLookupImports(db, accessLog);
   registerWorkforceImports({ db, accessLog, authz: dbPermissionResolver(db), timezone: config.timezone });
+  registerAccountingImports(db);
   registerJob(validateImportJob(db, storage));
   registerJob(commitImportJob(db));
   registerJob(selfTestJob(db));

@@ -198,7 +198,7 @@ function settingsModule({ db, platform, authz, accessLog, config }: SystemDeps):
     auth: { permission: 'system.create' },
     body: CreateSettingBody,
     success: { status: 201, description: 'Created', schema: SettingOut },
-    errors: ['DUPLICATE_KEY', 'INVARIANT_VIOLATED'],
+    errors: ['DUPLICATE_KEY', 'INVARIANT_VIOLATED', 'SYSTEM_RECORD'],
     handler: async (_req, res) => {
       const { body } = getValidated(res, { body: CreateSettingBody });
       const s = await settings.create(body, currentActorId());
@@ -236,7 +236,7 @@ function settingsModule({ db, platform, authz, accessLog, config }: SystemDeps):
       body,
       ifMatch: true,
       success: { status: 200, description: 'Updated', schema: SettingOut },
-      errors: ['INVARIANT_VIOLATED'],
+      errors: ['INVARIANT_VIOLATED', 'SYSTEM_RECORD'],
       handler: async (req, res) => {
         const { params, body: changes } = getValidated(res, { ...byId, body: PatchSettingBody });
         const s = await settings.update(params.id, requireIfMatch(req), changes, currentActorId());
@@ -252,7 +252,7 @@ function settingsModule({ db, platform, authz, accessLog, config }: SystemDeps):
     auth: { permission: 'system.delete' },
     ...byId,
     success: { status: 204, description: 'Deleted' },
-    errors: [],
+    errors: ['SYSTEM_RECORD'],
     handler: async (_req, res) => {
       const { params } = getValidated(res, byId);
       await settings.remove(params.id, currentActorId());

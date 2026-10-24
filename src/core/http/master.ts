@@ -38,6 +38,9 @@ export function masterItemRoutes<Out extends { version: number }>(
     patch: z.ZodType;
     svc: MasterItemService<Out>;
     updateErrors?: readonly ErrorCode[];
+    /** Refusals of deactivate / reactivate and of delete beyond the common ones. */
+    statusErrors?: readonly ErrorCode[];
+    deleteErrors?: readonly ErrorCode[];
     deleteHelp: string;
   },
 ): void {
@@ -86,7 +89,7 @@ export function masterItemRoutes<Out extends { version: number }>(
     auth: { permission: `${o.module}.delete` },
     ...byId,
     success: { status: 204, description: 'Deleted' },
-    errors: ['REFERENCED_RECORD', 'SCOPE_DENIED'],
+    errors: ['REFERENCED_RECORD', 'SCOPE_DENIED', ...(o.deleteErrors ?? [])],
     handler: async (_req, res) => {
       const { params } = getValidated(res, byId);
       await o.svc.remove(params.id, currentActorId());
@@ -111,7 +114,7 @@ export function masterItemRoutes<Out extends { version: number }>(
       ifMatch: true,
       idempotent: true,
       success: { status: 200, description: `The ${o.label} in its new status`, schema: o.out },
-      errors: ['SCOPE_DENIED'],
+      errors: ['SCOPE_DENIED', ...(o.statusErrors ?? [])],
       handler: async (req, res) => {
         const { params } = getValidated(res, byId);
         const item = await o.svc.setStatus(params.id, requireIfMatch(req), status, currentActorId());

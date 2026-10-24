@@ -264,6 +264,19 @@ export const numberFormatSeeder: Seeder = {
 
 // ---- settings ---------------------------------------------------------------------------------------
 
+/**
+ * Settings a module writes itself and the generic /settings API never may: they record a controlled act
+ * (P3.01: the accountant's sign-off that activates the chart, D-3.01-9). Readable like any other.
+ */
+export const RESERVED_SETTINGS: ReadonlySet<string> = new Set(['accounting.chart_sign_off']);
+function assertNotReserved(key: string): void {
+  if (RESERVED_SETTINGS.has(key)) {
+    throw new AppError('SYSTEM_RECORD', `Setting ${key} is written only by the system.`, [
+      { field: 'key', code: 'SYSTEM_RECORD', message: 'is written only by the system' },
+    ]);
+  }
+}
+
 export function settingsService(db: Database, cipher: SettingsCipher | null) {
   /** What the API shows. An encrypted value never leaves the server. */
   function toOut(s: SystemSetting): SettingOutT {
@@ -324,6 +337,7 @@ export function settingsService(db: Database, cipher: SettingsCipher | null) {
     },
 
     async create(b: z.infer<typeof CreateSettingBody>, actorId: bigint) {
+      assertNotReserved(b.key);
       return withTransaction(db, async (tx) => {
         if (await tx.systemSetting.findUnique({ where: { settingKey: b.key }, select: { id: true } })) {
           throw new AppError('DUPLICATE_KEY', `Setting ${b.key} already exists.`, [
@@ -350,6 +364,7 @@ export function settingsService(db: Database, cipher: SettingsCipher | null) {
     async update(id: bigint, expectedVersion: number, b: z.infer<typeof PatchSettingBody>, actorId: bigint) {
       return withTransaction(db, async (tx) => {
         const before = await orNotFound(tx, id);
+        assertNotReserved(before.settingKey);
         const { count } = await tx.systemSetting.updateMany({
           where: { id, version: expectedVersion },
           data: {
@@ -373,6 +388,7 @@ export function settingsService(db: Database, cipher: SettingsCipher | null) {
     async remove(id: bigint, actorId: bigint) {
       await withTransaction(db, async (tx) => {
         const s = await orNotFound(tx, id);
+        assertNotReserved(s.settingKey);
         await tx.systemSetting.delete({ where: { id } });
         await auditDelete(tx, SETTING_AUDIT, id, auditValues(s), { actorId });
       });

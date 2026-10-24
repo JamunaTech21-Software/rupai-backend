@@ -71,6 +71,14 @@ export const ERROR_CODES = {
   MIXED_OWNERSHIP_BATCH: 422,
   UNBALANCED_JOURNAL: 422,
   ACCOUNT_NOT_POSTABLE: 422,
+  /** P3.01: a group account (one with accounts under it) is never postable (P3 §27.1). */
+  ACCOUNT_HAS_CHILDREN: 422,
+  /** P3.01: no account is added under a postable account; make it a group first (P8 §2.3). */
+  PARENT_IS_POSTABLE: 422,
+  /** P3.01: the chart has at most four levels (P8 §4.2). */
+  ACCOUNT_DEPTH_EXCEEDED: 422,
+  /** P3.01: nothing in the chart activates before the accountant's sign-off (P3 §31.3). */
+  CHART_NOT_SIGNED_OFF: 422,
   COST_CENTRE_REQUIRED: 422,
   DUPLICATE_POSTING: 422,
   UNAPPROVED_SOURCE: 422,

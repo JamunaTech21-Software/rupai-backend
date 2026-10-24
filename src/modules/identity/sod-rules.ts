@@ -91,6 +91,8 @@ export const SENSITIVE_WHY: Readonly<Record<string, string>> = {
   'payroll.post': 'Writes the largest recurring expense to the ledger.',
   'payroll.export': 'Produces a file containing every worker’s pay.',
   'journal.post': 'Direct ledger entry outside the operational flow.',
+  'accounting.edit':
+    'Shapes the chart every posting lands on, and records the sign-off that activates it (D-3.01-9).',
   'accounting_period.reopen': 'Reopens a closed period, making published figures changeable.',
   'statutory_rule.approve': 'Activates a legal rate: the last line of defence on statutory correctness.',
   'wage_rule.approve': 'Changes what workers are paid.',

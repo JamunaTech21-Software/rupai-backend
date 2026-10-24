@@ -184,6 +184,13 @@ export const LOOKUP_TYPES: readonly LookupType[] = [
       default: 'not_payroll',
       readOnly: true,
     },
+    // P3.01: a postable expense account of the chart (checked in lookup.engine's hook).
+    {
+      name: 'expense_account_id',
+      type: { kind: 'ref', table: 'account', label: 'expense account' },
+      default: null,
+      filter: true,
+    },
   ]),
   // P2.10 (P3 §24.3): what evaluations score.
   common('evaluation_criteria', 'evaluation criterion', { permission: 'evaluation' }, [
