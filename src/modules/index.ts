@@ -13,6 +13,7 @@ import type { Mailer } from '../core/mail/mailer.js';
 import type { Platform } from '../core/platform.js';
 import type { FileStorage } from '../core/storage/storage.js';
 import { APPROVAL_SCHEDULES, approvalNotifyJob, recheckUnresolvedJob } from './approvals/approvals.jobs.js';
+import { ACCOUNTING_SCHEDULES, verifyLedgerJob } from './accounting/accounting.jobs.js';
 import { registerAccountingImports } from './accounting/accounts.import.js';
 import { accountingModules } from './accounting/accounts.routes.js';
 import { approvalsModule } from './approvals/approvals.routes.js';
@@ -101,6 +102,7 @@ export const JOB_CATALOGUE_SCHEDULES: readonly ScheduleDefinition[] = [
   ...DOCUMENT_SCHEDULES,
   ...CONTRACTOR_SCHEDULES,
   ...PERFORMANCE_SCHEDULES,
+  ...ACCOUNTING_SCHEDULES,
   ...NOTIFICATION_SCHEDULES,
 ];
 
@@ -131,6 +133,7 @@ export function registerJobs(deps: {
   registerJob(documentExpiryJob(db, config.timezone));
   registerJob(contractExpiryJob(db, config.timezone));
   registerJob(goalStatesJob(db, accessLog, config.timezone));
+  registerJob(verifyLedgerJob(db));
   registerJob(deliverJob(db, mailer, config.app.publicUrl));
   registerJob(purgeNotificationsJob(db));
 }

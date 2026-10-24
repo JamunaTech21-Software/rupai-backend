@@ -259,6 +259,17 @@ model User {
   createdBudgetHeads           BudgetHead[]           @relation("BudgetHeadCreatedBy")
   updatedBudgetHeads           BudgetHead[]           @relation("BudgetHeadUpdatedBy")
   createdBankAccounts          BankAccount[]          @relation("BankAccountCreatedBy")
+  createdPostingRules          PostingRule[]          @relation("PostingRuleCreatedBy")
+  updatedPostingRules          PostingRule[]          @relation("PostingRuleUpdatedBy")
+  approvedPostingRules         PostingRule[]          @relation("PostingRuleApprovedBy")
+  createdPostingRuleLines      PostingRuleLine[]      @relation("PostingRuleLineCreatedBy")
+  createdJournals              Journal[]              @relation("JournalCreatedBy")
+  updatedJournals              Journal[]              @relation("JournalUpdatedBy")
+  submittedJournals            Journal[]              @relation("JournalSubmittedBy")
+  approvedJournals             Journal[]              @relation("JournalApprovedBy")
+  rejectedJournals             Journal[]              @relation("JournalRejectedBy")
+  postedJournals               Journal[]              @relation("JournalPostedBy")
+  postingLinks                 PostingLink[]          @relation("PostingLinkPostedBy")
   updatedBankAccounts          BankAccount[]          @relation("BankAccountUpdatedBy")
   updatedAccounts              Account[]              @relation("AccountUpdatedBy")
   rejectedGoals                Goal[]                 @relation("GoalRejectedBy")
@@ -744,6 +755,9 @@ model Estate {
   organisation          Organisation           @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_organisation")
   costCentres           CostCentre[]
   bankAccounts          BankAccount[]
+  journals              Journal[]
+  journalLines          JournalLine[]
+  ledgerBalances        LedgerBalance[]
   creator               User                   @relation("EstateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_created_by")
   updater               User?                  @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
   divisions             Division[]
@@ -1147,6 +1161,7 @@ model FiscalYear {
 
   organisation      Organisation       @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_organisation")
   closer            User?              @relation("FiscalYearClosedBy", fields: [closedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_closed_by")
+  journals          Journal[]
   creator           User               @relation("FiscalYearCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_created_by")
   updater           User?              @relation("FiscalYearUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_updated_by")
   periods           AccountingPeriod[]
@@ -1185,11 +1200,14 @@ model AccountingPeriod {
   updatedAt    DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy    BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  fiscalYear FiscalYear @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_fiscal_year")
-  closer     User?      @relation("AccountingPeriodClosedBy", fields: [closedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_closed_by")
-  reopener   User?      @relation("AccountingPeriodReopenedBy", fields: [reopenedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_reopened_by")
-  creator    User       @relation("AccountingPeriodCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_created_by")
-  updater    User?      @relation("AccountingPeriodUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_updated_by")
+  fiscalYear     FiscalYear      @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_fiscal_year")
+  closer         User?           @relation("AccountingPeriodClosedBy", fields: [closedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_closed_by")
+  reopener       User?           @relation("AccountingPeriodReopenedBy", fields: [reopenedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_reopened_by")
+  journals       Journal[]
+  journalLines   JournalLine[]
+  ledgerBalances LedgerBalance[]
+  creator        User            @relation("AccountingPeriodCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_created_by")
+  updater        User?           @relation("AccountingPeriodUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_updated_by")
 
   @@unique([fiscalYearId, periodNumber], map: "ux_period")
   @@index([startDate, endDate], map: "ix_accounting_period_dates")
@@ -1224,8 +1242,9 @@ model Department {
   workflows   Workflow[]
   assignments EmploymentAssignment[]
 
-  creator User  @relation("DepartmentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_created_by")
-  updater User? @relation("DepartmentUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_updated_by")
+  journalLines JournalLine[]
+  creator      User          @relation("DepartmentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_created_by")
+  updater      User?         @relation("DepartmentUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_updated_by")
 
   @@unique([code], map: "ux_department_code")
   @@index([status], map: "ix_department_status")
@@ -1866,6 +1885,7 @@ model Currency {
   updatedBy     BigInt?   @map("updated_by") @db.UnsignedBigInt
 
   bankAccounts  BankAccount[]
+  journals      Journal[]
   creator       User           @relation("CurrencyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_currency_created_by")
   updater       User?          @relation("CurrencyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_currency_updated_by")
   organisations Organisation[]
@@ -4181,14 +4201,17 @@ model Account {
   updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  parent       Account?      @relation("AccountTree", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_parent")
-  children     Account[]     @relation("AccountTree")
-  currency     Currency?     @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_currency")
-  benefitTypes BenefitType[]
-  budgetHeads  BudgetHead[]
-  bankAccount  BankAccount?
-  creator      User          @relation("AccountCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_created_by")
-  updater      User?         @relation("AccountUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_updated_by")
+  parent           Account?          @relation("AccountTree", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_parent")
+  children         Account[]         @relation("AccountTree")
+  currency         Currency?         @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_currency")
+  benefitTypes     BenefitType[]
+  budgetHeads      BudgetHead[]
+  bankAccount      BankAccount?
+  postingRuleLines PostingRuleLine[]
+  journalLines     JournalLine[]
+  ledgerBalances   LedgerBalance[]
+  creator          User              @relation("AccountCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_created_by")
+  updater          User?             @relation("AccountUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_updated_by")
 
   @@unique([code], map: "ux_account_code")
   @@unique([systemKey], map: "ux_account_system_key")
@@ -4228,13 +4251,15 @@ model CostCentre {
   updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  parent      CostCentre?            @relation("CostCentreTree", fields: [parentCostCentreId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_parent")
-  children    CostCentre[]           @relation("CostCentreTree")
-  estate      Estate?                @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_estate")
-  manager     EmploymentProfile?     @relation(fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_manager")
-  assignments EmploymentAssignment[]
-  creator     User                   @relation("CostCentreCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_created_by")
-  updater     User?                  @relation("CostCentreUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_updated_by")
+  parent         CostCentre?            @relation("CostCentreTree", fields: [parentCostCentreId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_parent")
+  children       CostCentre[]           @relation("CostCentreTree")
+  estate         Estate?                @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_estate")
+  manager        EmploymentProfile?     @relation(fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_manager")
+  assignments    EmploymentAssignment[]
+  journalLines   JournalLine[]
+  ledgerBalances LedgerBalance[]
+  creator        User                   @relation("CostCentreCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_created_by")
+  updater        User?                  @relation("CostCentreUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_updated_by")
 
   @@unique([code], map: "ux_cost_centre_code")
   @@index([parentCostCentreId], map: "ix_cost_centre_parent")
@@ -4275,6 +4300,7 @@ model BudgetHead {
   account          Account?          @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_head_account")
   trainingPrograms TrainingProgram[]
   welfareCases     WelfareCase[]
+  journalLines     JournalLine[]
   creator          User              @relation("BudgetHeadCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_head_created_by")
   updater          User?             @relation("BudgetHeadUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_head_updated_by")
 
@@ -4327,4 +4353,246 @@ model BankAccount {
   @@index([createdBy], map: "ix_bank_account_created_by")
   @@index([updatedBy], map: "ix_bank_account_updated_by")
   @@map("bank_account")
+}
+
+// ---- P3.03 Posting engine and posting rules (P1 §7.2–§7.7, P3 §27.3–§27.7, P8 §5, §14) ------------------
+
+/// Configuration the posting engine resolves (P3 §27.7). Inactive until activated after the chart's
+/// sign-off (P3 §31.3, D-3.03-9); lines and conditions change only while inactive.
+model PostingRule {
+  id            BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  ruleCode      String    @map("rule_code") @db.VarChar(30)
+  name          String    @db.VarChar(150)
+  description   String?   @db.VarChar(500)
+  /// A registered postable source (core/posting/sources.ts), e.g. sale, payroll_run.
+  sourceType    String    @map("source_type") @db.VarChar(40)
+  /// revenue | cost_of_goods_sold | receivable | payable | expense | inventory_in | inventory_out |
+  /// payroll_expense | payroll_liability | pf_liability | depreciation | variance | disposal
+  purpose       String    @db.VarChar(40)
+  /// AND-only conditions on the source's condition fields (the approval grammar, P7 §5).
+  conditionJson Json      @map("condition_json")
+  /// Lowest first among the rules in force whose conditions hold.
+  sequence      Int       @default(10)
+  isActive      Boolean   @default(false) @map("is_active")
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  /// Approval block: who activated it (never whoever last changed it).
+  approvedAt    DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy    BigInt?   @map("approved_by") @db.UnsignedBigInt
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy     BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt     DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy     BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  lines    PostingRuleLine[]
+  journals Journal[]
+  approver User?             @relation("PostingRuleApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_posting_rule_approved_by")
+  creator  User              @relation("PostingRuleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_posting_rule_created_by")
+  updater  User?             @relation("PostingRuleUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_posting_rule_updated_by")
+
+  @@unique([ruleCode], map: "ux_posting_rule_code")
+  @@index([sourceType, purpose, isActive], map: "ix_posting_rule_source")
+  @@index([approvedBy], map: "ix_posting_rule_approved_by")
+  @@index([createdBy], map: "ix_posting_rule_created_by")
+  @@index([updatedBy], map: "ix_posting_rule_updated_by")
+  @@map("posting_rule")
+}
+
+/// One side of a posting rule: which account (P8 §5.2) and which amount of the document.
+model PostingRuleLine {
+  id                BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  postingRuleId     BigInt   @map("posting_rule_id") @db.UnsignedBigInt
+  /// debit | credit
+  side              String   @db.VarChar(10)
+  /// fixed | from_component | from_category | from_charge_type | from_account_field
+  accountResolution String   @map("account_resolution") @db.VarChar(30)
+  /// fixed only.
+  accountId         BigInt?  @map("account_id") @db.UnsignedBigInt
+  /// What the resolution reads: the document's account field, the component, the category key.
+  resolutionKey     String?  @map("resolution_key") @db.VarChar(50)
+  /// The document's amount this line carries.
+  amountSource      String   @map("amount_source") @db.VarChar(50)
+  sequence          Int
+  narration         String?  @db.VarChar(300)
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy         BigInt   @map("created_by") @db.UnsignedBigInt
+
+  rule    PostingRule @relation(fields: [postingRuleId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_posting_rule_line_rule")
+  account Account?    @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_posting_rule_line_account")
+  creator User        @relation("PostingRuleLineCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_posting_rule_line_created_by")
+
+  @@unique([postingRuleId, sequence], map: "ux_posting_rule_line")
+  @@index([accountId], map: "ix_posting_rule_line_account")
+  @@index([createdBy], map: "ix_posting_rule_line_created_by")
+  @@map("posting_rule_line")
+}
+
+/// A journal (P3 §27.3). Automatic journals are written posted; manual ones (P3.04) are drafted first, so
+/// journal_number stays NULL until posting (gapless, D-3.03-7). Immutable once posted.
+model Journal {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  journalNumber      String?   @map("journal_number") @db.VarChar(30)
+  /// automatic | manual | opening | closing | reversal | adjustment
+  journalType        String    @map("journal_type") @db.VarChar(30)
+  journalDate        DateTime  @map("journal_date") @db.Date
+  accountingPeriodId BigInt    @map("accounting_period_id") @db.UnsignedBigInt
+  fiscalYearId       BigInt    @map("fiscal_year_id") @db.UnsignedBigInt
+  narration          String    @db.VarChar(500)
+  reference          String?   @db.VarChar(50)
+  sourceType         String?   @map("source_type") @db.VarChar(40)
+  sourceId           BigInt?   @map("source_id") @db.UnsignedBigInt
+  postingRuleId      BigInt?   @map("posting_rule_id") @db.UnsignedBigInt
+  estateId           BigInt?   @map("estate_id") @db.UnsignedBigInt
+  currencyId         BigInt    @map("currency_id") @db.UnsignedBigInt
+  exchangeRate       Decimal   @default(1) @map("exchange_rate") @db.Decimal(18, 8)
+  totalDebit         Decimal   @default(0) @map("total_debit") @db.Decimal(18, 4)
+  totalCredit        Decimal   @default(0) @map("total_credit") @db.Decimal(18, 4)
+  reversalOfId       BigInt?   @map("reversal_of_id") @db.UnsignedBigInt
+  isReversed         Boolean   @default(false) @map("is_reversed")
+  /// draft | submitted | approved | rejected | posted
+  state              String    @default("draft") @db.VarChar(30)
+  stateChangedAt     DateTime? @map("state_changed_at") @db.DateTime(0)
+  submittedAt        DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy        BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt         DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy         BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt         DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy         BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason    String?   @map("rejection_reason") @db.VarChar(500)
+  postedAt           DateTime? @map("posted_at") @db.DateTime(0)
+  postedBy           BigInt?   @map("posted_by") @db.UnsignedBigInt
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  period     AccountingPeriod @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_period")
+  fiscalYear FiscalYear       @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_fiscal_year")
+  rule       PostingRule?     @relation(fields: [postingRuleId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_posting_rule")
+  estate     Estate?          @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_estate")
+  currency   Currency         @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_currency")
+  reversalOf Journal?         @relation("JournalReversal", fields: [reversalOfId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_reversal_of")
+  reversals  Journal[]        @relation("JournalReversal")
+  lines      JournalLine[]
+  links      PostingLink[]
+  submitter  User?            @relation("JournalSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_submitted_by")
+  approver   User?            @relation("JournalApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_approved_by")
+  rejecter   User?            @relation("JournalRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_rejected_by")
+  poster     User?            @relation("JournalPostedBy", fields: [postedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_posted_by")
+  creator    User             @relation("JournalCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_created_by")
+  updater    User?            @relation("JournalUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_updated_by")
+
+  @@unique([journalNumber], map: "ux_journal_number")
+  @@index([journalType], map: "ix_journal_type")
+  @@index([journalDate], map: "ix_journal_date")
+  @@index([accountingPeriodId], map: "ix_journal_period")
+  @@index([fiscalYearId], map: "ix_journal_fiscal_year")
+  @@index([reference], map: "ix_journal_reference")
+  @@index([sourceType, sourceId], map: "ix_journal_source")
+  @@index([postingRuleId], map: "ix_journal_posting_rule")
+  @@index([estateId], map: "ix_journal_estate")
+  @@index([currencyId], map: "ix_journal_currency")
+  @@index([reversalOfId], map: "ix_journal_reversal_of")
+  @@index([isReversed], map: "ix_journal_is_reversed")
+  @@index([state], map: "ix_journal_state")
+  @@index([submittedBy], map: "ix_journal_submitted_by")
+  @@index([approvedBy], map: "ix_journal_approved_by")
+  @@index([rejectedBy], map: "ix_journal_rejected_by")
+  @@index([postedBy], map: "ix_journal_posted_by")
+  @@index([createdBy], map: "ix_journal_created_by")
+  @@index([updatedBy], map: "ix_journal_updated_by")
+  @@map("journal")
+}
+
+/// One very-high-growth table (P3 §27.4): base and transaction amounts, analysis dimensions as columns.
+/// Insert-only: the app account has no UPDATE or DELETE on it.
+model JournalLine {
+  id                 BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  journalId          BigInt   @map("journal_id") @db.UnsignedBigInt
+  lineNumber         Int      @map("line_number")
+  accountId          BigInt   @map("account_id") @db.UnsignedBigInt
+  debit              Decimal  @default(0) @db.Decimal(18, 4)
+  credit             Decimal  @default(0) @db.Decimal(18, 4)
+  transactionDebit   Decimal  @default(0) @map("transaction_debit") @db.Decimal(18, 4)
+  transactionCredit  Decimal  @default(0) @map("transaction_credit") @db.Decimal(18, 4)
+  costCentreId       BigInt?  @map("cost_centre_id") @db.UnsignedBigInt
+  estateId           BigInt?  @map("estate_id") @db.UnsignedBigInt
+  departmentId       BigInt?  @map("department_id") @db.UnsignedBigInt
+  budgetHeadId       BigInt?  @map("budget_head_id") @db.UnsignedBigInt
+  /// buyer | supplier | leaf_supplier | party | employment_profile — for sub-ledger lines
+  partyType          String?  @map("party_type") @db.VarChar(40)
+  partyId            BigInt?  @map("party_id") @db.UnsignedBigInt
+  narration          String?  @db.VarChar(300)
+  accountingPeriodId BigInt   @map("accounting_period_id") @db.UnsignedBigInt
+  createdAt          DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  journal    Journal          @relation(fields: [journalId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_line_journal")
+  account    Account          @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_line_account")
+  costCentre CostCentre?      @relation(fields: [costCentreId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_line_cost_centre")
+  estate     Estate?          @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_line_estate")
+  department Department?      @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_line_department")
+  budgetHead BudgetHead?      @relation(fields: [budgetHeadId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_line_budget_head")
+  period     AccountingPeriod @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_journal_line_period")
+
+  @@unique([journalId, lineNumber], map: "ux_journal_line")
+  @@index([accountId, accountingPeriodId], map: "ix_jl_account_period")
+  @@index([costCentreId, accountId], map: "ix_jl_cost_centre")
+  @@index([partyType, partyId], map: "ix_jl_party")
+  @@index([estateId], map: "ix_jl_estate")
+  @@index([departmentId], map: "ix_jl_department")
+  @@index([budgetHeadId], map: "ix_jl_budget_head")
+  @@index([accountingPeriodId], map: "ix_jl_period")
+  @@map("journal_line")
+}
+
+/// The idempotency guard of the whole engine (P3 §27.5). Insert-only.
+model PostingLink {
+  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  sourceType String   @map("source_type") @db.VarChar(40)
+  sourceId   BigInt   @map("source_id") @db.UnsignedBigInt
+  purpose    String   @db.VarChar(40)
+  journalId  BigInt   @map("journal_id") @db.UnsignedBigInt
+  postedAt   DateTime @map("posted_at") @db.DateTime(0)
+  postedBy   BigInt   @map("posted_by") @db.UnsignedBigInt
+
+  journal Journal @relation(fields: [journalId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_posting_link_journal")
+  poster  User    @relation("PostingLinkPostedBy", fields: [postedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_posting_link_posted_by")
+
+  @@unique([sourceType, sourceId, purpose], map: "ux_posting_link")
+  @@index([journalId], map: "ix_posting_link_journal")
+  @@index([postedBy], map: "ix_posting_link_posted_by")
+  @@map("posting_link")
+}
+
+/// The derived summary statements read (P3 §27.6), maintained in the posting transaction (D-3.03-6).
+model LedgerBalance {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  accountId          BigInt    @map("account_id") @db.UnsignedBigInt
+  accountingPeriodId BigInt    @map("accounting_period_id") @db.UnsignedBigInt
+  costCentreId       BigInt?   @map("cost_centre_id") @db.UnsignedBigInt
+  estateId           BigInt?   @map("estate_id") @db.UnsignedBigInt
+  /// GENERATED column (see migration SQL): the four dimensions, NULL-safe, for the unique key.
+  balanceKey         String?   @map("balance_key") @db.VarChar(100)
+  openingDebit       Decimal   @default(0) @map("opening_debit") @db.Decimal(18, 4)
+  openingCredit      Decimal   @default(0) @map("opening_credit") @db.Decimal(18, 4)
+  periodDebit        Decimal   @default(0) @map("period_debit") @db.Decimal(18, 4)
+  periodCredit       Decimal   @default(0) @map("period_credit") @db.Decimal(18, 4)
+  closingDebit       Decimal   @default(0) @map("closing_debit") @db.Decimal(18, 4)
+  closingCredit      Decimal   @default(0) @map("closing_credit") @db.Decimal(18, 4)
+  lastRebuiltAt      DateTime? @map("last_rebuilt_at") @db.DateTime(0)
+  updatedAt          DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+
+  account    Account          @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_ledger_balance_account")
+  period     AccountingPeriod @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_ledger_balance_period")
+  costCentre CostCentre?      @relation(fields: [costCentreId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_ledger_balance_cost_centre")
+  estate     Estate?          @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_ledger_balance_estate")
+
+  @@unique([balanceKey], map: "ux_ledger_balance")
+  @@index([accountingPeriodId, accountId], map: "ix_ledger_balance_period")
+  @@index([accountId], map: "ix_ledger_balance_account")
+  @@index([costCentreId], map: "ix_ledger_balance_cost_centre")
+  @@index([estateId], map: "ix_ledger_balance_estate")
+  @@map("ledger_balance")
 }

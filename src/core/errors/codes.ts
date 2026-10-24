@@ -80,6 +80,8 @@ export const ERROR_CODES = {
   /** P3.01: nothing in the chart activates before the accountant's sign-off (P3 §31.3). */
   CHART_NOT_SIGNED_OFF: 422,
   COST_CENTRE_REQUIRED: 422,
+  /** P3.03: a journal line on an account that requires an estate names one (P3 §27.1, P8 §3.4). */
+  ESTATE_REQUIRED: 422,
   DUPLICATE_POSTING: 422,
   UNAPPROVED_SOURCE: 422,
   UNDISTRIBUTED_TEAM_OUTPUT: 422,

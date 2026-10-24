@@ -31,6 +31,19 @@ import {
   ReplaceBankAccountBody,
 } from './bank-accounts.schema.js';
 import { bankAccountsService } from './bank-accounts.service.js';
+import {
+  CreateRuleBody,
+  PatchRuleBody,
+  PreviewBody,
+  PreviewOut,
+  RuleOut,
+  SourceOut,
+} from './posting-rules.schema.js';
+import { postingRulesService } from './posting-rules.service.js';
+import { POSTING_PURPOSES } from '../../core/posting/sources.js';
+import { requireIfMatch } from '../../core/http/concurrency.js';
+import { sendNoContent } from '../../core/http/response.js';
+import { zId } from '../../core/ids/ids.js';
 import { ACCOUNT_SUBTYPES, ACCOUNT_TYPES } from './chart.js';
 
 /** HTTP surface of the chart of accounts (Spec P4 §13.3: accounting.*). The ledger view comes with P3.04. */
@@ -274,5 +287,166 @@ export function accountingModules({ db, platform, authz, accessLog }: Accounting
       'Only a bank account nothing refers to (payments and collections will). Otherwise deactivate it.',
   });
 
-  return [m.build(), b.build()];
+  // ---- /posting-rules (P3.03, P3 §27.7, D-3.03-9) ---------------------------------------------------
+  const rules = postingRulesService(db);
+  const r = defineModule({
+    name: 'posting-rules',
+    path: '/posting-rules',
+    tag: 'Accounting',
+    platform,
+    authz,
+    accessLog,
+  });
+  const byId = { params: z.object({ id: zId }) };
+  r.route({
+    method: 'get',
+    path: '/sources',
+    summary: 'What can post',
+    description:
+      'Every postable document (P1 Table 7.2, P8 §14): its purposes, the amounts it supplies, the accounts it can name, the keys the resolvers read and the fields rule conditions may test. Declared before the documents exist so rules can be reviewed now.',
+    auth: { permission: 'accounting.view' },
+    success: { status: 200, description: 'The postable sources', schema: SourceOut },
+    errors: [],
+    handler: (req, res) => {
+      const items = rules.sources();
+      sendPage(req, res, items, { pagination: { page: 1, perPage: items.length }, total: items.length });
+    },
+  });
+  r.route({
+    method: 'get',
+    path: '/',
+    summary: 'List posting rules',
+    auth: { permission: 'accounting.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        rule_code: { type: 'string', ops: ['eq', 'like'] },
+        name: { type: 'string', ops: ['like'] },
+        source_type: { type: 'string', ops: ['eq', 'in'] },
+        purpose: { type: { enum: POSTING_PURPOSES } },
+        is_active: { type: 'bool' },
+      },
+      sorts: ['rule_code', 'source_type', 'sequence'],
+      defaultSort: ['source_type', 'sequence'],
+      maxPageSize: 200,
+    },
+    success: { status: 200, description: 'A page of rules', schema: RuleOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await rules.list(q);
+      sendPage(req, res, items, { pagination: q.page ?? { page: 1, perPage: 25 }, total });
+    },
+  });
+  r.route({
+    method: 'post',
+    path: '/',
+    summary: 'Create a posting rule',
+    description:
+      'Created inactive. Lines in order; a fixed line names its account, every other resolution its key.',
+    auth: { permission: 'accounting.create' },
+    body: CreateRuleBody,
+    success: { status: 201, description: 'Created', schema: RuleOut },
+    errors: ['DUPLICATE_KEY'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateRuleBody });
+      const out = await rules.create(body, currentActorId());
+      sendCreated(res, out, `/api/v1/posting-rules/${out.id}`, out.version);
+    },
+  });
+  r.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get a posting rule',
+    auth: { permission: 'accounting.view' },
+    ...byId,
+    success: { status: 200, description: 'The rule with its lines', schema: RuleOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const out = await rules.get(params.id);
+      sendOne(res, out, { version: out.version });
+    },
+  });
+  r.route({
+    method: 'patch',
+    path: '/:id',
+    summary: 'Change an inactive posting rule',
+    description: 'lines, when given, replace the rule’s lines.',
+    auth: { permission: 'accounting.edit' },
+    ...byId,
+    body: PatchRuleBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Updated', schema: RuleOut },
+    errors: ['DUPLICATE_KEY', 'INVALID_TRANSITION'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: PatchRuleBody });
+      const out = await rules.update(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, out, { version: out.version });
+    },
+  });
+  r.route({
+    method: 'delete',
+    path: '/:id',
+    summary: 'Delete an inactive posting rule never used',
+    auth: { permission: 'accounting.delete' },
+    ...byId,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['INVALID_TRANSITION', 'REFERENCED_RECORD'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      await rules.remove(params.id, currentActorId());
+      sendNoContent(res);
+    },
+  });
+  for (const [path, action, summary, description] of [
+    [
+      '/:id/activate',
+      'activate',
+      'Activate a posting rule',
+      'Needs the chart signed off, active postable fixed accounts, available resolutions, and someone other than whoever last changed the rule.',
+    ],
+    [
+      '/:id/deactivate',
+      'deactivate',
+      'Deactivate a posting rule',
+      'Postings it would have made fail with RULE_NOT_FOUND until another rule applies.',
+    ],
+  ] as const) {
+    r.route({
+      method: 'post',
+      path,
+      summary,
+      description,
+      auth: { permission: 'accounting.edit' },
+      ...byId,
+      ifMatch: true,
+      idempotent: true,
+      success: { status: 200, description: 'The rule', schema: RuleOut },
+      errors: action === 'activate' ? ['CHART_NOT_SIGNED_OFF', 'SELF_APPROVAL_FORBIDDEN'] : [],
+      handler: async (req, res) => {
+        const { params } = getValidated(res, byId);
+        const out = await rules[action](params.id, requireIfMatch(req), currentActorId());
+        sendOne(res, out, { version: out.version });
+      },
+    });
+  }
+  r.route({
+    method: 'post',
+    path: '/:id/preview',
+    summary: 'Preview the journal a rule would write',
+    description:
+      'For sample amounts (and accounts the document would name): the lines, their accounts and totals. Writes nothing; works on inactive rules. Lines whose resolver has not arrived show no account.',
+    auth: { permission: 'accounting.view' },
+    ...byId,
+    body: PreviewBody,
+    success: { status: 200, description: 'The journal that would be written', schema: PreviewOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: PreviewBody });
+      sendOne(res, await rules.preview(params.id, body));
+    },
+  });
+
+  return [m.build(), b.build(), r.build()];
 }

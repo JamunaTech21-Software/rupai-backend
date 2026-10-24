@@ -44,8 +44,8 @@ import type { z } from 'zod';
  *     postable: a group is never postable, and nothing is added under a postable account. level and
  *     path are maintained here, on every save, for the whole moved subtree.
  *   - Stability (P8 §2.5): an account that is referenced (ACCOUNT_REFERENCES) or has postings
- *     (ACCOUNT_POSTINGS, filled by P3.03) is never deleted, and its type, parent and postability never
- *     change. System accounts (system_key) are never deleted, deactivated or re-typed.
+ *     (ACCOUNT_POSTINGS) is never deleted, and its type and postability never change; one with postings
+ *     also keeps its parent and code. System accounts (system_key) are never deleted, deactivated or re-typed.
  *   - The interlock (P3 §31.3, D-3.01-9): the seed is inactive, and no account becomes active until
  *     POST /accounts/activate-chart records the accountant's sign-off.
  *   - Structural changes lock the account rows they depend on (the parent, the node), so two requests
@@ -110,9 +110,13 @@ const ACCOUNT_REFERENCES: AccountReference[] = [
   // P3.02 (D-3.02-7).
   { label: 'budget heads', count: (tx, id) => tx.budgetHead.count({ where: { accountId: id } }) },
   { label: 'a bank account', count: (tx, id) => tx.bankAccount.count({ where: { accountId: id } }) },
+  // P3.03.
+  { label: 'posting rules', count: (tx, id) => tx.postingRuleLine.count({ where: { accountId: id } }) },
 ];
-/** Journal lines on an account (P3.03 registers the real check). Until then nothing has postings. */
-const ACCOUNT_POSTINGS: AccountReference[] = [];
+/** Journal lines on an account (P3.03): postings fix its code, type, place and postability. */
+const ACCOUNT_POSTINGS: AccountReference[] = [
+  { label: 'journal lines', count: (tx, id) => tx.journalLine.count({ where: { accountId: id } }) },
+];
 
 export function registerAccountReference(ref: AccountReference): void {
   ACCOUNT_REFERENCES.push(ref);
@@ -445,14 +449,22 @@ export function accountsService(db: Database) {
       if (recoded && signedOff) throw systemRecord('keeps its code after the sign-off');
     }
     // Stability (P8 §2.5): what refers to the account fixes its type, place and postability.
-    if (retyped || moved || (postableChanged && !next.is_postable)) {
+    // What refers to it (rules, budget heads, benefit types) fixes its type and postability; postings
+    // also fix its place in the tree (D-3.01-8, refined in P3.03: configuration may follow a move).
+    if (retyped || (postableChanged && !next.is_postable)) {
       const by = await usedBy(tx, id);
       if (by !== null) {
         throw fail(
           'REFERENCED_RECORD',
-          `This account is in use by ${by}: its type, parent and postability no longer change.`,
+          `This account is in use by ${by}: its type and postability no longer change.`,
         );
       }
+    }
+    if (moved && (await hasPostings(tx, id))) {
+      throw fail(
+        'REFERENCED_RECORD',
+        'This account has postings: it stays where it is in the chart (P8 §2.5).',
+      );
     }
     if (recoded && (await hasPostings(tx, id))) {
       throw fail(
