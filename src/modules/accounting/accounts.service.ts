@@ -95,8 +95,8 @@ export const ACCOUNT_LIST_FIELDS: ListFieldMap = {
 // ---- what refers to an account ----------------------------------------------------------------------
 
 /**
- * Records that name an account. Each later epic adds its own (bank_account in P3.02, posting_rule_line in
- * P3.03, …), so delete, re-typing and making a postable account a group all see every reference.
+ * Records that name an account. Each later epic adds its own (budget_head and bank_account in P3.02,
+ * posting_rule_line in P3.03, …), so delete, re-typing and making a postable account a group all see every reference.
  */
 export interface AccountReference {
   readonly label: string;
@@ -107,6 +107,9 @@ const ACCOUNT_REFERENCES: AccountReference[] = [
     label: 'benefit types',
     count: (tx, id) => tx.benefitType.count({ where: { expenseAccountId: id } }),
   },
+  // P3.02 (D-3.02-7).
+  { label: 'budget heads', count: (tx, id) => tx.budgetHead.count({ where: { accountId: id } }) },
+  { label: 'a bank account', count: (tx, id) => tx.bankAccount.count({ where: { accountId: id } }) },
 ];
 /** Journal lines on an account (P3.03 registers the real check). Until then nothing has postings. */
 const ACCOUNT_POSTINGS: AccountReference[] = [];
@@ -125,7 +128,7 @@ async function usedBy(tx: Tx, id: bigint): Promise<string | null> {
   }
   return null;
 }
-async function hasPostings(tx: Tx, id: bigint): Promise<boolean> {
+export async function hasPostings(tx: Tx, id: bigint): Promise<boolean> {
   for (const ref of ACCOUNT_POSTINGS) if ((await ref.count(tx, id)) > 0) return true;
   return false;
 }

@@ -77,6 +77,8 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['goal', 'view'],
   ['evaluation', 'view'],
   ['accounting', 'view'],
+  ['budget', 'view'],
+  ['bank_account', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -115,6 +117,9 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     'evaluation',
     // P3.01: the chart of accounts. accounting.edit is sensitive: its authorisation is recorded below.
     'accounting',
+    // P3.02: budget heads and bank accounts (cost centres are under accounting).
+    'budget',
+    'bank_account',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
   ['training', 'submit'],
   ['goal', 'submit'],
@@ -308,8 +313,123 @@ export function demoSeeders(password: string): Seeder[] {
     demoTrainingSeeder,
     demoPerformanceSeeder,
     demoAccountingSeeder,
+    demoDimensionsSeeder,
   ];
 }
+
+/**
+ * P3.02: cost centres for DEMO-A (the estate, managed by EMP-A-0002 — the `manager` login —, its
+ * divisions, the factory and an organisation-wide administration centre), budget heads on the welfare,
+ * training, field-input and replanting accounts, and two bank accounts (an operating bank account on
+ * 1115, DEMO-A's cash on 1112). The demo training programme takes the training head. Added once.
+ */
+const demoDimensionsSeeder: Seeder = {
+  name: 'demo: P3.02 cost centres, budget heads and bank accounts',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const estate = await tx.estate.findFirst({ where: { code: 'DEMO-A' }, select: { id: true } });
+      if (!estate || (await tx.costCentre.count()) > 0) return { inserted, updated: 0 };
+      const manager = await tx.employmentProfile.findFirst({
+        where: { profileNumber: 'EMP-A-0002' },
+        select: { id: true },
+      });
+      const centre = async (
+        code: string,
+        name: string,
+        centreType: string,
+        over: { parent?: bigint; estate?: bigint | null; manager?: bigint | null } = {},
+      ) => {
+        const c = await tx.costCentre.create({
+          data: {
+            code,
+            name,
+            centreType,
+            parentCostCentreId: over.parent ?? null,
+            estateId: over.estate === undefined ? estate.id : over.estate,
+            managerProfileId: over.manager ?? null,
+            createdBy: by,
+          },
+          select: { id: true },
+        });
+        inserted += 1;
+        return c.id;
+      };
+      const top = await centre('CC-A', 'Rupai Hills Tea Estate', 'estate', { manager: manager?.id ?? null });
+      const divisions = await tx.division.findMany({
+        where: { estateId: estate.id },
+        select: { code: true, name: true },
+        orderBy: { code: 'asc' },
+      });
+      for (const d of divisions)
+        await centre(`CC-${d.code}`, `${d.name} division`, 'division', { parent: top });
+      await centre('CC-A-FACTORY', 'Rupai Central Factory', 'factory', { parent: top });
+      await centre('CC-ADMIN', 'Head office administration', 'department', { estate: null });
+
+      const account = async (code: string) =>
+        (await tx.account.findUniqueOrThrow({ where: { code }, select: { id: true } })).id;
+      const head = async (
+        code: string,
+        name: string,
+        headType: string,
+        accountCode: string | null,
+        parent?: bigint,
+      ) => {
+        const h = await tx.budgetHead.create({
+          data: {
+            code,
+            name,
+            headType,
+            accountId: accountCode === null ? null : await account(accountCode),
+            parentHeadId: parent ?? null,
+            createdBy: by,
+          },
+          select: { id: true },
+        });
+        inserted += 1;
+        return h.id;
+      };
+      const welfare = await head('BH-WELFARE', 'Labour welfare and benefits', 'expense', '6200');
+      const training = await head('BH-TRAINING', 'Training and development', 'expense', '6240', welfare);
+      await head('BH-FIELD-INPUTS', 'Fertiliser and agrochemicals', 'expense', '5135');
+      await head('BH-REPLANTING', 'Replanting and gap filling', 'capital', '1515');
+      await tx.trainingProgram.updateMany({
+        where: { estateId: estate.id, budgetHeadId: null },
+        data: { budgetHeadId: training },
+      });
+
+      const bdt = await tx.currency.findFirstOrThrow({ where: { isBase: true }, select: { id: true } });
+      await tx.bankAccount.create({
+        data: {
+          code: 'BANK-OPS',
+          name: 'Operating account — Sonali Bank, Srimangal',
+          accountId: await account('1115'),
+          accountKind: 'bank',
+          bankName: 'Sonali Bank PLC',
+          branchName: 'Srimangal',
+          accountNumber: '0112-0100-123456',
+          currencyId: bdt.id,
+          openingBalance: '2500000',
+          createdBy: by,
+        },
+      });
+      await tx.bankAccount.create({
+        data: {
+          code: 'CASH-A',
+          name: 'Rupai Hills estate cash',
+          accountId: await account('1112'),
+          accountKind: 'cash',
+          currencyId: bdt.id,
+          estateId: estate.id,
+          openingBalance: '150000',
+          createdBy: by,
+        },
+      });
+      inserted += 2;
+      return { inserted, updated: 0 };
+    }),
+};
 
 /**
  * P3.01: the manager's named authorisation for accounting.edit (P6 §10), then a DEMO sign-off that

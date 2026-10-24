@@ -254,6 +254,12 @@ model User {
   submittedGoals               Goal[]                 @relation("GoalSubmittedBy")
   approvedGoals                Goal[]                 @relation("GoalApprovedBy")
   createdAccounts              Account[]              @relation("AccountCreatedBy")
+  createdCostCentres           CostCentre[]           @relation("CostCentreCreatedBy")
+  updatedCostCentres           CostCentre[]           @relation("CostCentreUpdatedBy")
+  createdBudgetHeads           BudgetHead[]           @relation("BudgetHeadCreatedBy")
+  updatedBudgetHeads           BudgetHead[]           @relation("BudgetHeadUpdatedBy")
+  createdBankAccounts          BankAccount[]          @relation("BankAccountCreatedBy")
+  updatedBankAccounts          BankAccount[]          @relation("BankAccountUpdatedBy")
   updatedAccounts              Account[]              @relation("AccountUpdatedBy")
   rejectedGoals                Goal[]                 @relation("GoalRejectedBy")
   createdGoalProgresss         GoalProgress[]         @relation("GoalProgressCreatedBy")
@@ -736,6 +742,8 @@ model Estate {
   updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
 
   organisation          Organisation           @relation(fields: [organisationId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_organisation")
+  costCentres           CostCentre[]
+  bankAccounts          BankAccount[]
   creator               User                   @relation("EstateCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_created_by")
   updater               User?                  @relation("EstateUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_updated_by")
   divisions             Division[]
@@ -1857,6 +1865,7 @@ model Currency {
   updatedAt     DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy     BigInt?   @map("updated_by") @db.UnsignedBigInt
 
+  bankAccounts  BankAccount[]
   creator       User           @relation("CurrencyCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_currency_created_by")
   updater       User?          @relation("CurrencyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_currency_updated_by")
   organisations Organisation[]
@@ -2179,6 +2188,8 @@ model ApprovalRequest {
   factoryId         BigInt?   @map("factory_id") @db.UnsignedBigInt
   warehouseId       BigInt?   @map("warehouse_id") @db.UnsignedBigInt
   departmentId      BigInt?   @map("department_id") @db.UnsignedBigInt
+  /// The document's cost centre at submission: by_cost_centre_manager steps follow it (P3.02, D-3.02-8).
+  costCentreId      BigInt?   @map("cost_centre_id") @db.UnsignedBigInt
   /// What the queue shows (P7 §13.1): number, a label, the amount or quantity. Copied at submission.
   documentNumber    String?   @map("document_number") @db.VarChar(50)
   documentLabel     String    @map("document_label") @db.VarChar(200)
@@ -3021,6 +3032,7 @@ model EmploymentProfile {
   managedDivisions    Division[]             @relation("DivisionManager")
   supervisedSections  Section[]              @relation("SectionSupervisor")
   managedFactories    Factory[]              @relation("FactoryManager")
+  managedCostCentres  CostCentre[]
   creator             User                   @relation("EmploymentProfileCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_created_by")
   updater             User?                  @relation("EmploymentProfileUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_profile_updated_by")
 
@@ -3084,6 +3096,7 @@ model EmploymentAssignment {
   /// The design's Job / Task (plucking, pruning, …): required for a worker.
   activityTypeId      BigInt?   @map("activity_type_id") @db.UnsignedBigInt
   /// Where labour cost is charged. No foreign key until cost centres exist (P3.02).
+  /// An active cost centre of the assignment's estate or an organisation-wide one (P3.02, D-3.02-9).
   costCentreId        BigInt?   @map("cost_centre_id") @db.UnsignedBigInt
   defaultShiftId      BigInt?   @map("default_shift_id") @db.UnsignedBigInt
   /// daily | monthly | hourly | piece_rate | quantity | fixed: selects the calculation method
@@ -3130,6 +3143,7 @@ model EmploymentAssignment {
   activityType ActivityType?       @relation(fields: [activityTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_activity_type")
   defaultShift Shift?              @relation(fields: [defaultShiftId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_shift")
   payLines     AssignmentPayLine[]
+  costCentre   CostCentre?         @relation(fields: [costCentreId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_employment_assignment_cost_centre")
   creator      User                @relation("AssignmentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_created_by")
   updater      User?               @relation("AssignmentUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_updated_by")
   submitter    User?               @relation("AssignmentSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_assignment_submitted_by")
@@ -3154,6 +3168,7 @@ model EmploymentAssignment {
   @@index([submittedBy], map: "ix_assignment_submitted_by")
   @@index([approvedBy], map: "ix_assignment_approved_by")
   @@index([rejectedBy], map: "ix_assignment_rejected_by")
+  @@index([costCentreId], map: "ix_employment_assignment_cost_centre")
   @@map("employment_assignment")
 }
 
@@ -3749,7 +3764,7 @@ model BenefitIssue {
 
 /// P2.08 (Spec P3 §23.4): a welfare case (medical help, education, disaster relief …) for a worker, a
 /// person or the community. Approvable (financial, requested amount); then disbursed up to the approved
-/// amount and closed with its outcome. budget_head_id has no FK until budgets (Phase 3).
+/// amount and closed with its outcome. budget_head_id: an active expense budget head (P3.02).
 model WelfareCase {
   id              BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
   caseNumber      String    @map("case_number") @db.VarChar(30)
@@ -3783,12 +3798,13 @@ model WelfareCase {
   updatedAt       DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy       BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  estate    Estate @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_estate")
-  creator   User   @relation("WelfareCaseCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_created_by")
-  updater   User?  @relation("WelfareCaseUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_updated_by")
-  submitter User?  @relation("WelfareCaseSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_submitted_by")
-  approver  User?  @relation("WelfareCaseApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_approved_by")
-  rejecter  User?  @relation("WelfareCaseRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_rejected_by")
+  estate     Estate      @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_estate")
+  budgetHead BudgetHead? @relation(fields: [budgetHeadId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_budget_head")
+  creator    User        @relation("WelfareCaseCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_created_by")
+  updater    User?       @relation("WelfareCaseUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_updated_by")
+  submitter  User?       @relation("WelfareCaseSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_submitted_by")
+  approver   User?       @relation("WelfareCaseApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_approved_by")
+  rejecter   User?       @relation("WelfareCaseRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_welfare_case_rejected_by")
 
   @@unique([caseNumber], map: "ux_welfare_case_number")
   @@index([estateId], map: "ix_welfare_case_estate")
@@ -3801,12 +3817,13 @@ model WelfareCase {
   @@index([submittedBy], map: "ix_welfare_case_submitted_by")
   @@index([approvedBy], map: "ix_welfare_case_approved_by")
   @@index([rejectedBy], map: "ix_welfare_case_rejected_by")
+  @@index([budgetHeadId], map: "ix_welfare_case_budget_head")
   @@map("welfare_case")
 }
 
 /// P2.09 (Spec P3 §24.1): a training programme at an estate. Approvable (operational: its cost):
 /// draft → submitted → approved (planned), or rejected; an approved one is completed once its
-/// participants' attendance is recorded, or cancelled. budget_head_id has no FK until budgets (Phase 3).
+/// participants' attendance is recorded, or cancelled. budget_head_id: an active expense budget head (P3.02).
 model TrainingProgram {
   id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
   /// Numbered TP-… per estate and year when not given.
@@ -3846,6 +3863,7 @@ model TrainingProgram {
 
   estate       Estate                @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_program_estate")
   participants TrainingParticipant[]
+  budgetHead   BudgetHead?           @relation(fields: [budgetHeadId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_program_budget_head")
   creator      User                  @relation("TrainingProgramCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_program_created_by")
   updater      User?                 @relation("TrainingProgramUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_program_updated_by")
   submitter    User?                 @relation("TrainingProgramSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_training_program_submitted_by")
@@ -3862,6 +3880,7 @@ model TrainingProgram {
   @@index([submittedBy], map: "ix_training_program_submitted_by")
   @@index([approvedBy], map: "ix_training_program_approved_by")
   @@index([rejectedBy], map: "ix_training_program_rejected_by")
+  @@index([budgetHeadId], map: "ix_training_program_budget_head")
   @@map("training_program")
 }
 
@@ -4166,6 +4185,8 @@ model Account {
   children     Account[]     @relation("AccountTree")
   currency     Currency?     @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_currency")
   benefitTypes BenefitType[]
+  budgetHeads  BudgetHead[]
+  bankAccount  BankAccount?
   creator      User          @relation("AccountCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_created_by")
   updater      User?         @relation("AccountUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_updated_by")
 
@@ -4182,4 +4203,128 @@ model Account {
   @@index([createdBy], map: "ix_account_created_by")
   @@index([updatedBy], map: "ix_account_updated_by")
   @@map("account")
+}
+
+// ---- P3.02 Cost centres, budget heads and bank accounts (P3 §26.2, §27.2) ---------------------------------
+
+/// Common lookup shape (P3 §5.1) + the analysis tree of P3 §26.2. estate_id empty = organisation-wide.
+model CostCentre {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code               String    @db.VarChar(20)
+  name               String    @db.VarChar(150)
+  description        String?   @db.VarChar(500)
+  sortOrder          Int       @default(0) @map("sort_order")
+  isSystem           Boolean   @default(false) @map("is_system")
+  parentCostCentreId BigInt?   @map("parent_cost_centre_id") @db.UnsignedBigInt
+  estateId           BigInt?   @map("estate_id") @db.UnsignedBigInt
+  /// estate | division | factory | department | project
+  centreType         String    @map("centre_type") @db.VarChar(30)
+  managerProfileId   BigInt?   @map("manager_profile_id") @db.UnsignedBigInt
+  /// active | inactive
+  status             String    @default("active") @db.VarChar(30)
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  parent      CostCentre?            @relation("CostCentreTree", fields: [parentCostCentreId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_parent")
+  children    CostCentre[]           @relation("CostCentreTree")
+  estate      Estate?                @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_estate")
+  manager     EmploymentProfile?     @relation(fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_manager")
+  assignments EmploymentAssignment[]
+  creator     User                   @relation("CostCentreCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_created_by")
+  updater     User?                  @relation("CostCentreUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_updated_by")
+
+  @@unique([code], map: "ux_cost_centre_code")
+  @@index([parentCostCentreId], map: "ix_cost_centre_parent")
+  @@index([estateId], map: "ix_cost_centre_estate")
+  @@index([centreType], map: "ix_cost_centre_type")
+  @@index([managerProfileId], map: "ix_cost_centre_manager")
+  @@index([status], map: "ix_cost_centre_status")
+  @@index([createdBy], map: "ix_cost_centre_created_by")
+  @@index([updatedBy], map: "ix_cost_centre_updated_by")
+  @@map("cost_centre")
+}
+
+/// Common lookup shape (P3 §5.1) + what a budget is planned and consumed against (P3 §26.2).
+model BudgetHead {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  code         String    @db.VarChar(20)
+  name         String    @db.VarChar(150)
+  description  String?   @db.VarChar(500)
+  sortOrder    Int       @default(0) @map("sort_order")
+  isSystem     Boolean   @default(false) @map("is_system")
+  parentHeadId BigInt?   @map("parent_head_id") @db.UnsignedBigInt
+  /// The account (or account group) this head governs; of the head's type (D-3.02-5).
+  accountId    BigInt?   @map("account_id") @db.UnsignedBigInt
+  /// revenue | expense | capital
+  headType     String    @map("head_type") @db.VarChar(30)
+  /// Budget control applies (P3.06).
+  isControlled Boolean   @default(true) @map("is_controlled")
+  /// active | inactive
+  status       String    @default("active") @db.VarChar(30)
+  version      Int       @default(1)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy    BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt    DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy    BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  parent           BudgetHead?       @relation("BudgetHeadTree", fields: [parentHeadId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_head_parent")
+  children         BudgetHead[]      @relation("BudgetHeadTree")
+  account          Account?          @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_head_account")
+  trainingPrograms TrainingProgram[]
+  welfareCases     WelfareCase[]
+  creator          User              @relation("BudgetHeadCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_head_created_by")
+  updater          User?             @relation("BudgetHeadUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_head_updated_by")
+
+  @@unique([code], map: "ux_budget_head_code")
+  @@index([parentHeadId], map: "ix_budget_head_parent")
+  @@index([accountId], map: "ix_budget_head_account")
+  @@index([headType], map: "ix_budget_head_type")
+  @@index([status], map: "ix_budget_head_status")
+  @@index([createdBy], map: "ix_budget_head_created_by")
+  @@index([updatedBy], map: "ix_budget_head_updated_by")
+  @@map("budget_head")
+}
+
+/// A bank, cash or mobile-money account, posting to one cash-or-bank account of the chart (P3 §27.2).
+model BankAccount {
+  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  accountId        BigInt    @map("account_id") @db.UnsignedBigInt
+  code             String    @db.VarChar(20)
+  name             String    @db.VarChar(150)
+  /// bank | cash | mobile_money
+  accountKind      String    @map("account_kind") @db.VarChar(30)
+  bankName         String?   @map("bank_name") @db.VarChar(150)
+  branchName       String?   @map("branch_name") @db.VarChar(150)
+  accountNumber    String?   @map("account_number") @db.VarChar(40)
+  currencyId       BigInt    @map("currency_id") @db.UnsignedBigInt
+  estateId         BigInt?   @map("estate_id") @db.UnsignedBigInt
+  openingBalance   Decimal   @default(0) @map("opening_balance") @db.Decimal(18, 4)
+  /// Maintained by the posting engine (P3.03); reconciled nightly to the ledger. Never written by a client.
+  currentBalance   Decimal   @default(0) @map("current_balance") @db.Decimal(18, 4)
+  lastReconciledOn DateTime? @map("last_reconciled_on") @db.Date
+  /// active | inactive
+  status           String    @default("active") @db.VarChar(30)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy        BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  account  Account  @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_account")
+  currency Currency @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_currency")
+  estate   Estate?  @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_estate")
+  creator  User     @relation("BankAccountCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_created_by")
+  updater  User?    @relation("BankAccountUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_updated_by")
+
+  @@unique([code], map: "ux_bank_account_code")
+  @@unique([accountId], map: "ux_bank_chart_account")
+  @@index([currencyId], map: "ix_bank_account_currency")
+  @@index([estateId], map: "ix_bank_account_estate")
+  @@index([status], map: "ix_bank_account_status")
+  @@index([createdBy], map: "ix_bank_account_created_by")
+  @@index([updatedBy], map: "ix_bank_account_updated_by")
+  @@map("bank_account")
 }

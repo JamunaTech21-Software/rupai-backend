@@ -6,6 +6,8 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '../../src/app.js';
+import { resolveApprovers } from '../../src/core/approval/approvers.js';
+import { APPROVABLE_BY_KEY } from '../../src/core/approval/document-types.js';
 import { loadConfig } from '../../src/config/env.js';
 import { dbPermissionResolver } from '../../src/core/auth/authorize.js';
 import { memoryPlatform } from '../../src/core/platform.js';
@@ -615,6 +617,72 @@ describe('employment assignments (P2.03)', () => {
       approval_id: s.approval_id,
       is_wage_change: true,
     });
+  });
+});
+
+describe('cost centres on assignments (P3.02, D-3.02-8, D-3.02-9)', () => {
+  it('takes an active cost centre of its estate or an organisation-wide one, never another estate’s', async () => {
+    const mk = async (code: string, estateId: string | null, status = 'active') =>
+      (
+        await mdb.migrator.costCentre.create({
+          data: {
+            code: unique(code),
+            name: code,
+            centreType: 'department',
+            estateId: estateId === null ? null : BigInt(estateId),
+            status,
+            createdBy: 1n,
+          },
+        })
+      ).id.toString();
+    const own = await mk('CC-OWN', estate.id);
+    const shared = await mk('CC-ORG', null);
+    const foreign = await mk('CC-B', other.id);
+    const retired = await mk('CC-OLD', estate.id, 'inactive');
+    const base = { effective_from: '2020-01-01', department_id: dept.hr, designation_id: desig.officer };
+    for (const bad of [foreign, retired]) {
+      await refused(
+        post((await employee()).id, { ...base, cost_centre_id: bad }),
+        'VALIDATION_FAILED',
+        'cost_centre_id',
+      );
+    }
+    expect((await draft((await employee()).id, { ...base, cost_centre_id: own })).cost_centre_id).toBe(own);
+    expect((await draft((await employee()).id, { ...base, cost_centre_id: shared })).cost_centre_id).toBe(
+      shared,
+    );
+  });
+
+  it('a cost-centre-manager step resolves to the users linked to the centre’s manager, within scope', async () => {
+    const boss = await mdb.migrator.user.findUniqueOrThrow({
+      where: { id: BigInt(BOSS) },
+      select: { employmentProfileId: true },
+    });
+    const managed = await mdb.migrator.costCentre.create({
+      data: {
+        code: unique('CC-MGR'),
+        name: 'Managed',
+        centreType: 'department',
+        estateId: BigInt(estate.id),
+        managerProfileId: boss.employmentProfileId,
+        createdBy: 1n,
+      },
+    });
+    const unmanaged = await mdb.migrator.costCentre.create({
+      data: { code: unique('CC-NONE'), name: 'No manager', centreType: 'project', createdBy: 1n },
+    });
+    const document = APPROVABLE_BY_KEY.get('employment_assignment');
+    if (!document) throw new Error('employment_assignment is not approvable');
+    const step = { approverRule: 'by_cost_centre_manager' as const, roleId: null, userId: null };
+    const at = (costCentreId: bigint | null | undefined) =>
+      resolveApprovers(mdb.db, document, step, {
+        estateId: BigInt(estate.id),
+        ...(costCentreId === undefined ? {} : { costCentreId }),
+      });
+    expect((await at(managed.id)).users.map((u) => u.id)).toEqual([BOSS]);
+    expect(await at(unmanaged.id)).toEqual({ users: [], deferred: false });
+    expect(await at(null)).toEqual({ users: [], deferred: false });
+    expect(await at(undefined)).toEqual({ users: [], deferred: true });
   });
 });
 

@@ -17,7 +17,9 @@ import type { ApproverRule } from './definition.js';
  *                  the active user accounts linked to that profile, within the document's scope (P2.03).
  *                  It follows the submitter, so it is resolved only for a real submission
  *   by_cost_centre_manager
- *                  follows the document's cost centre: resolved from Phase 3 (P3.02)
+ *                  the active user accounts linked to the manager profile of the document's cost centre,
+ *                  within the document's scope (P3.02, D-3.02-8). No cost centre, or a centre without a
+ *                  manager, resolves to nobody; a preview that names no cost centre is deferred
  *
  * An empty result is not an error here: at runtime it raises the unresolved-step exception (P7 §4.3).
  */
@@ -52,6 +54,8 @@ export interface DocumentPlace {
   readonly warehouseId?: bigint | null;
   /** Who submitted it: a reporting-line step follows them. Absent: a preview, not yet submitted. */
   readonly submittedBy?: bigint | null;
+  /** Its cost centre: a cost-centre-manager step follows it. Absent: a preview that names none. */
+  readonly costCentreId?: bigint | null;
 }
 
 /** The place of a pending approval request, as stored when it was submitted. */
@@ -60,12 +64,14 @@ export function placeOfRequest(r: {
   readonly factoryId: bigint | null;
   readonly warehouseId: bigint | null;
   readonly submittedBy: bigint;
+  readonly costCentreId: bigint | null;
 }): DocumentPlace {
   return {
     estateId: r.estateId,
     factoryId: r.factoryId,
     warehouseId: r.warehouseId,
     submittedBy: r.submittedBy,
+    costCentreId: r.costCentreId,
   };
 }
 
@@ -145,6 +151,32 @@ async function reportingLineUsers(
   });
 }
 
+/** The users managing the document's cost centre (null: a preview that names no cost centre). */
+async function costCentreManagers(
+  db: Database | Tx,
+  document: ApprovableDocument,
+  place: DocumentPlace,
+  only?: bigint,
+) {
+  if (place.costCentreId === undefined) return null;
+  if (place.costCentreId === null) return [];
+  const centre = await db.costCentre.findUnique({
+    where: { id: place.costCentreId },
+    select: { managerProfileId: true, status: true },
+  });
+  if (!centre?.managerProfileId || centre.status !== 'active') return [];
+  return db.user.findMany({
+    where: {
+      ...(only !== undefined ? { id: only } : {}),
+      employmentProfileId: centre.managerProfileId,
+      status: 'active',
+      ...(placeKnown(document, place) ? { scopes: { some: scopeFilter(document, place) } } : {}),
+    },
+    select: { id: true, username: true },
+    orderBy: { username: 'asc' },
+  });
+}
+
 export async function resolveApprovers(
   db: Database | Tx,
   document: ApprovableDocument,
@@ -166,7 +198,12 @@ export async function resolveApprovers(
     if (users === null) return { users: [], deferred: true };
     return { users: users.map((u) => ({ id: u.id.toString(), username: u.username })), deferred: false };
   }
-  if (step.approverRule !== 'by_role' || step.roleId === null) return { users: [], deferred: true };
+  if (step.approverRule === 'by_cost_centre_manager') {
+    const users = await costCentreManagers(db, document, place);
+    if (users === null) return { users: [], deferred: true };
+    return { users: users.map((u) => ({ id: u.id.toString(), username: u.username })), deferred: false };
+  }
+  if (step.roleId === null) return { users: [], deferred: true };
 
   const users = await db.user.findMany({
     where: {
@@ -205,7 +242,10 @@ export async function isApprover(
   if (step.approverRule === 'by_reporting_line') {
     return ((await reportingLineUsers(db, document, step, place, userId)) ?? []).length === 1;
   }
-  if (step.approverRule !== 'by_role' || step.roleId === null) return false;
+  if (step.approverRule === 'by_cost_centre_manager') {
+    return ((await costCentreManagers(db, document, place, userId)) ?? []).length === 1;
+  }
+  if (step.roleId === null) return false;
   const count = await db.user.count({
     where: {
       id: userId,

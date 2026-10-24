@@ -652,6 +652,8 @@ export function workflowsService({ db, accessLog, timezone }: WorkflowsDeps) {
         estateId: id_('estate_id'),
         factoryId: id_('factory_id'),
         warehouseId: id_('warehouse_id'),
+        // A cost-centre-manager step is listed only when the sample names a cost centre.
+        ...(values.cost_centre_id !== undefined ? { costCentreId: id_('cost_centre_id') } : {}),
       };
       const out: z.infer<typeof PreviewOut>['steps'] = [];
       for (const [i, row] of steps.entries()) {

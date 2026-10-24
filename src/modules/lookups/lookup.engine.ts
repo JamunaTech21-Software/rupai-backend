@@ -18,6 +18,7 @@ import { Dec, toDecimalString, zDecimal } from '../../core/money/decimal.js';
 import { scopeToCheck } from '../../core/scope/scope.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { denyWrite } from '../organisation/common.js';
+import { budgetHeadHooks, costCentreHooks } from './dimension.hooks.js';
 import type { LookupField, LookupType } from './lookup-types.js';
 
 /**
@@ -209,16 +210,20 @@ const invalid = (field: string, message: string): ErrorDetail => ({
 const invariant = (message: string) =>
   new AppError('INVARIANT_VIOLATED', message, [{ code: 'INVARIANT_VIOLATED', message }]);
 
-interface Hooks {
+export interface LookupHooks {
   /** Before insert or update. `values` holds column → database value and may be adjusted. */
   beforeSave?(tx: Tx, values: Record<string, unknown>, current: LookupRow | null): Promise<void> | void;
   /** After an update, with the row as it was. */
   afterUpdate?(tx: Tx, before: LookupRow, after: LookupRow): Promise<void>;
   /** Before a deactivation or a delete. Throw to refuse. */
   beforeRetire?(tx: Tx, current: LookupRow): Promise<void> | void;
+  /** Before a reactivation (P3.02: not under an inactive parent). Throw to refuse. */
+  beforeReactivate?(tx: Tx, current: LookupRow): Promise<void> | void;
 }
 
-const HOOKS: Readonly<Record<string, Hooks>> = {
+const HOOKS: Readonly<Record<string, LookupHooks>> = {
+  cost_centre: costCentreHooks,
+  budget_head: budgetHeadHooks,
   benefit_type: {
     // P3.01 (P8 §11.1): a benefit's cost posts to a postable expense account.
     async beforeSave(tx, values) {
@@ -544,7 +549,7 @@ export function lookupService(db: Database, type: LookupType, accessLog: AccessL
         if (status === 'inactive') {
           if (type.hasSystem && before.is_system) throw system('deactivated');
           await hooks.beforeRetire?.(tx, before);
-        }
+        } else await hooks.beforeReactivate?.(tx, before);
         await tx.$executeRaw(
           Prisma.sql`UPDATE ${table} SET \`status\` = ${status}, \`version\` = \`version\` + 1, \`updated_at\` = ${new Date()}, \`updated_by\` = ${actorId} WHERE \`id\` = ${id}`,
         );

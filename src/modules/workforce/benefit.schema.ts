@@ -134,10 +134,12 @@ const caseFields = {
   case_date: zBusinessDate,
   description: z.string().trim().min(3).max(500),
   requested_amount: nullable(money),
+  /** P3.02: the expense budget head the case consumes (consumption from P3.06). */
+  budget_head_id: nullable(zId),
 };
 export const CreateCaseBody = z
   .strictObject(caseFields)
-  .partial({ beneficiary_id: true, requested_amount: true });
+  .partial({ beneficiary_id: true, requested_amount: true, budget_head_id: true });
 export const PatchCaseBody = z.strictObject(caseFields).omit({ estate_id: true }).partial();
 export const DisburseBody = z.strictObject({ amount: zDecimal('money', { positive: true }) });
 export const CloseBody = z.strictObject({ outcome: z.string().trim().min(3).max(500) });
@@ -154,6 +156,7 @@ export const WelfareCaseOut = z.object({
   case_date: z.string(),
   description: z.string(),
   requested_amount: z.string().nullable(),
+  budget_head_id: z.string().nullable(),
   approved_amount: z.string().nullable(),
   disbursed_amount: z.string(),
   /** approved − disbursed. */

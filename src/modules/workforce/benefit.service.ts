@@ -23,6 +23,7 @@ import { scopeToCheck } from '../../core/scope/scope.js';
 import { businessDateFromDb, businessDateToDb, todayIn, type BusinessDate } from '../../core/time/dates.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { denyWrite, idIn, idOut, iso, versionConflict } from '../organisation/common.js';
+import { assertExpenseBudgetHead } from '../accounting/dimensions.js';
 import type {
   BenefitEntitlementOut,
   BenefitIssueOut,
@@ -100,6 +101,7 @@ export const WELFARE_CASE_AUDIT: AuditedRecord = {
     'case_date',
     'description',
     'requested_amount',
+    'budget_head_id',
     'approved_amount',
     'disbursed_amount',
     'outcome',
@@ -561,6 +563,7 @@ export function benefitService({ db, accessLog, timezone }: BenefitServiceDeps) 
       case_date: businessDateFromDb(c.caseDate),
       description: c.description,
       requested_amount: money(c.requestedAmount),
+      budget_head_id: c.budgetHeadId?.toString() ?? null,
       approved_amount: money(c.approvedAmount),
       disbursed_amount: money(c.disbursedAmount) ?? '0.0000',
       remaining_amount:
@@ -975,6 +978,7 @@ export function benefitService({ db, accessLog, timezone }: BenefitServiceDeps) 
             { date: b.case_date, estateCode: estate.code },
             'draft',
           );
+          await assertExpenseBudgetHead(tx, b.budget_head_id);
           const c = await tx.welfareCase.create({
             data: {
               caseNumber: number,
@@ -985,6 +989,7 @@ export function benefitService({ db, accessLog, timezone }: BenefitServiceDeps) 
               caseDate: businessDateToDb(b.case_date),
               description: b.description,
               requestedAmount: b.requested_amount?.toString() ?? null,
+              budgetHeadId: b.budget_head_id ?? null,
               state: 'draft',
               stateChangedAt: new Date(),
               createdBy: actorId,
@@ -1009,6 +1014,10 @@ export function benefitService({ db, accessLog, timezone }: BenefitServiceDeps) 
           if (b.case_date !== undefined) data.caseDate = businessDateToDb(b.case_date);
           if (b.description !== undefined) data.description = b.description;
           if (b.requested_amount !== undefined) data.requestedAmount = b.requested_amount?.toString() ?? null;
+          if (b.budget_head_id !== undefined) {
+            await assertExpenseBudgetHead(tx, b.budget_head_id);
+            data.budgetHeadId = b.budget_head_id;
+          }
           const { count } = await tx.welfareCase.updateMany({
             where: { id, version },
             data: { ...data, ...stamp(actorId) },

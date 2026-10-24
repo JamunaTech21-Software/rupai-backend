@@ -178,6 +178,7 @@ export async function submitForApproval(
     factoryId: doc.factoryId ?? null,
     warehouseId: doc.warehouseId ?? null,
     submittedBy: actor.actorId,
+    costCentreId: doc.costCentreId ?? null,
   };
   const now = new Date();
   try {
@@ -199,6 +200,7 @@ export async function submitForApproval(
         factoryId: place.factoryId ?? null,
         warehouseId: place.warehouseId ?? null,
         departmentId: doc.departmentId ?? null,
+        costCentreId: place.costCentreId ?? null,
         documentNumber: doc.number,
         documentLabel: doc.label.slice(0, 200),
         summaryAmount: doc.amount ?? null,

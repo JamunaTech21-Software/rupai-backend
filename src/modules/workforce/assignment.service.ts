@@ -439,10 +439,15 @@ export function assignmentService({ db, accessLog, timezone }: AssignmentService
       if (t.sectionId === null) problems.push(invalid('section_id', 'A worker works in a section.'));
       if (t.activityTypeId === null) problems.push(invalid('activity_type_id', 'A worker has a job / task.'));
     }
+    // P3.02 (D-3.02-9): an active cost centre of the employee's estate, or an organisation-wide one.
     if (t.costCentreId !== null) {
-      problems.push(
-        invalid('cost_centre_id', 'Cost centres arrive with accounting (Phase 3): leave it empty.'),
-      );
+      const c = await tx.costCentre.findUnique({
+        where: { id: t.costCentreId },
+        select: { status: true, estateId: true },
+      });
+      if (c?.status !== 'active' || (c.estateId !== null && c.estateId !== p.estateId)) {
+        problems.push(invalid('cost_centre_id', 'No such active cost centre at this estate.'));
+      }
     }
     const active = async (
       field: string,
@@ -646,9 +651,11 @@ export function assignmentService({ db, accessLog, timezone }: AssignmentService
         createdBy: a.createdBy,
         estateId: a.estateId,
         departmentId: a.departmentId,
+        costCentreId: a.costCentreId,
         values: {
           estate_id: a.estateId.toString(),
           department_id: idOut(a.departmentId),
+          cost_centre_id: idOut(a.costCentreId),
           is_wage_change: a.isWageChange,
           is_retrospective: a.isRetrospective,
           change_reason: a.changeReason,
