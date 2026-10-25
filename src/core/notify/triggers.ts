@@ -99,7 +99,8 @@ export const TRIGGERS: readonly TriggerDefinition[] = [
     description: 'A receivable or payable falls due within lead_days, or is overdue.',
     recipientRules: PEOPLE,
     usesLeadDays: true,
-    evaluated: false,
+    // P3.05: the nightly ageing job (accounting.jobs.ts) evaluates it; items arrive with their sources.
+    evaluated: true,
     arrivesWith: 'Receivables and payables',
   },
   {

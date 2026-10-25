@@ -14,6 +14,9 @@ import { submitForApproval } from '../../src/core/approval/engine.js';
 import type { Database } from '../../src/core/db/prisma.js';
 import { dec } from '../../src/core/money/decimal.js';
 import { writeJournal } from '../../src/core/posting/journal.js';
+import { allocateNumber } from '../../src/core/numbering/numbering.js';
+import { applyAllocations, raiseSettlement, saveAllocations } from '../../src/core/settlement/settlement.js';
+import { addDays } from '../../src/core/time/dates.js';
 import { ADMINISTRATOR_ROLE_CODE } from '../../src/modules/identity/permission-catalogue.js';
 import { requirementsFor } from '../../src/modules/identity/sod-rules.js';
 import {
@@ -87,6 +90,9 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['bank_account', 'view'],
   // P3.04.
   ['journal', 'view'],
+  // P3.05.
+  ['receivable', 'view'],
+  ['payable', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -140,6 +146,9 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
   // P3.04: drafts, submits and posts manual journals; approving them is the approver's (SOD-2).
   // journal.post is sensitive: its authorisation is recorded by the accounting seeder.
   ...(['view', 'create', 'edit', 'delete', 'submit', 'post'] as const).map((a) => ['journal', a] as const),
+  // P3.05: reads the receivable and payable sub-ledgers.
+  ['receivable', 'view'],
+  ['payable', 'view'],
 ] as const;
 
 /** P1.13: approves workflow changes and, as an approver role, purchase orders (the demo ladder). */
@@ -177,6 +186,9 @@ const DEMO_APPROVER_PERMISSIONS = [
   // P3.04: the finance manager (and managing director) steps of the demo journal ladder (P7 §8.9).
   ['journal', 'view'],
   ['journal', 'approve'],
+  // P3.05: the finance manager reads both sub-ledgers.
+  ['receivable', 'view'],
+  ['payable', 'view'],
 ] as const;
 
 /** A demo role holding at least these permissions: created if missing, missing permissions added. */
@@ -329,6 +341,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoAccountingSeeder,
     demoDimensionsSeeder,
     demoJournalsSeeder,
+    demoSettlementSeeder,
   ];
 }
 
@@ -2622,5 +2635,266 @@ const demoJournalsSeeder: Seeder = {
       registerApprovalAdapter(svc.adapter);
       await submitForApproval(tx, { timezone }, 'journal', j3.id, { actorId: manager.id });
       return { inserted: inserted + 1, updated: 0 };
+    }),
+};
+
+/**
+ * P3.05 (D-3.05-16): the receivable and payable sub-ledgers with something in them. No sale or supplier
+ * invoice exists yet, so an opening journal brings in two buyer receivables (on the demo party) and two
+ * contractor payables item by item, with their original dates (P1: never as a single lump). A posted
+ * collection then settles part of one receivable, and a posted payment settles one payable in full, through
+ * the settlement core as P8.09 and P4.07 will.
+ */
+const demoSettlementSeeder: Seeder = {
+  name: 'demo: P3.05 opening receivables and payables, one collection and one payment',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      if ((await tx.receivable.count()) > 0) return { inserted: 0, updated: 0 };
+      const account = async (code: string) =>
+        tx.account.findFirst({ where: { code, status: 'active' }, select: { id: true } });
+      const [a1210, a2110, a3100, a1115] = await Promise.all(['1210', '2110', '3100', '1115'].map(account));
+      const manager = await tx.user.findUnique({ where: { username: 'manager' }, select: { id: true } });
+      const approver = await tx.user.findUnique({ where: { username: 'approver' }, select: { id: true } });
+      const party = await tx.party.findFirst({ where: { code: 'DEMO-P1' }, select: { id: true } });
+      const contractors = await tx.contractor.findMany({
+        select: { id: true },
+        orderBy: { id: 'asc' },
+        take: 2,
+      });
+      const bank = await tx.bankAccount.findFirst({ where: { code: 'BANK-OPS' }, select: { id: true } });
+      const method = await tx.paymentMethod.findFirst({
+        where: { code: 'BANK_TRANSFER' },
+        select: { id: true },
+      });
+      const base = await tx.currency.findFirst({ where: { isBase: true }, select: { id: true } });
+      const estate = await tx.estate.findFirst({
+        where: { code: 'DEMO-A' },
+        select: { id: true, code: true },
+      });
+      const now = new Date();
+      const todayDb = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      const current = await tx.accountingPeriod.findFirst({
+        where: {
+          periodNumber: { lt: 13 },
+          startDate: { lte: todayDb },
+          endDate: { gte: todayDb },
+          state: 'open',
+        },
+        select: { id: true, fiscalYearId: true, startDate: true, fiscalYear: { select: { code: true } } },
+      });
+      const first = current
+        ? await tx.accountingPeriod.findFirst({
+            where: { fiscalYearId: current.fiscalYearId, periodNumber: 1, state: 'open' },
+            select: { id: true, startDate: true },
+          })
+        : null;
+      const [c1, c2] = contractors;
+      if (
+        !a1210 ||
+        !a2110 ||
+        !a3100 ||
+        !a1115 ||
+        !manager ||
+        !approver ||
+        !party ||
+        !c1 ||
+        !c2 ||
+        !bank ||
+        !method ||
+        !estate ||
+        !base ||
+        !current ||
+        !first
+      )
+        return { inserted: 0, updated: 0 };
+
+      const today = businessDateFromDb(todayDb);
+      const golive = businessDateFromDb(first.startDate);
+      const items = [
+        {
+          side: 'receivable',
+          party: { type: 'party', id: party.id },
+          ref: 'OB-AR-0001',
+          doc: -42,
+          due: -12,
+          amount: '120000.0000',
+        },
+        {
+          side: 'receivable',
+          party: { type: 'party', id: party.id },
+          ref: 'OB-AR-0002',
+          doc: -6,
+          due: 54,
+          amount: '80000.0000',
+        },
+        {
+          side: 'payable',
+          party: { type: 'contractor', id: c1.id },
+          ref: 'OB-AP-0001',
+          doc: -35,
+          due: -5,
+          amount: '90000.0000',
+        },
+        {
+          side: 'payable',
+          party: { type: 'contractor', id: c2.id },
+          ref: 'OB-AP-0002',
+          doc: -3,
+          due: 27,
+          amount: '60000.0000',
+        },
+      ] as const;
+      const receivableTotal = '200000.0000';
+      const payableTotal = '150000.0000';
+
+      // One opening journal, one control line per item (party on the line), against opening equity.
+      const opening = await writeJournal(tx, {
+        journalType: 'opening',
+        date: golive,
+        narration: 'Opening receivables and payables, item by item (demo)',
+        reference: 'OPENING-AR-AP',
+        actorId: manager.id,
+        lines: [
+          ...items.map((i) => ({
+            accountId: i.side === 'receivable' ? a1210.id : a2110.id,
+            side: i.side === 'receivable' ? ('debit' as const) : ('credit' as const),
+            amount: dec(i.amount),
+            party: i.party,
+            narration: i.ref,
+          })),
+          { accountId: a3100.id, side: 'credit', amount: dec(receivableTotal) },
+          { accountId: a3100.id, side: 'debit', amount: dec(payableTotal) },
+        ],
+      });
+      const lines = await tx.journalLine.findMany({
+        where: { journalId: opening.id, partyId: { not: null } },
+        select: { id: true, lineNumber: true },
+        orderBy: { lineNumber: 'asc' },
+      });
+      const raised: bigint[] = [];
+      for (const [n, i] of items.entries()) {
+        const line = lines[n];
+        if (!line) throw new Error('demo: an opening line is missing');
+        const r = await raiseSettlement(tx, i.side, {
+          sourceType: 'opening',
+          sourceId: line.id,
+          party: i.party,
+          referenceNumber: i.ref,
+          documentDate: addDays(golive, i.doc),
+          dueDate: addDays(golive, i.due),
+          postingDate: golive,
+          // Contractor payables belong to the estate; the buyer's receivables are organisation-wide.
+          estateId: i.side === 'payable' ? estate.id : null,
+          amount: dec(i.amount),
+          actorId: manager.id,
+          today,
+        });
+        raised.push(r.id);
+      }
+
+      // Settle through the core, as the collection and payment modules will: draft, allocate, approve, post.
+      const settle = async (
+        side: 'receivable' | 'payable',
+        itemId: bigint,
+        partyRef: { type: 'party' | 'contractor'; id: bigint },
+        amount: string,
+        offset: number,
+        narration: string,
+      ) => {
+        const date = addDays(businessDateFromDb(current.startDate), offset);
+        const data = {
+          partyType: partyRef.type,
+          partyId: partyRef.id,
+          paymentMethodId: method.id,
+          bankAccountId: bank.id,
+          instrumentNumber: side === 'receivable' ? 'TT-DEMO-5511' : 'TT-DEMO-7702',
+          currencyId: base.id,
+          exchangeRate: '1',
+          amount,
+          baseAmount: amount,
+          narration,
+          estateId: side === 'payable' ? estate.id : null,
+          accountingPeriodId: current.id,
+          stateChangedAt: now,
+          createdBy: manager.id,
+        };
+        const doc =
+          side === 'receivable'
+            ? await tx.collection.create({
+                data: { ...data, collectionDate: businessDateToDb(date) },
+                select: { id: true },
+              })
+            : await tx.payment.create({
+                data: { ...data, paymentDate: businessDateToDb(date) },
+                select: { id: true },
+              });
+        await saveAllocations(tx, side, doc.id, [{ itemId, amount: dec(amount) }], manager.id);
+        const approval = {
+          state: 'approved',
+          submittedAt: now,
+          submittedBy: manager.id,
+          approvedAt: now,
+          approvedBy: approver.id,
+        };
+        if (side === 'receivable') await tx.collection.update({ where: { id: doc.id }, data: approval });
+        else await tx.payment.update({ where: { id: doc.id }, data: approval });
+        const applied = await applyAllocations(tx, side, doc.id, { actorId: manager.id, today });
+        const relieved = applied.reduce((t, a) => t.plus(a.relievedBase), dec('0'));
+        await writeJournal(tx, {
+          journalType: 'automatic',
+          date,
+          narration,
+          reference: data.instrumentNumber,
+          sourceType: side === 'receivable' ? 'collection' : 'payment',
+          sourceId: doc.id,
+          actorId: manager.id,
+          lines:
+            side === 'receivable'
+              ? [
+                  { accountId: a1115.id, side: 'debit', amount: dec(amount) },
+                  { accountId: a1210.id, side: 'credit', amount: relieved, party: partyRef },
+                ]
+              : [
+                  { accountId: a2110.id, side: 'debit', amount: relieved, party: partyRef },
+                  { accountId: a1115.id, side: 'credit', amount: dec(amount) },
+                ],
+        });
+        const { number } = await allocateNumber(
+          tx,
+          side === 'receivable' ? 'collection' : 'payment',
+          {
+            date,
+            fiscalYearCode: current.fiscalYear.code,
+            estateCode: side === 'payable' ? estate.code : null,
+          },
+          'posting',
+        );
+        const posted = { state: 'posted', stateChangedAt: now, postedAt: now, postedBy: manager.id };
+        if (side === 'receivable')
+          await tx.collection.update({
+            where: { id: doc.id },
+            data: { ...posted, collectionNumber: number },
+          });
+        else await tx.payment.update({ where: { id: doc.id }, data: { ...posted, paymentNumber: number } });
+      };
+      const [r1, , p1] = raised;
+      if (r1 === undefined || p1 === undefined) throw new Error('demo: items missing');
+      await settle(
+        'receivable',
+        r1,
+        items[0].party,
+        '50000.0000',
+        2,
+        'Part payment from DEMO-P1 against OB-AR-0001 (demo)',
+      );
+      await settle(
+        'payable',
+        p1,
+        items[2].party,
+        '90000.0000',
+        3,
+        'Settlement of OB-AP-0001 to the contractor (demo)',
+      );
+      return { inserted: 1 + items.length + 4, updated: 0 };
     }),
 };
