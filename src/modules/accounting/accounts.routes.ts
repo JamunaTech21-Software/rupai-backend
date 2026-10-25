@@ -62,6 +62,7 @@ import {
 } from './journals.schema.js';
 import { journalsService } from './journals.service.js';
 import { ledgerService } from './ledger.service.js';
+import { settlementModules } from './settlement.routes.js';
 
 /**
  * HTTP surface of accounting (Spec P4 §13.3): the chart of accounts and its ledger (accounting.*), bank
@@ -728,5 +729,13 @@ export function accountingModules({ db, platform, authz, accessLog, config }: Ac
     },
   });
 
-  return [m.build(), b.build(), r.build(), j.build(), o.build(), x.build()];
+  return [
+    m.build(),
+    b.build(),
+    r.build(),
+    j.build(),
+    o.build(),
+    x.build(),
+    ...settlementModules({ db, platform, authz, accessLog, config }),
+  ];
 }

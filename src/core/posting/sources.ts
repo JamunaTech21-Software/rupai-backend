@@ -43,7 +43,14 @@ export type AccountResolution = (typeof ACCOUNT_RESOLUTIONS)[number];
 export const SIDES = ['debit', 'credit'] as const;
 export type Side = (typeof SIDES)[number];
 
-export const PARTY_TYPES = ['buyer', 'supplier', 'leaf_supplier', 'party', 'employment_profile'] as const;
+export const PARTY_TYPES = [
+  'buyer',
+  'supplier',
+  'leaf_supplier',
+  'contractor',
+  'party',
+  'employment_profile',
+] as const;
 export type PartyType = (typeof PARTY_TYPES)[number];
 
 interface Named {

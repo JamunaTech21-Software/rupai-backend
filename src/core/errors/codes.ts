@@ -94,6 +94,10 @@ export const ERROR_CODES = {
   BUDGET_EXCEEDED: 422,
   BUDGET_NOT_ACTIVE: 422,
   ALLOCATION_MISMATCH: 422,
+  /** P3.05: an allocation, write-off or credit note above the item's outstanding (P3 §15.3 invariant). */
+  ALLOCATION_EXCEEDS_OUTSTANDING: 422,
+  /** P3.05: a receivable or payable with allocations or adjustments cannot be reversed (D-3.05-9). */
+  SETTLEMENT_IN_USE: 422,
   REFERENCED_RECORD: 422,
   DUPLICATE_KEY: 422,
   INVARIANT_VIOLATED: 422,

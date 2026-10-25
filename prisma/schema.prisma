@@ -330,40 +330,58 @@ model User {
   createdCountrys              Country[]              @relation("CountryCreatedBy")
   updatedCountrys              Country[]              @relation("CountryUpdatedBy")
 
-  scopes               UserScope[]          @relation("UserScopeUser")
-  grantedScopes        UserScope[]          @relation("UserScopeGrantedBy")
-  createdScopes        UserScope[]          @relation("UserScopeCreatedBy")
-  updatedScopes        UserScope[]          @relation("UserScopeUpdatedBy")
-  createdNumberFormats NumberFormat[]       @relation("NumberFormatCreatedBy")
-  updatedNumberFormats NumberFormat[]       @relation("NumberFormatUpdatedBy")
-  createdSettings      SystemSetting[]      @relation("SystemSettingCreatedBy")
-  updatedSettings      SystemSetting[]      @relation("SystemSettingUpdatedBy")
-  createdDocuments     DocumentFile[]       @relation("DocumentFileCreatedBy")
-  updatedDocuments     DocumentFile[]       @relation("DocumentFileUpdatedBy")
-  uploadedDocuments    DocumentFile[]       @relation("DocumentFileUploadedBy")
-  createdWorkflows     Workflow[]           @relation("WorkflowCreatedBy")
-  updatedWorkflows     Workflow[]           @relation("WorkflowUpdatedBy")
-  submittedWorkflows   Workflow[]           @relation("WorkflowSubmittedBy")
-  approvedWorkflows    Workflow[]           @relation("WorkflowApprovedBy")
-  rejectedWorkflows    Workflow[]           @relation("WorkflowRejectedBy")
-  createdWorkflowSteps WorkflowStep[]       @relation("WorkflowStepCreatedBy")
-  updatedWorkflowSteps WorkflowStep[]       @relation("WorkflowStepUpdatedBy")
-  workflowSteps        WorkflowStep[]       @relation("WorkflowStepUser")
-  submittedApprovals   ApprovalRequest[]    @relation("ApprovalRequestSubmittedBy")
-  createdApprovalDocs  ApprovalRequest[]    @relation("ApprovalRequestDocumentCreatedBy")
-  approvalActions      ApprovalAction[]     @relation("ApprovalActionUser")
-  actedForApprovals    ApprovalAction[]     @relation("ApprovalActionActingFor")
-  delegationsFrom      ApprovalDelegation[] @relation("ApprovalDelegationFrom")
-  delegationsTo        ApprovalDelegation[] @relation("ApprovalDelegationTo")
-  createdDelegations   ApprovalDelegation[] @relation("ApprovalDelegationCreatedBy")
-  updatedDelegations   ApprovalDelegation[] @relation("ApprovalDelegationUpdatedBy")
-  requestedJobs        Job[]                @relation("JobRequestedBy")
-  updatedJobSchedules  JobSchedule[]        @relation("JobScheduleUpdatedBy")
-  notifiedByRules      NotificationRule[]   @relation("NotificationRuleUser")
-  createdNotifRules    NotificationRule[]   @relation("NotificationRuleCreatedBy")
-  updatedNotifRules    NotificationRule[]   @relation("NotificationRuleUpdatedBy")
-  notifications        Notification[]       @relation("NotificationUser")
-  employmentProfile    EmploymentProfile?   @relation("UserProfile", fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_user_employment_profile")
+  scopes                       UserScope[]            @relation("UserScopeUser")
+  grantedScopes                UserScope[]            @relation("UserScopeGrantedBy")
+  createdScopes                UserScope[]            @relation("UserScopeCreatedBy")
+  updatedScopes                UserScope[]            @relation("UserScopeUpdatedBy")
+  createdNumberFormats         NumberFormat[]         @relation("NumberFormatCreatedBy")
+  updatedNumberFormats         NumberFormat[]         @relation("NumberFormatUpdatedBy")
+  createdSettings              SystemSetting[]        @relation("SystemSettingCreatedBy")
+  updatedSettings              SystemSetting[]        @relation("SystemSettingUpdatedBy")
+  createdDocuments             DocumentFile[]         @relation("DocumentFileCreatedBy")
+  updatedDocuments             DocumentFile[]         @relation("DocumentFileUpdatedBy")
+  uploadedDocuments            DocumentFile[]         @relation("DocumentFileUploadedBy")
+  createdWorkflows             Workflow[]             @relation("WorkflowCreatedBy")
+  updatedWorkflows             Workflow[]             @relation("WorkflowUpdatedBy")
+  submittedWorkflows           Workflow[]             @relation("WorkflowSubmittedBy")
+  approvedWorkflows            Workflow[]             @relation("WorkflowApprovedBy")
+  rejectedWorkflows            Workflow[]             @relation("WorkflowRejectedBy")
+  createdWorkflowSteps         WorkflowStep[]         @relation("WorkflowStepCreatedBy")
+  updatedWorkflowSteps         WorkflowStep[]         @relation("WorkflowStepUpdatedBy")
+  workflowSteps                WorkflowStep[]         @relation("WorkflowStepUser")
+  submittedApprovals           ApprovalRequest[]      @relation("ApprovalRequestSubmittedBy")
+  createdApprovalDocs          ApprovalRequest[]      @relation("ApprovalRequestDocumentCreatedBy")
+  approvalActions              ApprovalAction[]       @relation("ApprovalActionUser")
+  actedForApprovals            ApprovalAction[]       @relation("ApprovalActionActingFor")
+  delegationsFrom              ApprovalDelegation[]   @relation("ApprovalDelegationFrom")
+  delegationsTo                ApprovalDelegation[]   @relation("ApprovalDelegationTo")
+  createdDelegations           ApprovalDelegation[]   @relation("ApprovalDelegationCreatedBy")
+  updatedDelegations           ApprovalDelegation[]   @relation("ApprovalDelegationUpdatedBy")
+  requestedJobs                Job[]                  @relation("JobRequestedBy")
+  updatedJobSchedules          JobSchedule[]          @relation("JobScheduleUpdatedBy")
+  notifiedByRules              NotificationRule[]     @relation("NotificationRuleUser")
+  createdNotifRules            NotificationRule[]     @relation("NotificationRuleCreatedBy")
+  updatedNotifRules            NotificationRule[]     @relation("NotificationRuleUpdatedBy")
+  notifications                Notification[]         @relation("NotificationUser")
+  employmentProfile            EmploymentProfile?     @relation("UserProfile", fields: [employmentProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_user_employment_profile")
+  createdReceivables           Receivable[]           @relation("ReceivableCreatedBy")
+  submittedCollections         Collection[]           @relation("CollectionSubmittedBy")
+  approvedCollections          Collection[]           @relation("CollectionApprovedBy")
+  rejectedCollections          Collection[]           @relation("CollectionRejectedBy")
+  postedCollections            Collection[]           @relation("CollectionPostedBy")
+  createdCollections           Collection[]           @relation("CollectionCreatedBy")
+  updatedCollections           Collection[]           @relation("CollectionUpdatedBy")
+  createdCollectionAllocations CollectionAllocation[] @relation("CollectionAllocationCreatedBy")
+  updatedCollectionAllocations CollectionAllocation[] @relation("CollectionAllocationUpdatedBy")
+  createdPayables              Payable[]              @relation("PayableCreatedBy")
+  submittedPayments            Payment[]              @relation("PaymentSubmittedBy")
+  approvedPayments             Payment[]              @relation("PaymentApprovedBy")
+  rejectedPayments             Payment[]              @relation("PaymentRejectedBy")
+  postedPayments               Payment[]              @relation("PaymentPostedBy")
+  createdPayments              Payment[]              @relation("PaymentCreatedBy")
+  updatedPayments              Payment[]              @relation("PaymentUpdatedBy")
+  createdPaymentAllocations    PaymentAllocation[]    @relation("PaymentAllocationCreatedBy")
+  updatedPaymentAllocations    PaymentAllocation[]    @relation("PaymentAllocationUpdatedBy")
 
   @@unique([username], map: "ux_user_username")
   @@unique([email], map: "ux_user_email")
@@ -783,7 +801,11 @@ model Estate {
   manager               EmploymentProfile?     @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
   shifts                Shift[]                @relation("ShiftEstate")
 
-  workflows Workflow[]
+  workflows   Workflow[]
+  receivables Receivable[]
+  collections Collection[]
+  payables    Payable[]
+  payments    Payment[]
 
   @@unique([organisationId, code], map: "ux_estate_code")
   @@index([status], map: "ix_estate_status")
@@ -1212,6 +1234,10 @@ model AccountingPeriod {
   ledgerBalances LedgerBalance[]
   creator        User            @relation("AccountingPeriodCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_created_by")
   updater        User?           @relation("AccountingPeriodUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_updated_by")
+  receivables    Receivable[]
+  collections    Collection[]
+  payables       Payable[]
+  payments       Payment[]
 
   @@unique([fiscalYearId, periodNumber], map: "ux_period")
   @@index([startDate, endDate], map: "ix_accounting_period_dates")
@@ -1542,8 +1568,10 @@ model PaymentMethod {
   updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  creator User  @relation("PaymentMethodCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_method_created_by")
-  updater User? @relation("PaymentMethodUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_method_updated_by")
+  creator     User         @relation("PaymentMethodCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_method_created_by")
+  updater     User?        @relation("PaymentMethodUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_method_updated_by")
+  collections Collection[]
+  payments    Payment[]
 
   @@unique([code], map: "ux_payment_method_code")
   @@index([status], map: "ix_payment_method_status")
@@ -1895,6 +1923,10 @@ model Currency {
   updater       User?          @relation("CurrencyUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_currency_updated_by")
   organisations Organisation[]
   accounts      Account[]
+  receivables   Receivable[]
+  collections   Collection[]
+  payables      Payable[]
+  payments      Payment[]
 
   @@unique([code], map: "ux_currency_code")
   @@unique([baseKey], map: "ux_currency_base")
@@ -4349,11 +4381,13 @@ model BankAccount {
   updatedAt        DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  account  Account  @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_account")
-  currency Currency @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_currency")
-  estate   Estate?  @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_estate")
-  creator  User     @relation("BankAccountCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_created_by")
-  updater  User?    @relation("BankAccountUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_updated_by")
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_account")
+  currency    Currency     @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_currency")
+  estate      Estate?      @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_estate")
+  creator     User         @relation("BankAccountCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_created_by")
+  updater     User?        @relation("BankAccountUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_bank_account_updated_by")
+  collections Collection[]
+  payments    Payment[]
 
   @@unique([code], map: "ux_bank_account_code")
   @@unique([accountId], map: "ux_bank_chart_account")
@@ -4533,7 +4567,7 @@ model JournalLine {
   estateId           BigInt?  @map("estate_id") @db.UnsignedBigInt
   departmentId       BigInt?  @map("department_id") @db.UnsignedBigInt
   budgetHeadId       BigInt?  @map("budget_head_id") @db.UnsignedBigInt
-  /// buyer | supplier | leaf_supplier | party | employment_profile — for sub-ledger lines
+  /// buyer | supplier | leaf_supplier | contractor | party | employment_profile — for sub-ledger lines
   partyType          String?  @map("party_type") @db.VarChar(40)
   partyId            BigInt?  @map("party_id") @db.UnsignedBigInt
   narration          String?  @db.VarChar(300)
@@ -4678,4 +4712,334 @@ model OpeningBalance {
   @@index([journalId], map: "ix_opening_balance_journal")
   @@index([createdBy], map: "ix_opening_balance_created_by")
   @@map("opening_balance")
+}
+
+/// A receivable (P3 §15.1, §16.7; P3.05). Derived: raised by its source document through core/settlement, never
+/// edited; only the settlement columns change (allocations applied, adjustments, reversal). The mirror of
+/// payable (D-3.05-2).
+model Receivable {
+  id                    BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// sale | lease_schedule | other | opening
+  sourceType            String    @map("source_type") @db.VarChar(40)
+  sourceId              BigInt    @map("source_id") @db.UnsignedBigInt
+  /// buyer | party | employment_profile
+  partyType             String    @map("party_type") @db.VarChar(40)
+  partyId               BigInt    @map("party_id") @db.UnsignedBigInt
+  estateId              BigInt?   @map("estate_id") @db.UnsignedBigInt
+  referenceNumber       String    @map("reference_number") @db.VarChar(30)
+  documentDate          DateTime  @map("document_date") @db.Date
+  dueDate               DateTime  @map("due_date") @db.Date
+  currencyId            BigInt    @map("currency_id") @db.UnsignedBigInt
+  exchangeRate          Decimal   @map("exchange_rate") @db.Decimal(18, 8)
+  originalAmount        Decimal   @map("original_amount") @db.Decimal(18, 4)
+  originalBaseAmount    Decimal   @map("original_base_amount") @db.Decimal(18, 4)
+  receivedAmount        Decimal   @default(0) @map("received_amount") @db.Decimal(18, 4)
+  /// Credit notes and write-offs.
+  adjustedAmount        Decimal   @default(0) @map("adjusted_amount") @db.Decimal(18, 4)
+  /// Base currency relieved at this item's own rate (D-3.05-5).
+  settledBaseAmount     Decimal   @default(0) @map("settled_base_amount") @db.Decimal(18, 4)
+  /// GENERATED STORED (see migration SQL): original − received − adjusted; 0 once reversed.
+  outstandingAmount     Decimal?  @map("outstanding_amount") @db.Decimal(18, 4)
+  /// GENERATED STORED: original base − settled base; 0 once reversed.
+  outstandingBaseAmount Decimal?  @map("outstanding_base_amount") @db.Decimal(18, 4)
+  /// current | 1_30 | 31_60 | 61_90 | over_90; NULL once closed
+  ageingBand            String?   @map("ageing_band") @db.VarChar(30)
+  /// open | partially_settled | settled | written_off | reversed
+  state                 String    @default("open") @db.VarChar(30)
+  accountingPeriodId    BigInt    @map("accounting_period_id") @db.UnsignedBigInt
+  createdAt             DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy             BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt             DateTime? @map("updated_at") @db.DateTime(0)
+
+  estate      Estate?                @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_receivable_estate")
+  currency    Currency               @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_receivable_currency")
+  period      AccountingPeriod       @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_receivable_period")
+  creator     User                   @relation("ReceivableCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_receivable_created_by")
+  allocations CollectionAllocation[]
+
+  @@unique([sourceType, sourceId], map: "ux_receivable_source")
+  @@unique([referenceNumber], map: "ux_receivable_ref")
+  @@index([partyType, partyId, state], map: "ix_receivable_party_state")
+  @@index([dueDate, state], map: "ix_receivable_due")
+  @@index([estateId], map: "ix_receivable_estate")
+  @@index([documentDate], map: "ix_receivable_document_date")
+  @@index([outstandingAmount], map: "ix_receivable_outstanding")
+  @@index([ageingBand], map: "ix_receivable_ageing_band")
+  @@index([state], map: "ix_receivable_state")
+  @@index([currencyId], map: "ix_receivable_currency")
+  @@index([accountingPeriodId], map: "ix_receivable_period")
+  @@index([createdBy], map: "ix_receivable_created_by")
+  @@map("receivable")
+}
+
+/// A collection (P3 §15.2, §16.7). The table exists from P3.05 so the settlement core is tested on real rows; the
+/// document (CRUD, workflow, posting) is built in P8.09. collection_number is NULL until posting (D-3.05-15).
+model Collection {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  collectionNumber   String?   @map("collection_number") @db.VarChar(30)
+  collectionDate     DateTime  @map("collection_date") @db.Date
+  partyType          String    @map("party_type") @db.VarChar(40)
+  partyId            BigInt    @map("party_id") @db.UnsignedBigInt
+  estateId           BigInt?   @map("estate_id") @db.UnsignedBigInt
+  paymentMethodId    BigInt    @map("payment_method_id") @db.UnsignedBigInt
+  /// The receiving cash or bank account.
+  bankAccountId      BigInt?   @map("bank_account_id") @db.UnsignedBigInt
+  instrumentNumber   String?   @map("instrument_number") @db.VarChar(50)
+  instrumentDate     DateTime? @map("instrument_date") @db.Date
+  currencyId         BigInt    @map("currency_id") @db.UnsignedBigInt
+  exchangeRate       Decimal   @map("exchange_rate") @db.Decimal(18, 8)
+  amount             Decimal   @db.Decimal(18, 4)
+  baseAmount         Decimal   @map("base_amount") @db.Decimal(18, 4)
+  allocatedAmount    Decimal   @default(0) @map("allocated_amount") @db.Decimal(18, 4)
+  /// GENERATED STORED: amount − allocated (an advance from the buyer).
+  unallocatedAmount  Decimal?  @map("unallocated_amount") @db.Decimal(18, 4)
+  narration          String?   @db.VarChar(300)
+  /// draft | submitted | approved | rejected | posted
+  state              String    @default("draft") @db.VarChar(30)
+  stateChangedAt     DateTime? @map("state_changed_at") @db.DateTime(0)
+  submittedAt        DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy        BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt         DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy         BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt         DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy         BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason    String?   @map("rejection_reason") @db.VarChar(500)
+  accountingPeriodId BigInt    @map("accounting_period_id") @db.UnsignedBigInt
+  postedAt           DateTime? @map("posted_at") @db.DateTime(0)
+  postedBy           BigInt?   @map("posted_by") @db.UnsignedBigInt
+  reversalOfId       BigInt?   @map("reversal_of_id") @db.UnsignedBigInt
+  isReversed         Boolean   @default(false) @map("is_reversed")
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  estate        Estate?                @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_estate")
+  paymentMethod PaymentMethod          @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_payment_method")
+  bankAccount   BankAccount?           @relation(fields: [bankAccountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_bank_account")
+  currency      Currency               @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_currency")
+  period        AccountingPeriod       @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_period")
+  reversalOf    Collection?            @relation("CollectionReversal", fields: [reversalOfId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_reversal_of")
+  reversals     Collection[]           @relation("CollectionReversal")
+  allocations   CollectionAllocation[]
+  submitter     User?                  @relation("CollectionSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_submitted_by")
+  approver      User?                  @relation("CollectionApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_approved_by")
+  rejecter      User?                  @relation("CollectionRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_rejected_by")
+  poster        User?                  @relation("CollectionPostedBy", fields: [postedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_posted_by")
+  creator       User                   @relation("CollectionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_created_by")
+  updater       User?                  @relation("CollectionUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_updated_by")
+
+  @@unique([collectionNumber], map: "ux_collection_number")
+  @@index([collectionDate], map: "ix_collection_date")
+  @@index([partyType, partyId], map: "ix_collection_party")
+  @@index([estateId], map: "ix_collection_estate")
+  @@index([paymentMethodId], map: "ix_collection_payment_method")
+  @@index([bankAccountId], map: "ix_collection_bank_account")
+  @@index([currencyId], map: "ix_collection_currency")
+  @@index([state], map: "ix_collection_state")
+  @@index([accountingPeriodId], map: "ix_collection_period")
+  @@index([reversalOfId], map: "ix_collection_reversal_of")
+  @@index([submittedBy], map: "ix_collection_submitted_by")
+  @@index([approvedBy], map: "ix_collection_approved_by")
+  @@index([rejectedBy], map: "ix_collection_rejected_by")
+  @@index([postedBy], map: "ix_collection_posted_by")
+  @@index([createdBy], map: "ix_collection_created_by")
+  @@index([updatedBy], map: "ix_collection_updated_by")
+  @@map("collection")
+}
+
+/// One collection's share of one receivable (P3 §15.3). Written while the collection is a draft; applied at posting under a
+/// lock on the receivable, which fixes base_amount and fx_gain_loss (D-3.05-6, D-3.05-7).
+model CollectionAllocation {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  collectionId BigInt    @map("collection_id") @db.UnsignedBigInt
+  receivableId BigInt    @map("receivable_id") @db.UnsignedBigInt
+  /// Transaction currency (the collection's and the receivable's).
+  amount       Decimal   @db.Decimal(18, 4)
+  /// amount × the collection's rate.
+  baseAmount   Decimal   @map("base_amount") @db.Decimal(18, 4)
+  /// Positive = gain (D-3.05-7).
+  fxGainLoss   Decimal   @default(0) @map("fx_gain_loss") @db.Decimal(18, 4)
+  sequence     Int
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy    BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt    DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy    BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_allocation_collection")
+  receivable Receivable @relation(fields: [receivableId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_allocation_receivable")
+  creator    User       @relation("CollectionAllocationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_allocation_created_by")
+  updater    User?      @relation("CollectionAllocationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_collection_allocation_updated_by")
+
+  @@unique([collectionId, receivableId], map: "ux_collection_allocation")
+  @@index([receivableId], map: "ix_collection_allocation_receivable")
+  @@index([createdBy], map: "ix_collection_allocation_created_by")
+  @@index([updatedBy], map: "ix_collection_allocation_updated_by")
+  @@map("collection_allocation")
+}
+
+/// A payable (P3 §15.1, §16.7; P3.05). Derived: raised by its source document through core/settlement, never
+/// edited; only the settlement columns change (allocations applied, adjustments, reversal). The mirror of
+/// receivable (D-3.05-2).
+model Payable {
+  id                    BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// supplier_invoice | leaf_purchase | contractor_bill | employee_advance | payroll_run | other | opening
+  sourceType            String    @map("source_type") @db.VarChar(40)
+  sourceId              BigInt    @map("source_id") @db.UnsignedBigInt
+  /// supplier | leaf_supplier | contractor | party | employment_profile
+  partyType             String    @map("party_type") @db.VarChar(40)
+  partyId               BigInt    @map("party_id") @db.UnsignedBigInt
+  estateId              BigInt?   @map("estate_id") @db.UnsignedBigInt
+  referenceNumber       String    @map("reference_number") @db.VarChar(30)
+  documentDate          DateTime  @map("document_date") @db.Date
+  dueDate               DateTime  @map("due_date") @db.Date
+  currencyId            BigInt    @map("currency_id") @db.UnsignedBigInt
+  exchangeRate          Decimal   @map("exchange_rate") @db.Decimal(18, 8)
+  originalAmount        Decimal   @map("original_amount") @db.Decimal(18, 4)
+  originalBaseAmount    Decimal   @map("original_base_amount") @db.Decimal(18, 4)
+  paidAmount            Decimal   @default(0) @map("paid_amount") @db.Decimal(18, 4)
+  /// Credit notes and write-offs.
+  adjustedAmount        Decimal   @default(0) @map("adjusted_amount") @db.Decimal(18, 4)
+  /// Base currency relieved at this item's own rate (D-3.05-5).
+  settledBaseAmount     Decimal   @default(0) @map("settled_base_amount") @db.Decimal(18, 4)
+  /// GENERATED STORED (see migration SQL): original − paid − adjusted; 0 once reversed.
+  outstandingAmount     Decimal?  @map("outstanding_amount") @db.Decimal(18, 4)
+  /// GENERATED STORED: original base − settled base; 0 once reversed.
+  outstandingBaseAmount Decimal?  @map("outstanding_base_amount") @db.Decimal(18, 4)
+  /// current | 1_30 | 31_60 | 61_90 | over_90; NULL once closed
+  ageingBand            String?   @map("ageing_band") @db.VarChar(30)
+  /// open | partially_settled | settled | written_off | reversed
+  state                 String    @default("open") @db.VarChar(30)
+  accountingPeriodId    BigInt    @map("accounting_period_id") @db.UnsignedBigInt
+  createdAt             DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy             BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt             DateTime? @map("updated_at") @db.DateTime(0)
+
+  estate      Estate?             @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payable_estate")
+  currency    Currency            @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payable_currency")
+  period      AccountingPeriod    @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payable_period")
+  creator     User                @relation("PayableCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payable_created_by")
+  allocations PaymentAllocation[]
+
+  @@unique([sourceType, sourceId], map: "ux_payable_source")
+  @@unique([referenceNumber], map: "ux_payable_ref")
+  @@index([partyType, partyId, state], map: "ix_payable_party_state")
+  @@index([dueDate, state], map: "ix_payable_due")
+  @@index([estateId], map: "ix_payable_estate")
+  @@index([documentDate], map: "ix_payable_document_date")
+  @@index([outstandingAmount], map: "ix_payable_outstanding")
+  @@index([ageingBand], map: "ix_payable_ageing_band")
+  @@index([state], map: "ix_payable_state")
+  @@index([currencyId], map: "ix_payable_currency")
+  @@index([accountingPeriodId], map: "ix_payable_period")
+  @@index([createdBy], map: "ix_payable_created_by")
+  @@map("payable")
+}
+
+/// A payment (P3 §15.2, §16.7). The table exists from P3.05 so the settlement core is tested on real rows; the
+/// document (CRUD, workflow, posting) is built in P4.07. payment_number is NULL until posting (D-3.05-15).
+model Payment {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  paymentNumber      String?   @map("payment_number") @db.VarChar(30)
+  paymentDate        DateTime  @map("payment_date") @db.Date
+  partyType          String    @map("party_type") @db.VarChar(40)
+  partyId            BigInt    @map("party_id") @db.UnsignedBigInt
+  estateId           BigInt?   @map("estate_id") @db.UnsignedBigInt
+  paymentMethodId    BigInt    @map("payment_method_id") @db.UnsignedBigInt
+  /// The paying cash or bank account.
+  bankAccountId      BigInt?   @map("bank_account_id") @db.UnsignedBigInt
+  instrumentNumber   String?   @map("instrument_number") @db.VarChar(50)
+  instrumentDate     DateTime? @map("instrument_date") @db.Date
+  currencyId         BigInt    @map("currency_id") @db.UnsignedBigInt
+  exchangeRate       Decimal   @map("exchange_rate") @db.Decimal(18, 8)
+  amount             Decimal   @db.Decimal(18, 4)
+  baseAmount         Decimal   @map("base_amount") @db.Decimal(18, 4)
+  allocatedAmount    Decimal   @default(0) @map("allocated_amount") @db.Decimal(18, 4)
+  /// GENERATED STORED: amount − allocated (an advance to the supplier).
+  unallocatedAmount  Decimal?  @map("unallocated_amount") @db.Decimal(18, 4)
+  narration          String?   @db.VarChar(300)
+  /// draft | submitted | approved | rejected | posted
+  state              String    @default("draft") @db.VarChar(30)
+  stateChangedAt     DateTime? @map("state_changed_at") @db.DateTime(0)
+  submittedAt        DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy        BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt         DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy         BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt         DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy         BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason    String?   @map("rejection_reason") @db.VarChar(500)
+  accountingPeriodId BigInt    @map("accounting_period_id") @db.UnsignedBigInt
+  postedAt           DateTime? @map("posted_at") @db.DateTime(0)
+  postedBy           BigInt?   @map("posted_by") @db.UnsignedBigInt
+  reversalOfId       BigInt?   @map("reversal_of_id") @db.UnsignedBigInt
+  isReversed         Boolean   @default(false) @map("is_reversed")
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  estate        Estate?             @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_estate")
+  paymentMethod PaymentMethod       @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_payment_method")
+  bankAccount   BankAccount?        @relation(fields: [bankAccountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_bank_account")
+  currency      Currency            @relation(fields: [currencyId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_currency")
+  period        AccountingPeriod    @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_period")
+  reversalOf    Payment?            @relation("PaymentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_reversal_of")
+  reversals     Payment[]           @relation("PaymentReversal")
+  allocations   PaymentAllocation[]
+  submitter     User?               @relation("PaymentSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_submitted_by")
+  approver      User?               @relation("PaymentApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_approved_by")
+  rejecter      User?               @relation("PaymentRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_rejected_by")
+  poster        User?               @relation("PaymentPostedBy", fields: [postedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_posted_by")
+  creator       User                @relation("PaymentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_created_by")
+  updater       User?               @relation("PaymentUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_updated_by")
+
+  @@unique([paymentNumber], map: "ux_payment_number")
+  @@index([paymentDate], map: "ix_payment_date")
+  @@index([partyType, partyId], map: "ix_payment_party")
+  @@index([estateId], map: "ix_payment_estate")
+  @@index([paymentMethodId], map: "ix_payment_payment_method")
+  @@index([bankAccountId], map: "ix_payment_bank_account")
+  @@index([currencyId], map: "ix_payment_currency")
+  @@index([state], map: "ix_payment_state")
+  @@index([accountingPeriodId], map: "ix_payment_period")
+  @@index([reversalOfId], map: "ix_payment_reversal_of")
+  @@index([submittedBy], map: "ix_payment_submitted_by")
+  @@index([approvedBy], map: "ix_payment_approved_by")
+  @@index([rejectedBy], map: "ix_payment_rejected_by")
+  @@index([postedBy], map: "ix_payment_posted_by")
+  @@index([createdBy], map: "ix_payment_created_by")
+  @@index([updatedBy], map: "ix_payment_updated_by")
+  @@map("payment")
+}
+
+/// One payment's share of one payable (P3 §15.3). Written while the payment is a draft; applied at posting under a
+/// lock on the payable, which fixes base_amount and fx_gain_loss (D-3.05-6, D-3.05-7).
+model PaymentAllocation {
+  id         BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  paymentId  BigInt    @map("payment_id") @db.UnsignedBigInt
+  payableId  BigInt    @map("payable_id") @db.UnsignedBigInt
+  /// Transaction currency (the payment's and the payable's).
+  amount     Decimal   @db.Decimal(18, 4)
+  /// amount × the payment's rate.
+  baseAmount Decimal   @map("base_amount") @db.Decimal(18, 4)
+  /// Positive = gain (D-3.05-7).
+  fxGainLoss Decimal   @default(0) @map("fx_gain_loss") @db.Decimal(18, 4)
+  sequence   Int
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy  BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt  DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy  BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_allocation_payment")
+  payable Payable @relation(fields: [payableId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_allocation_payable")
+  creator User    @relation("PaymentAllocationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_allocation_created_by")
+  updater User?   @relation("PaymentAllocationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_allocation_updated_by")
+
+  @@unique([paymentId, payableId], map: "ux_payment_allocation")
+  @@index([payableId], map: "ix_payment_allocation_payable")
+  @@index([createdBy], map: "ix_payment_allocation_created_by")
+  @@index([updatedBy], map: "ix_payment_allocation_updated_by")
+  @@map("payment_allocation")
 }
