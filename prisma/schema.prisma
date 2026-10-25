@@ -389,6 +389,9 @@ model User {
   submittedSupplierBankChanges SupplierBankChange[]   @relation("SupplierBankChangeSubmittedBy")
   approvedSupplierBankChanges  SupplierBankChange[]   @relation("SupplierBankChangeApprovedBy")
   rejectedSupplierBankChanges  SupplierBankChange[]   @relation("SupplierBankChangeRejectedBy")
+  createdRawMaterials          RawMaterial[]          @relation("RawMaterialCreatedBy")
+  updatedRawMaterials          RawMaterial[]          @relation("RawMaterialUpdatedBy")
+  createdStockMovements        StockMovement[]        @relation("StockMovementCreatedBy")
 
   @@unique([username], map: "ux_user_username")
   @@unique([email], map: "ux_user_email")
@@ -808,11 +811,12 @@ model Estate {
   manager               EmploymentProfile?     @relation("EstateManager", fields: [managerProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_estate_manager")
   shifts                Shift[]                @relation("ShiftEstate")
 
-  workflows   Workflow[]
-  receivables Receivable[]
-  collections Collection[]
-  payables    Payable[]
-  payments    Payment[]
+  workflows      Workflow[]
+  receivables    Receivable[]
+  collections    Collection[]
+  payables       Payable[]
+  payments       Payment[]
+  stockMovements StockMovement[]
 
   @@unique([organisationId, code], map: "ux_estate_code")
   @@index([status], map: "ix_estate_status")
@@ -1245,6 +1249,7 @@ model AccountingPeriod {
   collections    Collection[]
   payables       Payable[]
   payments       Payment[]
+  stockMovements StockMovement[]
 
   @@unique([fiscalYearId, periodNumber], map: "ux_period")
   @@index([startDate, endDate], map: "ix_accounting_period_dates")
@@ -1627,8 +1632,9 @@ model AdjustmentReason {
   updatedAt   DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy   BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  creator User  @relation("AdjustmentReasonCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_adjustment_reason_created_by")
-  updater User? @relation("AdjustmentReasonUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_adjustment_reason_updated_by")
+  creator        User            @relation("AdjustmentReasonCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_adjustment_reason_created_by")
+  updater        User?           @relation("AdjustmentReasonUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_adjustment_reason_updated_by")
+  stockMovements StockMovement[]
 
   @@unique([code], map: "ux_adjustment_reason_code")
   @@index([status], map: "ix_adjustment_reason_status")
@@ -1703,9 +1709,11 @@ model TeaType {
   updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  creator          User       @relation("TeaTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_type_created_by")
-  updater          User?      @relation("TeaTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_type_updated_by")
-  teaGradeTeaTypes TeaGrade[] @relation("TeaGradeTeaType")
+  creator          User            @relation("TeaTypeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_type_created_by")
+  updater          User?           @relation("TeaTypeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_type_updated_by")
+  teaGradeTeaTypes TeaGrade[]      @relation("TeaGradeTeaType")
+  stockMovements   StockMovement[]
+  stockBalances    StockBalance[]
 
   @@unique([code], map: "ux_tea_type_code")
   @@index([status], map: "ix_tea_type_status")
@@ -1732,9 +1740,11 @@ model TeaGrade {
   updatedAt      DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy      BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  teaType TeaType? @relation("TeaGradeTeaType", fields: [teaTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_grade_tea_type")
-  creator User     @relation("TeaGradeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_grade_created_by")
-  updater User?    @relation("TeaGradeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_grade_updated_by")
+  teaType        TeaType?        @relation("TeaGradeTeaType", fields: [teaTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_grade_tea_type")
+  creator        User            @relation("TeaGradeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_grade_created_by")
+  updater        User?           @relation("TeaGradeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_tea_grade_updated_by")
+  stockMovements StockMovement[]
+  stockBalances  StockBalance[]
 
   @@unique([code], map: "ux_tea_grade_code")
   @@index([teaTypeId], map: "ix_tea_grade_tea_type")
@@ -1897,6 +1907,7 @@ model Uom {
   uomCategoryBaseUoms     UomCategory[]  @relation("UomCategoryBaseUom")
 
   benefitTypes BenefitType[]
+  rawMaterials RawMaterial[]
 
   @@unique([code], map: "ux_uom_code")
   @@unique([baseKey], map: "ux_uom_base")
@@ -4258,6 +4269,7 @@ model Account {
   ledgerBalances    LedgerBalance[]
   creator           User               @relation("AccountCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_created_by")
   updater           User?              @relation("AccountUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_account_updated_by")
+  rawMaterials      RawMaterial[]
 
   @@unique([code], map: "ux_account_code")
   @@unique([systemKey], map: "ux_account_system_key")
@@ -4308,6 +4320,7 @@ model CostCentre {
   ledgerBalances    LedgerBalance[]
   creator           User                   @relation("CostCentreCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_created_by")
   updater           User?                  @relation("CostCentreUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_updated_by")
+  rawMaterials      RawMaterial[]
 
   @@unique([code], map: "ux_cost_centre_code")
   @@index([parentCostCentreId], map: "ix_cost_centre_parent")
@@ -5157,4 +5170,155 @@ model SupplierBankChange {
   @@index([approvedBy], map: "ix_supplier_bank_change_approved_by")
   @@index([rejectedBy], map: "ix_supplier_bank_change_rejected_by")
   @@map("supplier_bank_change")
+}
+
+// =====================================================================================================
+// Phase 4 — Inventory (one movement ledger for green leaf, made tea and materials: P3 §13)
+// =====================================================================================================
+
+/// P4.04 (Spec P3 §12.4): a stored material (fuel, packaging, fertiliser …). Organisation tier. Its
+/// average rate and stock value are read from stock_balance, never stored here.
+model RawMaterial {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// Numbered by the `raw_material` format when not given.
+  code                String    @db.VarChar(20)
+  name                String    @db.VarChar(150)
+  /// fuel | packaging | consumable | chemical | fertiliser | spare | maintenance | other
+  materialCategory    String    @map("material_category") @db.VarChar(30)
+  /// The unit stock is kept in (O-18).
+  uomId               BigInt    @map("uom_id") @db.UnsignedBigInt
+  /// 0: a receipt creates no movement and its cost is expensed directly.
+  isStockTracked      Boolean   @default(true) @map("is_stock_tracked")
+  /// Drives the low_stock alert.
+  reorderLevel        Decimal?  @map("reorder_level") @db.Decimal(14, 3)
+  defaultCostCentreId BigInt?   @map("default_cost_centre_id") @db.UnsignedBigInt
+  /// Overrides the category default in the posting rule.
+  expenseAccountId    BigInt?   @map("expense_account_id") @db.UnsignedBigInt
+  /// active | inactive
+  status              String    @default("active") @db.VarChar(30)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy           BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt           DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy           BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  uom               Uom             @relation(fields: [uomId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_raw_material_uom")
+  defaultCostCentre CostCentre?     @relation(fields: [defaultCostCentreId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_raw_material_cost_centre")
+  expenseAccount    Account?        @relation(fields: [expenseAccountId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_raw_material_expense_account")
+  movements         StockMovement[]
+  balances          StockBalance[]
+  creator           User            @relation("RawMaterialCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_raw_material_created_by")
+  updater           User?           @relation("RawMaterialUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_raw_material_updated_by")
+
+  @@unique([code], map: "ux_material_code")
+  @@index([name], map: "ix_material_name")
+  @@index([materialCategory], map: "ix_material_category")
+  @@index([uomId], map: "ix_material_uom")
+  @@index([defaultCostCentreId], map: "ix_material_cost_centre")
+  @@index([expenseAccountId], map: "ix_material_expense_account")
+  @@index([status], map: "ix_material_status")
+  @@index([createdBy], map: "ix_material_created_by")
+  @@index([updatedBy], map: "ix_material_updated_by")
+  @@map("raw_material")
+}
+
+/// P4.04 (Spec P3 §13.1, P1 §7.4, §8): the stock movement ledger. IMMUTABLE: the app account has no UPDATE
+/// or DELETE on it; a wrong movement is reversed by a compensating one (reversal_of_id). Written only by
+/// core/stock, inside the approving document's transaction.
+model StockMovement {
+  id                 BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  /// green_leaf | made_tea | material
+  materialClass      String   @map("material_class") @db.VarChar(30)
+  rawMaterialId      BigInt?  @map("raw_material_id") @db.UnsignedBigInt
+  teaTypeId          BigInt?  @map("tea_type_id") @db.UnsignedBigInt
+  teaGradeId         BigInt?  @map("tea_grade_id") @db.UnsignedBigInt
+  /// Made tea: the batch it came from (FK when production_batch exists, Phase 6).
+  productionBatchId  BigInt?  @map("production_batch_id") @db.UnsignedBigInt
+  /// warehouse | factory | collection_point | store
+  locationType       String   @map("location_type") @db.VarChar(30)
+  /// No FK: resolves against the table named by location_type.
+  locationId         BigInt   @map("location_id") @db.UnsignedBigInt
+  /// owned | held
+  ownership          String   @db.VarChar(30)
+  /// available | reserved | allocated | sold | dispatched | damaged
+  stockState         String   @map("stock_state") @db.VarChar(30)
+  /// The closed taxonomy of P1 §8.2 (core/stock/taxonomy.ts).
+  movementType       String   @map("movement_type") @db.VarChar(30)
+  /// in | out
+  direction          String   @db.VarChar(10)
+  /// Always positive: the sign is the direction.
+  quantity           Decimal  @db.Decimal(14, 3)
+  unitCost           Decimal  @map("unit_cost") @db.Decimal(18, 4)
+  /// quantity × unit_cost; zero for held material.
+  value              Decimal  @db.Decimal(18, 4)
+  sourceType         String   @map("source_type") @db.VarChar(40)
+  sourceId           BigInt   @map("source_id") @db.UnsignedBigInt
+  sourceLineId       BigInt?  @map("source_line_id") @db.UnsignedBigInt
+  /// Business time of the movement.
+  movedAt            DateTime @map("moved_at") @db.DateTime(0)
+  accountingPeriodId BigInt   @map("accounting_period_id") @db.UnsignedBigInt
+  estateId           BigInt?  @map("estate_id") @db.UnsignedBigInt
+  reversalOfId       BigInt?  @map("reversal_of_id") @db.UnsignedBigInt
+  reasonId           BigInt?  @map("reason_id") @db.UnsignedBigInt
+  narration          String?  @db.VarChar(200)
+  createdAt          DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt   @map("created_by") @db.UnsignedBigInt
+
+  rawMaterial      RawMaterial?      @relation(fields: [rawMaterialId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_movement_raw_material")
+  teaType          TeaType?          @relation(fields: [teaTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_movement_tea_type")
+  teaGrade         TeaGrade?         @relation(fields: [teaGradeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_movement_tea_grade")
+  accountingPeriod AccountingPeriod  @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_movement_period")
+  estate           Estate?           @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_movement_estate")
+  reversalOf       StockMovement?    @relation("StockMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_movement_reversal_of")
+  reversedBy       StockMovement?    @relation("StockMovementReversal")
+  reason           AdjustmentReason? @relation(fields: [reasonId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_movement_reason")
+  creator          User              @relation("StockMovementCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_movement_created_by")
+
+  @@unique([reversalOfId], map: "ux_movement_reversal")
+  @@index([materialClass, locationType, locationId, ownership, stockState, movedAt], map: "ix_movement_balance")
+  @@index([sourceType, sourceId], map: "ix_movement_source")
+  @@index([accountingPeriodId, materialClass], map: "ix_movement_period")
+  @@index([teaGradeId, movedAt], map: "ix_movement_grade")
+  @@index([rawMaterialId, movedAt], map: "ix_movement_material")
+  @@index([movedAt], map: "ix_movement_moved_at")
+  @@index([teaTypeId], map: "ix_movement_tea_type")
+  @@index([estateId], map: "ix_movement_estate")
+  @@index([reasonId], map: "ix_movement_reason")
+  @@index([createdBy], map: "ix_movement_created_by")
+  @@map("stock_movement")
+}
+
+/// P4.04 (Spec P3 §13.2): the balance at one intersection of the stock dimensions, maintained by core/stock
+/// in the same transaction as each movement and rebuildable from stock_movement (nightly check). Never
+/// written by anything else. value is the running total of the movements' values; average_unit_cost is
+/// value ÷ quantity (P9 §16.1), reset to zero when the balance reaches zero.
+model StockBalance {
+  id                BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  materialClass     String    @map("material_class") @db.VarChar(30)
+  rawMaterialId     BigInt?   @map("raw_material_id") @db.UnsignedBigInt
+  teaTypeId         BigInt?   @map("tea_type_id") @db.UnsignedBigInt
+  teaGradeId        BigInt?   @map("tea_grade_id") @db.UnsignedBigInt
+  productionBatchId BigInt?   @map("production_batch_id") @db.UnsignedBigInt
+  locationType      String    @map("location_type") @db.VarChar(30)
+  locationId        BigInt    @map("location_id") @db.UnsignedBigInt
+  ownership         String    @db.VarChar(30)
+  stockState        String    @map("stock_state") @db.VarChar(30)
+  quantity          Decimal   @default(0) @db.Decimal(14, 3)
+  averageUnitCost   Decimal   @default(0) @map("average_unit_cost") @db.Decimal(18, 4)
+  value             Decimal   @default(0) @db.Decimal(18, 4)
+  lastMovementAt    DateTime? @map("last_movement_at") @db.DateTime(0)
+  lastRebuiltAt     DateTime? @map("last_rebuilt_at") @db.DateTime(0)
+  /// GENERATED: the ux_stock_balance key with NULLs spelled out (a UNIQUE index treats NULLs as distinct).
+  balanceKey        String?   @map("balance_key") @db.VarChar(200)
+
+  rawMaterial RawMaterial? @relation(fields: [rawMaterialId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_balance_raw_material")
+  teaType     TeaType?     @relation(fields: [teaTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_balance_tea_type")
+  teaGrade    TeaGrade?    @relation(fields: [teaGradeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_balance_tea_grade")
+
+  @@unique([balanceKey], map: "ux_stock_balance")
+  @@index([locationType, locationId], map: "ix_balance_location")
+  @@index([rawMaterialId], map: "ix_balance_raw_material")
+  @@index([teaTypeId], map: "ix_balance_tea_type")
+  @@index([teaGradeId], map: "ix_balance_tea_grade")
+  @@map("stock_balance")
 }

@@ -64,6 +64,8 @@ export const DOCUMENT_TYPES: readonly DocumentType[] = [
   op('goods_receipt', 'Goods receipt', 'GRN', ESTATE_FY),
   // P4.01: the supplier code, when none is given.
   op('supplier', 'Supplier', 'SUP', []),
+  // P4.04: the raw material code, when none is given.
+  op('raw_material', 'Raw material', 'RM', []),
   fin('supplier_invoice', 'Supplier invoice', 'BILL', ESTATE_FY),
   fin('payment', 'Payment', 'PV', ESTATE_FY),
   // Workforce and payroll

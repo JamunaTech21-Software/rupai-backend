@@ -223,9 +223,11 @@ describe('the seeded rules (P3 Table 31.2)', () => {
       channel: 'email',
       trigger: { evaluated: true },
     });
-    expect(rules.find((r) => r.code === 'LOW_STOCK')).toMatchObject({
-      trigger: { evaluated: false, arrives_with: 'Inventory' },
+    expect(rules.find((r) => r.code === 'ABNORMAL_YIELD')).toMatchObject({
+      trigger: { evaluated: false, arrives_with: 'Plucking and yield' },
     });
+    // P4.04: the inventory jobs evaluate it.
+    expect(rules.find((r) => r.code === 'LOW_STOCK')).toMatchObject({ trigger: { evaluated: true } });
     const triggers = many(await get('/notification-rules/triggers'));
     expect(triggers).toHaveLength(10);
     expect(triggers.find((t) => t.key === 'approval_pending')).toMatchObject({
