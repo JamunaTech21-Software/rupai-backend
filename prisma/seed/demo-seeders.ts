@@ -8,6 +8,12 @@ import { businessDateFromDb, businessDateToDb, type BusinessDate } from '../../s
 import { activeMonths, proRata } from '../../src/modules/workforce/leave.service.js';
 import { fiscalYearCode, fiscalYearDates, periodsOf } from '../../src/modules/calendar/fiscal.service.js';
 import { activateChartIn, readSignOff } from '../../src/modules/accounting/accounts.service.js';
+import { journalsService } from '../../src/modules/accounting/journals.service.js';
+import { registerApprovalAdapter } from '../../src/core/approval/adapters.js';
+import { submitForApproval } from '../../src/core/approval/engine.js';
+import type { Database } from '../../src/core/db/prisma.js';
+import { dec } from '../../src/core/money/decimal.js';
+import { writeJournal } from '../../src/core/posting/journal.js';
 import { ADMINISTRATOR_ROLE_CODE } from '../../src/modules/identity/permission-catalogue.js';
 import { requirementsFor } from '../../src/modules/identity/sod-rules.js';
 import {
@@ -79,6 +85,8 @@ const DEMO_VIEWER_PERMISSIONS = [
   ['accounting', 'view'],
   ['budget', 'view'],
   ['bank_account', 'view'],
+  // P3.04.
+  ['journal', 'view'],
 ] as const;
 
 export const DEMO_ESTATE_ADMIN_ROLE = 'DEMO_ESTATE_ADMIN';
@@ -129,6 +137,9 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
   ['welfare', 'submit'],
   ['accounting_period', 'view'],
   ['accounting_period', 'edit'],
+  // P3.04: drafts, submits and posts manual journals; approving them is the approver's (SOD-2).
+  // journal.post is sensitive: its authorisation is recorded by the accounting seeder.
+  ...(['view', 'create', 'edit', 'delete', 'submit', 'post'] as const).map((a) => ['journal', a] as const),
 ] as const;
 
 /** P1.13: approves workflow changes and, as an approver role, purchase orders (the demo ladder). */
@@ -163,6 +174,9 @@ const DEMO_APPROVER_PERMISSIONS = [
   ['workflow', 'approve'],
   ['purchase_order', 'view'],
   ['purchase_order', 'approve'],
+  // P3.04: the finance manager (and managing director) steps of the demo journal ladder (P7 §8.9).
+  ['journal', 'view'],
+  ['journal', 'approve'],
 ] as const;
 
 /** A demo role holding at least these permissions: created if missing, missing permissions added. */
@@ -314,6 +328,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoPerformanceSeeder,
     demoAccountingSeeder,
     demoDimensionsSeeder,
+    demoJournalsSeeder,
   ];
 }
 
@@ -440,7 +455,7 @@ const demoAccountingSeeder: Seeder = {
   async run(tx) {
     let inserted = 0;
     const manager = await tx.user.findUniqueOrThrow({ where: { username: 'manager' }, select: { id: true } });
-    for (const r of requirementsFor(new Set(['accounting.edit']))) {
+    for (const r of requirementsFor(new Set(['accounting.edit', 'journal.post']))) {
       const has = await tx.accessAuthorisation.count({
         where: { userId: manager.id, authorisationKey: r.key },
       });
@@ -2286,4 +2301,326 @@ const demoWorkflowSeeder: Seeder = {
     }
     return { inserted: 5, updated: 0 };
   },
+};
+
+/**
+ * P3.04: the manual-journal ladder of P7 §8.9 as the active journal workflow (finance manager always;
+ * managing director for a prior period: both the `approver` login), two posted journals (last period's
+ * office electricity from the operating bank, this period's DEMO-A stationery from estate cash) so the
+ * ledger, the expense view and the Monthly Expense card have figures, and an audit-fee accrual awaiting
+ * the approver. Added once, while the chart is active.
+ */
+const demoJournalsSeeder: Seeder = {
+  name: 'demo: P3.04 journal workflow, two posted journals and one awaiting approval',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const timezone = process.env.APP_TIMEZONE ?? 'Asia/Dhaka';
+      const now = new Date();
+      const day = (offset: number) =>
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset));
+
+      const flows = await tx.workflow.findMany({
+        where: { documentType: 'journal' },
+        select: { id: true, ruleCode: true },
+      });
+      const [seeded] = flows;
+      if (flows.length === 1 && seeded) {
+        const approverRole = await tx.role.findUniqueOrThrow({
+          where: { code: DEMO_APPROVER_ROLE },
+          select: { id: true },
+        });
+        await tx.workflow.update({ where: { id: seeded.id }, data: { effectiveTo: day(-1) } });
+        const w = await tx.workflow.create({
+          data: {
+            ruleCode: seeded.ruleCode,
+            name: 'Manual journal (demo of P7 §8.9)',
+            documentType: 'journal',
+            method: 'sequential',
+            parameters: {},
+            effectiveFrom: day(0),
+            supersedesId: seeded.id,
+            notes:
+              'Demo: both steps are the approver login. P7 §8.9 also escalates an adjustment of T3 or more; that waits for the agreed workflow.',
+            state: 'active',
+            stateChangedAt: now,
+            approvedAt: now,
+            approvedBy: by,
+            createdBy: by,
+            steps: {
+              create: [
+                {
+                  stepNumber: 1,
+                  sequence: 1,
+                  name: 'Finance manager',
+                  approverRule: 'by_role',
+                  roleId: approverRole.id,
+                  createdBy: by,
+                },
+                {
+                  stepNumber: 2,
+                  sequence: 2,
+                  name: 'Managing director (prior period)',
+                  approverRule: 'by_role',
+                  roleId: approverRole.id,
+                  conditionField: 'is_prior_period',
+                  conditionOperator: 'eq',
+                  conditionValue: 'true',
+                  createdBy: by,
+                },
+              ],
+            },
+          },
+        });
+        await tx.statusHistory.create({
+          data: {
+            recordType: 'workflow',
+            recordId: w.id.toString(),
+            toState: 'active',
+            changedBy: by,
+            comment: 'Demo seed',
+          },
+        });
+        inserted += 3;
+      }
+
+      const hasOpening = (await tx.journal.count({ where: { journalType: 'opening' } })) > 0;
+      const hasManual =
+        (await tx.journal.count({ where: { journalType: { in: ['manual', 'adjustment'] } } })) > 0;
+      if (hasOpening && hasManual) return { inserted, updated: 0 };
+      const account = async (code: string) =>
+        tx.account.findFirst({ where: { code, status: 'active' }, select: { id: true } });
+      const [a6315, a6325, a6350, a1112, a1115, a2140, a3100] = await Promise.all(
+        ['6315', '6325', '6350', '1112', '1115', '2140', '3100'].map(account),
+      );
+      const centre = async (code: string) =>
+        (await tx.costCentre.findFirst({ where: { code }, select: { id: true } }))?.id ?? null;
+      const ccA = await centre('CC-A');
+      const ccAdmin = await centre('CC-ADMIN');
+      const estate = await tx.estate.findFirst({ where: { code: 'DEMO-A' }, select: { id: true } });
+      const manager = await tx.user.findUnique({ where: { username: 'manager' }, select: { id: true } });
+      const approver = await tx.user.findUnique({ where: { username: 'approver' }, select: { id: true } });
+      const today = day(0);
+      const current = await tx.accountingPeriod.findFirst({
+        where: {
+          periodNumber: { lt: 13 },
+          startDate: { lte: today },
+          endDate: { gte: today },
+          state: 'open',
+        },
+        select: { id: true, fiscalYearId: true, startDate: true },
+      });
+      const previous = current
+        ? await tx.accountingPeriod.findFirst({
+            where: { periodNumber: { lt: 13 }, endDate: { lt: current.startDate }, state: 'open' },
+            select: { id: true, fiscalYearId: true, startDate: true },
+            orderBy: { endDate: 'desc' },
+          })
+        : null;
+      const base = await tx.currency.findFirst({ where: { isBase: true }, select: { id: true } });
+      if (
+        !a6315 ||
+        !a6325 ||
+        !a6350 ||
+        !a1112 ||
+        !a1115 ||
+        !a2140 ||
+        !a3100 ||
+        !ccA ||
+        !ccAdmin ||
+        !estate ||
+        !manager ||
+        !approver ||
+        !current ||
+        !previous ||
+        !base
+      )
+        return { inserted, updated: 0 };
+
+      interface Line {
+        accountId: bigint;
+        side: 'debit' | 'credit';
+        amount: string;
+        costCentreId?: bigint;
+        estateId?: bigint;
+      }
+      const draft = async (
+        period: { id: bigint; fiscalYearId: bigint; startDate: Date },
+        dayOfPeriod: number,
+        narration: string,
+        reference: string,
+        estateId: bigint | null,
+        lines: Line[],
+        journalType: 'manual' | 'opening' = 'manual',
+      ) => {
+        const date = new Date(period.startDate.getTime() + dayOfPeriod * 86_400_000);
+        const j = await tx.journal.create({
+          data: {
+            journalType,
+            journalDate: date,
+            accountingPeriodId: period.id,
+            fiscalYearId: period.fiscalYearId,
+            narration,
+            reference,
+            estateId,
+            currencyId: base.id,
+            state: 'draft',
+            stateChangedAt: now,
+            createdBy: manager.id,
+          },
+          select: { id: true, journalDate: true },
+        });
+        await tx.journalDraftLine.createMany({
+          data: lines.map((l, i) => ({
+            journalId: j.id,
+            lineNumber: i + 1,
+            accountId: l.accountId,
+            side: l.side,
+            amount: l.amount,
+            costCentreId: l.costCentreId ?? null,
+            estateId: l.estateId ?? null,
+          })),
+        });
+        await tx.statusHistory.create({
+          data: {
+            recordType: 'journal',
+            recordId: j.id.toString(),
+            toState: 'draft',
+            changedBy: manager.id,
+            comment: 'Demo seed',
+          },
+        });
+        inserted += 1 + lines.length;
+        return { ...j, lines, journalType };
+      };
+      const post = async (
+        j: Awaited<ReturnType<typeof draft>>,
+        narration: string,
+        reference: string,
+        estateId: bigint | null,
+      ) => {
+        await tx.journal.update({
+          where: { id: j.id },
+          data: { submittedAt: now, submittedBy: manager.id, approvedAt: now, approvedBy: approver.id },
+        });
+        await writeJournal(tx, {
+          journalId: j.id,
+          journalType: j.journalType,
+          date: businessDateFromDb(j.journalDate),
+          narration,
+          reference,
+          estateId,
+          currencyId: base.id,
+          actorId: manager.id,
+          lines: j.lines.map((l) => ({
+            accountId: l.accountId,
+            side: l.side,
+            amount: dec(l.amount),
+            costCentreId: l.costCentreId ?? null,
+            estateId: l.estateId ?? null,
+          })),
+        });
+        await tx.statusHistory.createMany({
+          data: [
+            ['draft', 'submitted', manager.id],
+            ['submitted', 'approved', approver.id],
+            ['approved', 'posted', manager.id],
+          ].map(([fromState, toState, changedBy]) => ({
+            recordType: 'journal',
+            recordId: j.id.toString(),
+            fromState: fromState as string,
+            toState: toState as string,
+            changedBy: changedBy as bigint,
+            comment: 'Demo seed',
+          })),
+        });
+      };
+
+      // The operating bank's opening position, so its ledger starts from a balance (D-3.04-9).
+      const first = await tx.accountingPeriod.findFirst({
+        where: { fiscalYearId: current.fiscalYearId, periodNumber: 1, state: 'open' },
+        select: { id: true, fiscalYearId: true, startDate: true },
+      });
+      if (!hasOpening && first) {
+        const text = ['Opening balance of the operating bank account (demo)', 'OPENING-DEMO'] as const;
+        const o = await draft(
+          first,
+          0,
+          ...text,
+          null,
+          [
+            { accountId: a1115.id, side: 'debit', amount: '500000.0000' },
+            { accountId: a3100.id, side: 'credit', amount: '500000.0000' },
+          ],
+          'opening',
+        );
+        await post(o, ...text, null);
+        await tx.openingBalance.createMany({
+          data: [
+            { accountId: a1115.id, debit: '500000.0000', credit: '0' },
+            { accountId: a3100.id, debit: '0', credit: '500000.0000' },
+          ].map((r) => ({
+            ...r,
+            fiscalYearId: first.fiscalYearId,
+            source: 'migration',
+            journalId: o.id,
+            createdBy: manager.id,
+          })),
+        });
+        inserted += 2;
+      }
+      if (hasManual) return { inserted, updated: 0 };
+
+      const electricity = ['Office electricity bill — head office, last month', 'DESCO-DEMO-0917'] as const;
+      const j1 = await draft(previous, 9, ...electricity, null, [
+        { accountId: a6315.id, side: 'debit', amount: '18450.0000', costCentreId: ccAdmin },
+        { accountId: a1115.id, side: 'credit', amount: '18450.0000' },
+      ]);
+      await post(j1, ...electricity, null);
+      const stationery = [
+        'Stationery for the DEMO-A estate office, paid from estate cash',
+        'CASH-VCH-0042',
+      ] as const;
+      const j2 = await draft(current, 4, ...stationery, estate.id, [
+        { accountId: a6325.id, side: 'debit', amount: '12500.0000', costCentreId: ccA, estateId: estate.id },
+        { accountId: a1112.id, side: 'credit', amount: '12500.0000', estateId: estate.id },
+      ]);
+      await post(j2, ...stationery, estate.id);
+
+      // Awaiting the approver: submitted through the engine like any journal.
+      const j3 = await draft(
+        current,
+        0,
+        'Interim audit fee accrued for the first half-year',
+        'AUD-ACCR-H1',
+        null,
+        [
+          { accountId: a6350.id, side: 'debit', amount: '75000.0000', costCentreId: ccAdmin },
+          { accountId: a2140.id, side: 'credit', amount: '75000.0000' },
+        ],
+      );
+      await tx.journal.update({
+        where: { id: j3.id },
+        data: { state: 'submitted', stateChangedAt: now, submittedAt: now, submittedBy: manager.id },
+      });
+      await tx.statusHistory.create({
+        data: {
+          recordType: 'journal',
+          recordId: j3.id.toString(),
+          fromState: 'draft',
+          toState: 'submitted',
+          changedBy: manager.id,
+          comment: 'Demo seed',
+        },
+      });
+      const svc = journalsService({
+        db: tx as unknown as Database,
+        accessLog: { record: () => Promise.resolve() },
+        timezone,
+      });
+      registerApprovalAdapter(svc.adapter);
+      await submitForApproval(tx, { timezone }, 'journal', j3.id, { actorId: manager.id });
+      return { inserted: inserted + 1, updated: 0 };
+    }),
 };

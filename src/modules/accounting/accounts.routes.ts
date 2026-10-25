@@ -45,14 +45,35 @@ import { requireIfMatch } from '../../core/http/concurrency.js';
 import { sendNoContent } from '../../core/http/response.js';
 import { zId } from '../../core/ids/ids.js';
 import { ACCOUNT_SUBTYPES, ACCOUNT_TYPES } from './chart.js';
+import { registerApprovalAdapter } from '../../core/approval/adapters.js';
+import type { Config } from '../../config/env.js';
+import {
+  CreateJournalBody,
+  ExpensesOut,
+  ExpensesQuery,
+  JOURNAL_STATES,
+  JOURNAL_TYPES,
+  JournalOut,
+  LedgerOut,
+  LedgerQuery,
+  OpeningBalanceOut,
+  PatchJournalBody,
+  ReverseJournalBody,
+} from './journals.schema.js';
+import { journalsService } from './journals.service.js';
+import { ledgerService } from './ledger.service.js';
 
-/** HTTP surface of the chart of accounts (Spec P4 §13.3: accounting.*). The ledger view comes with P3.04. */
+/**
+ * HTTP surface of accounting (Spec P4 §13.3): the chart of accounts and its ledger (accounting.*), bank
+ * accounts, posting rules, journals (journal.*), opening balances and the expense view.
+ */
 
 export interface AccountingDeps {
   readonly db: Database;
   readonly platform: Platform;
   readonly authz: PermissionResolver;
   readonly accessLog: AccessLog;
+  readonly config: Pick<Config, 'timezone'>;
 }
 
 const TreeQuery = z.object({
@@ -60,8 +81,9 @@ const TreeQuery = z.object({
   account_type: z.enum(ACCOUNT_TYPES).optional(),
 });
 
-export function accountingModules({ db, platform, authz, accessLog }: AccountingDeps): ApiModule[] {
+export function accountingModules({ db, platform, authz, accessLog, config }: AccountingDeps): ApiModule[] {
   const svc = accountsService(db);
+  const ledger = ledgerService(db, accessLog);
   const m = defineModule({
     name: 'accounts',
     path: '/accounts',
@@ -199,6 +221,23 @@ export function accountingModules({ db, platform, authz, accessLog }: Accounting
       const { body } = getValidated(res, { body: CreateAccountBody });
       const a = await svc.create(body, currentActorId());
       sendCreated(res, a, `/api/v1/accounts/${a.id}`, a.version);
+    },
+  });
+
+  m.route({
+    method: 'get',
+    path: '/:id/ledger',
+    summary: 'The general ledger of an account',
+    description:
+      'Between two dates of one fiscal year (P4 §13.3, D-3.04-8): the opening (earlier periods from ledger_balance, then the lines before `from`), every posted line with its running balance, and the closing. Balances on the account’s normal side (negative = the other side). A group account shows its subtree. Optionally one estate and one cost centre. Cursor pages: pass next_cursor back as cursor.',
+    auth: { permission: 'accounting.view' },
+    params: z.object({ id: zId }),
+    query: LedgerQuery,
+    success: { status: 200, description: 'The ledger page', schema: LedgerOut },
+    errors: ['RANGE_REQUIRED', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params, query } = getValidated(res, { params: z.object({ id: zId }), query: LedgerQuery });
+      sendOne(res, await ledger.ledger(params.id, query));
     },
   });
 
@@ -448,5 +487,246 @@ export function accountingModules({ db, platform, authz, accessLog }: Accounting
     },
   });
 
-  return [m.build(), b.build(), r.build()];
+  // ---- /journals (P3.04, P3 §27.3, P4 §13.3, D-3.04-1 to D-3.04-7) --------------------------------
+  const journals = journalsService({ db, accessLog, timezone: config.timezone });
+  registerApprovalAdapter(journals.adapter);
+  const j = defineModule({
+    name: 'journals',
+    path: '/journals',
+    tag: 'Accounting',
+    platform,
+    authz,
+    accessLog,
+  });
+  j.route({
+    method: 'get',
+    path: '/',
+    summary: 'List journals',
+    description:
+      'Every journal, automatic and manual (filter journal_type), newest first by default. A journal of an estate follows estate scope; one with no estate is organisation-wide. Lines are on GET /journals/{id}.',
+    auth: { permission: 'journal.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        journal_number: { type: 'string', ops: ['eq', 'like'] },
+        journal_type: { type: { enum: JOURNAL_TYPES }, ops: ['eq', 'in'] },
+        state: { type: { enum: JOURNAL_STATES }, ops: ['eq', 'in'] },
+        journal_date: { type: 'date', ops: ['eq', 'from', 'to'] },
+        accounting_period_id: { type: 'id', ops: ['eq'] },
+        fiscal_year_id: { type: 'id', ops: ['eq'] },
+        estate_id: { type: 'id', ops: ['eq', 'null'] },
+        reference: { type: 'string', ops: ['eq', 'like'] },
+        source_type: { type: 'string', ops: ['eq'] },
+        source_id: { type: 'id', ops: ['eq'] },
+        is_reversed: { type: 'bool' },
+      },
+      sorts: ['journal_date', 'journal_number'],
+      defaultSort: ['-journal_date'],
+      maxPageSize: 200,
+    },
+    success: { status: 200, description: 'A page of journals', schema: JournalOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await journals.list(q);
+      sendPage(req, res, items, { pagination: q.page ?? { page: 1, perPage: 25 }, total });
+    },
+  });
+  j.route({
+    method: 'post',
+    path: '/',
+    summary: 'Create a manual journal (draft)',
+    description:
+      'journal_type manual, adjustment or opening (automatic journals come only from the posting engine). Lines in order; a draft may be unbalanced. Each line: an active postable account that is not a control account, one side, amount > 0 in the journal’s currency; cost centre of the line’s estate or organisation-wide. The narration is mandatory (P7 §8.9).',
+    auth: { permission: 'journal.create' },
+    body: CreateJournalBody,
+    success: { status: 201, description: 'Created', schema: JournalOut },
+    errors: ['ACCOUNT_NOT_POSTABLE', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { body } = getValidated(res, { body: CreateJournalBody });
+      const out = await journals.create(body, currentActorId());
+      sendCreated(res, out, `/api/v1/journals/${out.id}`, out.version);
+    },
+  });
+  j.route({
+    method: 'get',
+    path: '/:id',
+    summary: 'Get a journal with its lines',
+    description: 'Draft lines until posting (no base amount); the posted lines after.',
+    auth: { permission: 'journal.view' },
+    ...byId,
+    success: { status: 200, description: 'The journal', schema: JournalOut },
+    errors: [],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      const out = await journals.get(params.id);
+      sendOne(res, out, { version: out.version });
+    },
+  });
+  j.route({
+    method: 'patch',
+    path: '/:id',
+    summary: 'Change a draft journal',
+    description: 'lines, when given, replace the draft’s lines. Every line is checked again on each save.',
+    auth: { permission: 'journal.edit' },
+    ...byId,
+    body: PatchJournalBody,
+    ifMatch: true,
+    success: { status: 200, description: 'Updated', schema: JournalOut },
+    errors: ['INVALID_TRANSITION', 'ACCOUNT_NOT_POSTABLE', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: PatchJournalBody });
+      const out = await journals.update(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, out, { version: out.version });
+    },
+  });
+  j.route({
+    method: 'delete',
+    path: '/:id',
+    summary: 'Delete a draft journal',
+    description: 'Only a draft. A posted journal is corrected by reversal.',
+    auth: { permission: 'journal.delete' },
+    ...byId,
+    success: { status: 204, description: 'Deleted' },
+    errors: ['INVALID_TRANSITION', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { params } = getValidated(res, byId);
+      await journals.remove(params.id, currentActorId());
+      sendNoContent(res);
+    },
+  });
+  for (const [action, summary, description, permission, errors] of [
+    [
+      'submit',
+      'Submit a journal for approval',
+      'Balanced (debit = credit), at least two lines, required cost centres and estates present, and a period that accepts it (open; soft-closed or reopened only for an adjustment). Routed through the journal workflow: total_debit (base currency), journal_type and is_prior_period are its condition fields (P7 §8.9).',
+      'journal.submit',
+      [
+        'INVALID_TRANSITION',
+        'UNBALANCED_JOURNAL',
+        'COST_CENTRE_REQUIRED',
+        'ESTATE_REQUIRED',
+        'PERIOD_CLOSED',
+        'SCOPE_DENIED',
+      ],
+    ],
+    [
+      'post',
+      'Post an approved journal',
+      'Asserts the balance and the period state again, allocates the gapless journal number, writes the journal lines and ledger balances in one transaction. An opening journal also writes its opening balances. journal.post is sensitive.',
+      'journal.post',
+      [
+        'INVALID_TRANSITION',
+        'ALREADY_POSTED',
+        'UNBALANCED_JOURNAL',
+        'ACCOUNT_NOT_POSTABLE',
+        'COST_CENTRE_REQUIRED',
+        'ESTATE_REQUIRED',
+        'PERIOD_CLOSED',
+        'DUPLICATE_KEY',
+        'SCOPE_DENIED',
+      ],
+    ],
+  ] as const) {
+    j.route({
+      method: 'post',
+      path: `/:id/${action}`,
+      summary,
+      description,
+      auth: { permission },
+      ...byId,
+      ifMatch: true,
+      idempotent: true,
+      success: { status: 200, description: 'The journal', schema: JournalOut },
+      errors: [...errors],
+      handler: async (req, res) => {
+        const { params } = getValidated(res, byId);
+        const out = await journals[action](params.id, requireIfMatch(req), currentActorId());
+        sendOne(res, out, { version: out.version });
+      },
+    });
+  }
+  j.route({
+    method: 'post',
+    path: '/:id/reverse',
+    summary: 'Reverse a posted journal',
+    description:
+      'A posted manual, adjustment or opening journal not yet reversed: a new posted journal with every line on the other side, dated on or after the original, linked to it. Reversing an opening journal removes its opening balances. An automatic journal is reversed by its source document. Returns the reversal.',
+    auth: { permission: 'journal.post' },
+    ...byId,
+    body: ReverseJournalBody,
+    ifMatch: true,
+    idempotent: true,
+    success: { status: 200, description: 'The reversal journal', schema: JournalOut },
+    errors: ['INVALID_TRANSITION', 'PERIOD_CLOSED', 'ACCOUNT_NOT_POSTABLE', 'SCOPE_DENIED'],
+    handler: async (req, res) => {
+      const { params, body } = getValidated(res, { ...byId, body: ReverseJournalBody });
+      const out = await journals.reverse(params.id, requireIfMatch(req), body, currentActorId());
+      sendOne(res, out, { version: out.version });
+    },
+  });
+
+  // ---- /opening-balances (P3.04, P3 §27.6, D-3.04-9) ------------------------------------------------
+  const o = defineModule({
+    name: 'opening-balances',
+    path: '/opening-balances',
+    tag: 'Accounting',
+    platform,
+    authz,
+    accessLog,
+  });
+  o.route({
+    method: 'get',
+    path: '/',
+    summary: 'List opening balances',
+    description:
+      'One row per account, fiscal year, cost centre and estate, written when an opening journal posts (source migration) or at year-end (rollover, P10.02). Entered through POST /journals with journal_type opening.',
+    auth: { permission: 'accounting.view' },
+    list: {
+      pagination: 'page',
+      filters: {
+        fiscal_year_id: { type: 'id', ops: ['eq'] },
+        account_id: { type: 'id', ops: ['eq'] },
+        estate_id: { type: 'id', ops: ['eq', 'null'] },
+        cost_centre_id: { type: 'id', ops: ['eq', 'null'] },
+        source: { type: { enum: ['migration', 'rollover'] } },
+      },
+      sorts: [],
+      maxPageSize: 500,
+    },
+    success: { status: 200, description: 'A page of opening balances', schema: OpeningBalanceOut },
+    errors: [],
+    handler: async (req, res) => {
+      const q = getListQuery(res);
+      const { items, total } = await ledger.openings(q);
+      sendPage(req, res, items, { pagination: q.page ?? { page: 1, perPage: 25 }, total });
+    },
+  });
+
+  // ---- /accounting/expenses (P3.04, D-3.04-10) -------------------------------------------------------
+  const x = defineModule({
+    name: 'accounting',
+    path: '/accounting',
+    tag: 'Accounting',
+    platform,
+    authz,
+    accessLog,
+  });
+  x.route({
+    method: 'get',
+    path: '/expenses',
+    summary: 'Expenses by account, cost centre, estate or period',
+    description:
+      'The design’s Accounts & Finance → Expenses: the net posted expense (debit − credit, base currency) of expense accounts over every monthly period touching from–to (whole periods), from ledger_balance, grouped by group_by. Rows with nothing posted are omitted.',
+    auth: { permission: 'accounting.view' },
+    query: ExpensesQuery,
+    success: { status: 200, description: 'The expenses', schema: ExpensesOut },
+    errors: ['RANGE_REQUIRED', 'SCOPE_DENIED'],
+    handler: async (_req, res) => {
+      const { query } = getValidated(res, { query: ExpensesQuery });
+      sendOne(res, await ledger.expenses(query));
+    },
+  });
+
+  return [m.build(), b.build(), r.build(), j.build(), o.build(), x.build()];
 }

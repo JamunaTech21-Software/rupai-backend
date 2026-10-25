@@ -103,7 +103,15 @@ export function dashboardModule({ db, platform, authz, accessLog, config }: Dash
       const estateId = query.estate_id ?? null;
       if (estateId !== null) await assertEstateInScope(db, accessLog, estateId);
       const data = def.load
-        ? await def.load({ db, userId, permissions, estateId, approvals, notifications })
+        ? await def.load({
+            db,
+            userId,
+            permissions,
+            estateId,
+            approvals,
+            notifications,
+            timezone: config.timezone,
+          })
         : null;
       sendOne(res, {
         ...head(def),
