@@ -66,6 +66,7 @@ model Role {
   updater           User?              @relation("RoleUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_role_updated_by")
   permissions       RolePermission[]
   users             UserRole[]
+  budgetControls    BudgetControl[]
 
   @@unique([code], map: "ux_role_code")
   @@index([status], map: "ix_role_status")
@@ -382,6 +383,21 @@ model User {
   updatedPayments              Payment[]              @relation("PaymentUpdatedBy")
   createdPaymentAllocations    PaymentAllocation[]    @relation("PaymentAllocationCreatedBy")
   updatedPaymentAllocations    PaymentAllocation[]    @relation("PaymentAllocationUpdatedBy")
+  submittedBudgets             Budget[]               @relation("BudgetSubmittedBy")
+  approvedBudgets              Budget[]               @relation("BudgetApprovedBy")
+  rejectedBudgets              Budget[]               @relation("BudgetRejectedBy")
+  activatedBudgets             Budget[]               @relation("BudgetActivatedBy")
+  createdBudgets               Budget[]               @relation("BudgetCreatedBy")
+  updatedBudgets               Budget[]               @relation("BudgetUpdatedBy")
+  createdBudgetLines           BudgetLine[]           @relation("BudgetLineCreatedBy")
+  updatedBudgetLines           BudgetLine[]           @relation("BudgetLineUpdatedBy")
+  createdBudgetAllocations     BudgetAllocation[]     @relation("BudgetAllocationCreatedBy")
+  createdBudgetConsumptions    BudgetConsumption[]    @relation("BudgetConsumptionCreatedBy")
+  submittedBudgetControls      BudgetControl[]        @relation("BudgetControlSubmittedBy")
+  approvedBudgetControls       BudgetControl[]        @relation("BudgetControlApprovedBy")
+  rejectedBudgetControls       BudgetControl[]        @relation("BudgetControlRejectedBy")
+  createdBudgetControls        BudgetControl[]        @relation("BudgetControlCreatedBy")
+  updatedBudgetControls        BudgetControl[]        @relation("BudgetControlUpdatedBy")
   createdSuppliers             Supplier[]             @relation("SupplierCreatedBy")
   updatedSuppliers             Supplier[]             @relation("SupplierUpdatedBy")
   createdSupplierBankChanges   SupplierBankChange[]   @relation("SupplierBankChangeCreatedBy")
@@ -816,6 +832,9 @@ model Estate {
   collections    Collection[]
   payables       Payable[]
   payments       Payment[]
+  budgets        Budget[]
+  budgetLines    BudgetLine[]
+  budgetControls BudgetControl[]
   stockMovements StockMovement[]
 
   @@unique([organisationId, code], map: "ux_estate_code")
@@ -1203,6 +1222,8 @@ model FiscalYear {
   updater           User?              @relation("FiscalYearUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_fiscal_year_updated_by")
   periods           AccountingPeriod[]
   leaveEntitlements LeaveEntitlement[]
+  budgets           Budget[]
+  budgetControls    BudgetControl[]
 
   @@unique([organisationId, code], map: "ux_fiscal_year_code")
   @@unique([organisationId, startDate], map: "ux_fiscal_year_start")
@@ -1237,19 +1258,22 @@ model AccountingPeriod {
   updatedAt    DateTime? @map("updated_at") @db.DateTime(0)
   updatedBy    BigInt?   @map("updated_by") @db.UnsignedBigInt
 
-  fiscalYear     FiscalYear      @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_fiscal_year")
-  closer         User?           @relation("AccountingPeriodClosedBy", fields: [closedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_closed_by")
-  reopener       User?           @relation("AccountingPeriodReopenedBy", fields: [reopenedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_reopened_by")
-  journals       Journal[]
-  journalLines   JournalLine[]
-  ledgerBalances LedgerBalance[]
-  creator        User            @relation("AccountingPeriodCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_created_by")
-  updater        User?           @relation("AccountingPeriodUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_updated_by")
-  receivables    Receivable[]
-  collections    Collection[]
-  payables       Payable[]
-  payments       Payment[]
-  stockMovements StockMovement[]
+  fiscalYear         FiscalYear              @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_fiscal_year")
+  closer             User?                   @relation("AccountingPeriodClosedBy", fields: [closedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_closed_by")
+  reopener           User?                   @relation("AccountingPeriodReopenedBy", fields: [reopenedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_reopened_by")
+  journals           Journal[]
+  journalLines       JournalLine[]
+  ledgerBalances     LedgerBalance[]
+  creator            User                    @relation("AccountingPeriodCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_created_by")
+  updater            User?                   @relation("AccountingPeriodUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_accounting_period_updated_by")
+  receivables        Receivable[]
+  collections        Collection[]
+  payables           Payable[]
+  payments           Payment[]
+  budgetAllocations  BudgetAllocation[]
+  budgetConsumptions BudgetConsumption[]
+  budgetPositions    BudgetPositionSummary[]
+  stockMovements     StockMovement[]
 
   @@unique([fiscalYearId, periodNumber], map: "ux_period")
   @@index([startDate, endDate], map: "ix_accounting_period_dates")
@@ -1288,6 +1312,7 @@ model Department {
   journalDraftLines JournalDraftLine[]
   creator           User               @relation("DepartmentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_created_by")
   updater           User?              @relation("DepartmentUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_department_updated_by")
+  budgets           Budget[]
 
   @@unique([code], map: "ux_department_code")
   @@index([status], map: "ix_department_status")
@@ -4320,6 +4345,7 @@ model CostCentre {
   ledgerBalances    LedgerBalance[]
   creator           User                   @relation("CostCentreCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_created_by")
   updater           User?                  @relation("CostCentreUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_cost_centre_updated_by")
+  budgetLines       BudgetLine[]
   rawMaterials      RawMaterial[]
 
   @@unique([code], map: "ux_cost_centre_code")
@@ -4365,6 +4391,8 @@ model BudgetHead {
   journalDraftLines JournalDraftLine[]
   creator           User               @relation("BudgetHeadCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_head_created_by")
   updater           User?              @relation("BudgetHeadUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_head_updated_by")
+  budgetLines       BudgetLine[]
+  budgetControls    BudgetControl[]
 
   @@unique([code], map: "ux_budget_head_code")
   @@index([parentHeadId], map: "ix_budget_head_parent")
@@ -5064,7 +5092,6 @@ model PaymentAllocation {
   @@map("payment_allocation")
 }
 
-// =====================================================================================================
 // Phase 4 — Procurement and payables
 // =====================================================================================================
 
@@ -5321,4 +5348,256 @@ model StockBalance {
   @@index([teaTypeId], map: "ix_balance_tea_type")
   @@index([teaGradeId], map: "ix_balance_tea_grade")
   @@map("stock_balance")
+}
+
+/// A budget (P3 §26.3; P3.06). One fiscal year, an estate (empty = organisation-wide), optionally a
+/// department, operating or capital. Immutable once submitted: change is a revision (D-3.06-4). Consumed
+/// only once active ("Release Budget", D-3.06-5).
+model Budget {
+  id              BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  budgetCode      String    @map("budget_code") @db.VarChar(30)
+  fiscalYearId    BigInt    @map("fiscal_year_id") @db.UnsignedBigInt
+  estateId        BigInt?   @map("estate_id") @db.UnsignedBigInt
+  departmentId    BigInt?   @map("department_id") @db.UnsignedBigInt
+  name            String    @db.VarChar(150)
+  /// operating | capital
+  budgetType      String    @map("budget_type") @db.VarChar(30)
+  revisionNumber  Int       @default(0) @map("revision_number")
+  supersedesId    BigInt?   @map("supersedes_id") @db.UnsignedBigInt
+  totalAmount     Decimal   @default(0) @map("total_amount") @db.Decimal(18, 4)
+  notes           String?   @db.VarChar(500)
+  activatedAt     DateTime? @map("activated_at") @db.DateTime(0)
+  activatedBy     BigInt?   @map("activated_by") @db.UnsignedBigInt
+  /// GENERATED (see migration SQL): the dimension tuple while active, else NULL — one active budget each.
+  activeKey       String?   @map("active_key") @db.VarChar(60)
+  /// draft | submitted | approved | rejected | active | superseded
+  state           String    @default("draft") @db.VarChar(30)
+  stateChangedAt  DateTime? @map("state_changed_at") @db.DateTime(0)
+  submittedAt     DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy     BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt      DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy      BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt      DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy      BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason String?   @map("rejection_reason") @db.VarChar(500)
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy       BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt       DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy       BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  fiscalYear FiscalYear   @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_fiscal_year")
+  estate     Estate?      @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_estate")
+  department Department?  @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_department")
+  supersedes Budget?      @relation("BudgetRevision", fields: [supersedesId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_supersedes")
+  revisions  Budget[]     @relation("BudgetRevision")
+  lines      BudgetLine[]
+  submitter  User?        @relation("BudgetSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_submitted_by")
+  approver   User?        @relation("BudgetApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_approved_by")
+  rejecter   User?        @relation("BudgetRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_rejected_by")
+  activator  User?        @relation("BudgetActivatedBy", fields: [activatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_activated_by")
+  creator    User         @relation("BudgetCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_created_by")
+  updater    User?        @relation("BudgetUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_updated_by")
+
+  @@unique([budgetCode], map: "ux_budget_code")
+  @@unique([activeKey], map: "ux_budget_active")
+  @@index([fiscalYearId], map: "ix_budget_fiscal_year")
+  @@index([estateId], map: "ix_budget_estate")
+  @@index([departmentId], map: "ix_budget_department")
+  @@index([supersedesId], map: "ix_budget_supersedes")
+  @@index([state], map: "ix_budget_state")
+  @@index([submittedBy], map: "ix_budget_submitted_by")
+  @@index([approvedBy], map: "ix_budget_approved_by")
+  @@index([rejectedBy], map: "ix_budget_rejected_by")
+  @@index([activatedBy], map: "ix_budget_activated_by")
+  @@index([createdBy], map: "ix_budget_created_by")
+  @@index([updatedBy], map: "ix_budget_updated_by")
+  @@map("budget")
+}
+
+/// One budget head (and cost centre) of a budget (P3 §26.4). The figures are kept by core/budget in the
+/// consumption transaction (D-3.06-8); available_amount is generated.
+model BudgetLine {
+  id                    BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  budgetId              BigInt    @map("budget_id") @db.UnsignedBigInt
+  budgetHeadId          BigInt    @map("budget_head_id") @db.UnsignedBigInt
+  costCentreId          BigInt?   @map("cost_centre_id") @db.UnsignedBigInt
+  estateId              BigInt?   @map("estate_id") @db.UnsignedBigInt
+  /// GENERATED: head and cost centre, NULL-safe, for ux_budget_line.
+  lineKey               String?   @map("line_key") @db.VarChar(50)
+  annualAmount          Decimal   @map("annual_amount") @db.Decimal(18, 4)
+  committedAmount       Decimal   @default(0) @map("committed_amount") @db.Decimal(18, 4)
+  actualAmount          Decimal   @default(0) @map("actual_amount") @db.Decimal(18, 4)
+  /// GENERATED STORED: annual − actual − committed.
+  availableAmount       Decimal?  @map("available_amount") @db.Decimal(18, 4)
+  utilisationPercentage Decimal   @default(0) @map("utilisation_percentage") @db.Decimal(9, 4)
+  notes                 String?   @db.VarChar(300)
+  sequence              Int
+  createdAt             DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy             BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt             DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy             BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  budget       Budget                  @relation(fields: [budgetId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_budget_line_budget")
+  budgetHead   BudgetHead              @relation(fields: [budgetHeadId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_line_head")
+  costCentre   CostCentre?             @relation(fields: [costCentreId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_line_cost_centre")
+  estate       Estate?                 @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_line_estate")
+  allocations  BudgetAllocation[]
+  consumptions BudgetConsumption[]
+  positions    BudgetPositionSummary[]
+  creator      User                    @relation("BudgetLineCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_line_created_by")
+  updater      User?                   @relation("BudgetLineUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_line_updated_by")
+
+  @@unique([budgetId, lineKey], map: "ux_budget_line")
+  @@index([budgetHeadId], map: "ix_budget_line_head")
+  @@index([costCentreId], map: "ix_budget_line_cost_centre")
+  @@index([estateId], map: "ix_budget_line_estate")
+  @@index([availableAmount], map: "ix_budget_line_available")
+  @@index([createdBy], map: "ix_budget_line_created_by")
+  @@index([updatedBy], map: "ix_budget_line_updated_by")
+  @@map("budget_line")
+}
+
+/// A line's amount for one month of the fiscal year (P3 §26.4). The 12 sum to the annual amount.
+model BudgetAllocation {
+  id                 BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  budgetLineId       BigInt   @map("budget_line_id") @db.UnsignedBigInt
+  /// 1–12 of the fiscal year.
+  monthNumber        Int      @map("month_number") @db.TinyInt
+  accountingPeriodId BigInt   @map("accounting_period_id") @db.UnsignedBigInt
+  amount             Decimal  @db.Decimal(18, 4)
+  createdAt          DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt   @map("created_by") @db.UnsignedBigInt
+
+  line    BudgetLine       @relation(fields: [budgetLineId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_budget_allocation_line")
+  period  AccountingPeriod @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_allocation_period")
+  creator User             @relation("BudgetAllocationCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_allocation_created_by")
+
+  @@unique([budgetLineId, monthNumber], map: "ux_budget_allocation")
+  @@index([accountingPeriodId], map: "ix_budget_allocation_period")
+  @@index([createdBy], map: "ix_budget_allocation_created_by")
+  @@map("budget_allocation")
+}
+
+/// The two-stage consumption contract in one table (P1 §7.5, P3 §26.5). Derived, insert-only except
+/// released_by_id. UNIQUE (line, type, source) is the idempotency guard (D-3.06-6).
+model BudgetConsumption {
+  id                 BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  budgetLineId       BigInt   @map("budget_line_id") @db.UnsignedBigInt
+  /// commitment | actual | commitment_release
+  consumptionType    String   @map("consumption_type") @db.VarChar(30)
+  /// purchase_order | supplier_invoice | payroll_run | welfare_case | training_program | journal
+  sourceType         String   @map("source_type") @db.VarChar(40)
+  sourceId           BigInt   @map("source_id") @db.UnsignedBigInt
+  consumptionDate    DateTime @map("consumption_date") @db.Date
+  accountingPeriodId BigInt   @map("accounting_period_id") @db.UnsignedBigInt
+  /// Always positive; the type carries the direction, a reversal counts negative.
+  amount             Decimal  @db.Decimal(18, 4)
+  /// A release: the commitment it releases (added, D-3.06-6).
+  releasesId         BigInt?  @map("releases_id") @db.UnsignedBigInt
+  /// A commitment: the release that closed it.
+  releasedById       BigInt?  @map("released_by_id") @db.UnsignedBigInt
+  reversalOfId       BigInt?  @map("reversal_of_id") @db.UnsignedBigInt
+  createdAt          DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy          BigInt   @map("created_by") @db.UnsignedBigInt
+
+  line       BudgetLine          @relation(fields: [budgetLineId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_consumption_line")
+  period     AccountingPeriod    @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_consumption_period")
+  releases   BudgetConsumption?  @relation("ConsumptionReleases", fields: [releasesId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_consumption_releases")
+  releasedIn BudgetConsumption[] @relation("ConsumptionReleases")
+  releasedBy BudgetConsumption?  @relation("ConsumptionReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_consumption_released_by")
+  closes     BudgetConsumption[] @relation("ConsumptionReleasedBy")
+  reversalOf BudgetConsumption?  @relation("ConsumptionReversal", fields: [reversalOfId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_consumption_reversal_of")
+  reversals  BudgetConsumption[] @relation("ConsumptionReversal")
+  creator    User                @relation("BudgetConsumptionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_consumption_created_by")
+
+  @@unique([budgetLineId, consumptionType, sourceType, sourceId], map: "ux_budget_consumption")
+  @@index([consumptionType], map: "ix_budget_consumption_type")
+  @@index([sourceType, sourceId], map: "ix_budget_consumption_source")
+  @@index([consumptionDate], map: "ix_budget_consumption_date")
+  @@index([accountingPeriodId], map: "ix_budget_consumption_period")
+  @@index([releasesId], map: "ix_budget_consumption_releases")
+  @@index([releasedById], map: "ix_budget_consumption_released_by")
+  @@index([reversalOfId], map: "ix_budget_consumption_reversal_of")
+  @@index([createdBy], map: "ix_budget_consumption_created_by")
+  @@map("budget_consumption")
+}
+
+/// How hard a budget head is controlled (P3 §26.6). Policy with approval; one active per (head, estate,
+/// fiscal year) through the generated active_key; changed by revision (D-3.06-10).
+model BudgetControl {
+  id                          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// NULL: the organisation default.
+  budgetHeadId                BigInt?   @map("budget_head_id") @db.UnsignedBigInt
+  estateId                    BigInt?   @map("estate_id") @db.UnsignedBigInt
+  fiscalYearId                BigInt?   @map("fiscal_year_id") @db.UnsignedBigInt
+  /// none | warn | require_approval | block
+  controlMode                 String    @default("warn") @map("control_mode") @db.VarChar(30)
+  warningThresholdPercentage  Decimal?  @map("warning_threshold_percentage") @db.Decimal(9, 4)
+  criticalThresholdPercentage Decimal?  @map("critical_threshold_percentage") @db.Decimal(9, 4)
+  overrunTolerancePercentage  Decimal?  @map("overrun_tolerance_percentage") @db.Decimal(9, 4)
+  escalationRoleId            BigInt?   @map("escalation_role_id") @db.UnsignedBigInt
+  supersedesId                BigInt?   @map("supersedes_id") @db.UnsignedBigInt
+  /// GENERATED: head, estate and fiscal year while active, else NULL.
+  activeKey                   String?   @map("active_key") @db.VarChar(70)
+  /// draft | submitted | active | rejected | superseded
+  state                       String    @default("draft") @db.VarChar(30)
+  stateChangedAt              DateTime? @map("state_changed_at") @db.DateTime(0)
+  submittedAt                 DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy                 BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt                  DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy                  BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt                  DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy                  BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason             String?   @map("rejection_reason") @db.VarChar(500)
+  version                     Int       @default(1)
+  createdAt                   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy                   BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt                   DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy                   BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  budgetHead     BudgetHead?     @relation(fields: [budgetHeadId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_control_head")
+  estate         Estate?         @relation(fields: [estateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_control_estate")
+  fiscalYear     FiscalYear?     @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_control_fiscal_year")
+  escalationRole Role?           @relation(fields: [escalationRoleId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_control_escalation_role")
+  supersedes     BudgetControl?  @relation("BudgetControlRevision", fields: [supersedesId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_control_supersedes")
+  revisions      BudgetControl[] @relation("BudgetControlRevision")
+  submitter      User?           @relation("BudgetControlSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_control_submitted_by")
+  approver       User?           @relation("BudgetControlApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_control_approved_by")
+  rejecter       User?           @relation("BudgetControlRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_control_rejected_by")
+  creator        User            @relation("BudgetControlCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_control_created_by")
+  updater        User?           @relation("BudgetControlUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_control_updated_by")
+
+  @@unique([activeKey], map: "ux_budget_control_active")
+  @@index([budgetHeadId], map: "ix_budget_control_head")
+  @@index([estateId], map: "ix_budget_control_estate")
+  @@index([fiscalYearId], map: "ix_budget_control_fiscal_year")
+  @@index([escalationRoleId], map: "ix_budget_control_escalation_role")
+  @@index([supersedesId], map: "ix_budget_control_supersedes")
+  @@index([state], map: "ix_budget_control_state")
+  @@index([submittedBy], map: "ix_budget_control_submitted_by")
+  @@index([approvedBy], map: "ix_budget_control_approved_by")
+  @@index([rejectedBy], map: "ix_budget_control_rejected_by")
+  @@index([createdBy], map: "ix_budget_control_created_by")
+  @@index([updatedBy], map: "ix_budget_control_updated_by")
+  @@map("budget_control")
+}
+
+/// A line's position in one period (P3 §33 summary): allocated, committed and actual, kept in the
+/// consumption transaction (D-3.06-8). Budget vs actual by month reads it.
+model BudgetPositionSummary {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  budgetLineId       BigInt    @map("budget_line_id") @db.UnsignedBigInt
+  accountingPeriodId BigInt    @map("accounting_period_id") @db.UnsignedBigInt
+  allocatedAmount    Decimal   @default(0) @map("allocated_amount") @db.Decimal(18, 4)
+  committedAmount    Decimal   @default(0) @map("committed_amount") @db.Decimal(18, 4)
+  actualAmount       Decimal   @default(0) @map("actual_amount") @db.Decimal(18, 4)
+  updatedAt          DateTime? @map("updated_at") @db.DateTime(0)
+
+  line   BudgetLine       @relation(fields: [budgetLineId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_budget_position_line")
+  period AccountingPeriod @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_budget_position_period")
+
+  @@unique([budgetLineId, accountingPeriodId], map: "ux_budget_position")
+  @@index([accountingPeriodId], map: "ix_budget_position_period")
+  @@map("budget_position_summary")
 }

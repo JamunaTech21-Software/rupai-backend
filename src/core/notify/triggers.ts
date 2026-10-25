@@ -90,7 +90,8 @@ export const TRIGGERS: readonly TriggerDefinition[] = [
     description: 'A budget line’s consumption reached its warning threshold.',
     recipientRules: PEOPLE,
     usesLeadDays: false,
-    evaluated: false,
+    // P3.06: the nightly budget.notify_thresholds job (budget.jobs.ts).
+    evaluated: true,
     arrivesWith: 'Budgets (Planning)',
   },
   {

@@ -12,11 +12,13 @@ import { journalsService } from '../../src/modules/accounting/journals.service.j
 import { registerApprovalAdapter } from '../../src/core/approval/adapters.js';
 import { submitForApproval } from '../../src/core/approval/engine.js';
 import type { Database } from '../../src/core/db/prisma.js';
-import { dec } from '../../src/core/money/decimal.js';
+import { dec, splitInstalments } from '../../src/core/money/decimal.js';
 import { moveStock } from '../../src/core/stock/stock.js';
 import { writeJournal } from '../../src/core/posting/journal.js';
 import { allocateNumber } from '../../src/core/numbering/numbering.js';
 import { applyAllocations, raiseSettlement, saveAllocations } from '../../src/core/settlement/settlement.js';
+import { budgetService } from '../../src/modules/budget/budget.service.js';
+import { consumeJournal } from '../../src/modules/accounting/journals.service.js';
 import { addDays } from '../../src/core/time/dates.js';
 import { ADMINISTRATOR_ROLE_CODE } from '../../src/modules/identity/permission-catalogue.js';
 import { requirementsFor } from '../../src/modules/identity/sod-rules.js';
@@ -159,6 +161,9 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
   // P3.05: reads the receivable and payable sub-ledgers.
   ['receivable', 'view'],
   ['payable', 'view'],
+  // P3.06: prepares and submits budgets and budget controls; releasing is the approver's.
+  ['budget', 'submit'],
+  ...(['view', 'create', 'edit'] as const).map((a) => ['budget_control', a] as const),
 ] as const;
 
 /** P1.13: approves workflow changes and, as an approver role, purchase orders (the demo ladder). */
@@ -199,6 +204,11 @@ const DEMO_APPROVER_PERMISSIONS = [
   // P3.05: the finance manager reads both sub-ledgers.
   ['receivable', 'view'],
   ['payable', 'view'],
+  // P3.06: the Estate Manager and General Manager steps of the budget ladder, and "Release Budget".
+  ['budget', 'view'],
+  ['budget', 'approve'],
+  ['budget_control', 'view'],
+  ['budget_control', 'approve'],
   // P4.01: approves suppliers and, as finance, their bank detail changes (P7 §9.6).
   ['supplier', 'view'],
   ['supplier', 'approve'],
@@ -355,6 +365,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoDimensionsSeeder,
     demoJournalsSeeder,
     demoSettlementSeeder,
+    demoBudgetSeeder,
     demoSuppliersSeeder,
     demoInventorySeeder,
   ];
@@ -2911,6 +2922,292 @@ const demoSettlementSeeder: Seeder = {
         'Settlement of OB-AP-0001 to the contractor (demo)',
       );
       return { inserted: 1 + items.length + 4, updated: 0 };
+    }),
+};
+
+/**
+ * P3.06 (D-3.06-16): the budget ladder of the Replanting page (Estate Manager approves, General Manager
+ * gives final approval and releases; both the approver login), an organisation default control (warn at
+ * 80 %, critical at 95 %), one active operating budget for DEMO-A with an actual from a posted journal, and a
+ * revision waiting in the approver's queue.
+ */
+const demoBudgetSeeder: Seeder = {
+  name: 'demo: P3.06 budget ladder, default control, an active DEMO-A budget and a revision awaiting approval',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const timezone = process.env.APP_TIMEZONE ?? 'Asia/Dhaka';
+      const now = new Date();
+      const approver = await tx.user.findUnique({ where: { username: 'approver' }, select: { id: true } });
+      const manager = await tx.user.findUnique({ where: { username: 'manager' }, select: { id: true } });
+      const role = await tx.role.findFirst({ where: { code: DEMO_APPROVER_ROLE }, select: { id: true } });
+      if (!approver || !manager || !role) return { inserted, updated: 0 };
+
+      // The ladder: step 1 Estate Manager for a single-estate budget, step 2 General Manager always.
+      const ladder = async (
+        documentType: string,
+        steps: { name: string; condition?: [string, string, string] }[],
+      ) => {
+        const flows = await tx.workflow.findMany({ where: { documentType }, select: { id: true } });
+        for (const w of flows) {
+          if ((await tx.workflowStep.count({ where: { workflowId: w.id, name: steps[0]?.name ?? '' } })) > 0)
+            continue;
+          await tx.workflowStep.deleteMany({ where: { workflowId: w.id } });
+          for (const [i, st] of steps.entries()) {
+            await tx.workflowStep.create({
+              data: {
+                workflowId: w.id,
+                stepNumber: i + 1,
+                sequence: i + 1,
+                name: st.name,
+                approverRule: 'by_role',
+                roleId: role.id,
+                ...(st.condition
+                  ? {
+                      conditionField: st.condition[0],
+                      conditionOperator: st.condition[1],
+                      conditionValue: st.condition[2],
+                    }
+                  : {}),
+                createdBy: BOOTSTRAP_ADMIN_ID,
+              },
+            });
+            inserted += 1;
+          }
+        }
+      };
+      await ladder('budget', [
+        { name: 'Estate manager — Approve Budget', condition: ['is_single_estate', 'eq', 'true'] },
+        { name: 'General manager — Final Approval' },
+      ]);
+      await ladder('budget_control', [{ name: 'Finance manager' }]);
+
+      if ((await tx.budgetControl.count()) === 0) {
+        await tx.budgetControl.create({
+          data: {
+            controlMode: 'warn',
+            warningThresholdPercentage: '80',
+            criticalThresholdPercentage: '95',
+            state: 'active',
+            stateChangedAt: now,
+            submittedAt: now,
+            submittedBy: manager.id,
+            approvedAt: now,
+            approvedBy: approver.id,
+            createdBy: manager.id,
+          },
+        });
+        inserted += 1;
+      }
+      if ((await tx.budget.count()) > 0) return { inserted, updated: 0 };
+
+      const estate = await tx.estate.findFirst({
+        where: { code: 'DEMO-A' },
+        select: { id: true, code: true },
+      });
+      const todayDb = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      const current = await tx.accountingPeriod.findFirst({
+        where: {
+          periodNumber: { lt: 13 },
+          startDate: { lte: todayDb },
+          endDate: { gte: todayDb },
+          state: 'open',
+        },
+        select: {
+          id: true,
+          fiscalYearId: true,
+          startDate: true,
+          fiscalYear: { select: { code: true, startDate: true } },
+        },
+      });
+      const centre = await tx.costCentre.findFirst({ where: { code: 'CC-A' }, select: { id: true } });
+      const welfare = await tx.budgetHead.findFirst({ where: { code: 'BH-WELFARE' }, select: { id: true } });
+      const inputs = await tx.budgetHead.findFirst({
+        where: { code: 'BH-FIELD-INPUTS' },
+        select: { id: true },
+      });
+      const group = await tx.account.findFirst({ where: { code: '6300' }, select: { id: true } });
+      const [a6325, a1112] = await Promise.all(
+        ['6325', '1112'].map((code) =>
+          tx.account.findFirst({ where: { code, status: 'active' }, select: { id: true } }),
+        ),
+      );
+      if (!estate || !current || !centre || !welfare || !inputs || !group || !a6325 || !a1112)
+        return { inserted, updated: 0 };
+      const admin =
+        (await tx.budgetHead.findFirst({ where: { code: 'BH-ADMIN' }, select: { id: true } })) ??
+        (await tx.budgetHead.create({
+          data: {
+            code: 'BH-ADMIN',
+            name: 'Office administration',
+            headType: 'expense',
+            accountId: group.id,
+            createdBy: manager.id,
+          },
+          select: { id: true },
+        }));
+
+      const fyStart = businessDateFromDb(current.fiscalYear.startDate);
+      const { number } = await allocateNumber(
+        tx,
+        'budget',
+        { date: fyStart, estateCode: estate.code, fiscalYearCode: current.fiscalYear.code },
+        'draft',
+      );
+      const periods = await tx.accountingPeriod.findMany({
+        where: { fiscalYearId: current.fiscalYearId, periodNumber: { lte: 12 } },
+        orderBy: { periodNumber: 'asc' },
+        select: { id: true },
+      });
+      const plan = [
+        { headId: admin.id, costCentreId: centre.id, annual: '300000.0000' },
+        { headId: welfare.id, costCentreId: null, annual: '600000.0000' },
+        { headId: inputs.id, costCentreId: centre.id, annual: '1200000.0000' },
+      ];
+      const budget = await tx.budget.create({
+        data: {
+          budgetCode: number,
+          fiscalYearId: current.fiscalYearId,
+          estateId: estate.id,
+          name: `Rupai Hills operating budget ${current.fiscalYear.code}`,
+          budgetType: 'operating',
+          totalAmount: '2100000.0000',
+          state: 'active',
+          stateChangedAt: now,
+          submittedAt: now,
+          submittedBy: manager.id,
+          approvedAt: now,
+          approvedBy: approver.id,
+          activatedAt: now,
+          activatedBy: approver.id,
+          createdBy: manager.id,
+        },
+        select: { id: true },
+      });
+      for (const [i, l] of plan.entries()) {
+        const line = await tx.budgetLine.create({
+          data: {
+            budgetId: budget.id,
+            budgetHeadId: l.headId,
+            costCentreId: l.costCentreId,
+            estateId: estate.id,
+            annualAmount: l.annual,
+            sequence: i + 1,
+            createdBy: manager.id,
+          },
+          select: { id: true },
+        });
+        const monthly = splitInstalments(dec(l.annual), 12).map((x) => x.toFixed(4));
+        await tx.budgetAllocation.createMany({
+          data: periods.map((p, m) => ({
+            budgetLineId: line.id,
+            monthNumber: m + 1,
+            accountingPeriodId: p.id,
+            amount: monthly[m] ?? '0',
+            createdBy: manager.id,
+          })),
+        });
+        await tx.budgetPositionSummary.createMany({
+          data: periods.map((p, m) => ({
+            budgetLineId: line.id,
+            accountingPeriodId: p.id,
+            allocatedAmount: monthly[m] ?? '0',
+          })),
+        });
+        inserted += 2 + periods.length * 2;
+      }
+      await tx.statusHistory.createMany({
+        data: [
+          [null, 'draft', manager.id],
+          ['draft', 'submitted', manager.id],
+          ['submitted', 'approved', approver.id],
+          ['approved', 'active', approver.id],
+        ].map(([fromState, toState, changedBy]) => ({
+          recordType: 'budget',
+          recordId: budget.id.toString(),
+          fromState: fromState as string | null,
+          toState: toState as string,
+          changedBy: changedBy as bigint,
+          comment: 'Demo seed',
+        })),
+      });
+
+      // An actual: printing for the estate office, posted with its budget head.
+      const date = businessDateFromDb(current.startDate);
+      const posted = await writeJournal(tx, {
+        journalType: 'manual',
+        date,
+        narration: 'Printing of muster rolls and forms — DEMO-A office (demo)',
+        reference: 'PRN-DEMO-0101',
+        estateId: estate.id,
+        actorId: manager.id,
+        lines: [
+          {
+            accountId: a6325.id,
+            side: 'debit',
+            amount: dec('48500'),
+            costCentreId: centre.id,
+            estateId: estate.id,
+            budgetHeadId: admin.id,
+          },
+          { accountId: a1112.id, side: 'credit', amount: dec('48500'), estateId: estate.id },
+        ],
+      });
+      await consumeJournal(tx, posted.id, manager.id);
+
+      // A revision waiting for the approver: administration raised to 350,000.
+      const svc = budgetService({
+        db: tx as unknown as Database,
+        accessLog: { record: () => Promise.resolve() },
+        timezone,
+      });
+      registerApprovalAdapter(svc.adapter);
+      const revision = await tx.budget.create({
+        data: {
+          budgetCode: `${number}-R1`,
+          fiscalYearId: current.fiscalYearId,
+          estateId: estate.id,
+          name: `Rupai Hills operating budget ${current.fiscalYear.code}`,
+          budgetType: 'operating',
+          revisionNumber: 1,
+          supersedesId: budget.id,
+          totalAmount: '2150000.0000',
+          notes: 'Administration raised for the printing of the new muster forms.',
+          state: 'submitted',
+          stateChangedAt: now,
+          submittedAt: now,
+          submittedBy: manager.id,
+          createdBy: manager.id,
+        },
+        select: { id: true },
+      });
+      for (const [i, l] of plan.entries()) {
+        const annual = i === 0 ? '350000.0000' : l.annual;
+        const line = await tx.budgetLine.create({
+          data: {
+            budgetId: revision.id,
+            budgetHeadId: l.headId,
+            costCentreId: l.costCentreId,
+            estateId: estate.id,
+            annualAmount: annual,
+            sequence: i + 1,
+            createdBy: manager.id,
+          },
+          select: { id: true },
+        });
+        const months = splitInstalments(dec(annual), 12).map((x) => x.toFixed(4));
+        await tx.budgetAllocation.createMany({
+          data: periods.map((p, m) => ({
+            budgetLineId: line.id,
+            monthNumber: m + 1,
+            accountingPeriodId: p.id,
+            amount: months[m] ?? '0',
+            createdBy: manager.id,
+          })),
+        });
+      }
+      await submitForApproval(tx, { timezone }, 'budget', revision.id, { actorId: manager.id });
+      return { inserted: inserted + 3, updated: 0 };
     }),
 };
 

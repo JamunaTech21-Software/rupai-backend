@@ -20,6 +20,12 @@ import type { ListQuery } from '../../core/http/list-query.js';
 import { Dec, dec, round, sum, toDecimalString } from '../../core/money/decimal.js';
 import { reverseJournal, writeJournal, type DraftLine } from '../../core/posting/journal.js';
 import type { Side } from '../../core/posting/sources.js';
+import {
+  checkAvailability,
+  recordConsumption,
+  reverseConsumption,
+  type BudgetTarget,
+} from '../../core/budget/budget.js';
 import { scopeToCheck } from '../../core/scope/scope.js';
 import { businessDateFromDb, businessDateToDb, todayIn, type BusinessDate } from '../../core/time/dates.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -67,6 +73,59 @@ export const JOURNAL_AUDIT: AuditedRecord = {
     'state',
   ],
 };
+
+/** Net debit per budgeted target (head, cost centre, estate, department): what a journal spends (D-3.06-12). */
+function budgetSpend(
+  lines: readonly {
+    side: string;
+    amount: Dec;
+    budgetHeadId: bigint | null;
+    costCentreId: bigint | null;
+    estateId: bigint | null;
+    departmentId: bigint | null;
+  }[],
+): (BudgetTarget & { amount: Dec })[] {
+  const net = new Map<string, BudgetTarget & { amount: Dec }>();
+  for (const l of lines) {
+    if (l.budgetHeadId === null) continue;
+    const k = [l.budgetHeadId, l.costCentreId, l.estateId, l.departmentId].map(String).join(':');
+    const t = net.get(k) ?? {
+      budgetHeadId: l.budgetHeadId,
+      costCentreId: l.costCentreId,
+      estateId: l.estateId,
+      departmentId: l.departmentId,
+      amount: dec('0'),
+    };
+    t.amount = l.side === 'debit' ? t.amount.plus(l.amount) : t.amount.minus(l.amount);
+    net.set(k, t);
+  }
+  return [...net.values()].filter((t) => t.amount.greaterThan(0));
+}
+
+/** D-3.06-12: a posted journal's budgeted lines record actual consumption (base currency). */
+export async function consumeJournal(tx: Tx, journalId: bigint, actorId: bigint) {
+  const j = await tx.journal.findUniqueOrThrow({ where: { id: journalId }, select: { journalDate: true } });
+  const lines = await tx.journalLine.findMany({ where: { journalId } });
+  const spend = budgetSpend(
+    lines.map((l) => ({
+      side: l.debit.isZero() ? 'credit' : 'debit',
+      amount: dec((l.debit.isZero() ? l.credit : l.debit).toString()),
+      budgetHeadId: l.budgetHeadId,
+      costCentreId: l.costCentreId,
+      estateId: l.estateId,
+      departmentId: l.departmentId,
+    })),
+  );
+  if (spend.length === 0) return [];
+  return recordConsumption(tx, {
+    stage: 'actual',
+    sourceType: 'journal',
+    sourceId: journalId,
+    date: businessDateFromDb(j.journalDate),
+    lines: spend,
+    actorId,
+  });
+}
 
 const idf = (v: unknown) => BigInt(String(v));
 export const JOURNAL_LIST_FIELDS: ListFieldMap = {
@@ -503,6 +562,30 @@ export function journalsService({ db, accessLog, timezone }: JournalsServiceDeps
     return { lines, total: t.debit, period };
   }
 
+  /** D-3.06-12: true when a budgeted line would overrun a head under require_approval or block. */
+  async function budgetExceeded(
+    tx: Tx,
+    j: { journalDate: Date; exchangeRate: { toString(): string } },
+    lines: Awaited<ReturnType<typeof draftLines>>,
+  ): Promise<boolean> {
+    const rate = dec(j.exchangeRate.toString());
+    const spend = budgetSpend(
+      lines.map((l) => ({
+        side: l.side,
+        amount: round(dec(l.amount.toString()).times(rate), 4),
+        budgetHeadId: l.budgetHeadId,
+        costCentreId: l.costCentreId,
+        estateId: l.estateId,
+        departmentId: l.departmentId,
+      })),
+    );
+    for (const t of spend) {
+      const a = await checkAvailability(tx, { ...t, date: businessDateFromDb(j.journalDate) });
+      if (a.outcome === 'require_approval' || a.outcome === 'block') return true;
+    }
+    return false;
+  }
+
   const adapter: ApprovalAdapter = {
     documentType: JOURNAL_DOCUMENT,
     async describe(tx, id) {
@@ -520,6 +603,7 @@ export function journalsService({ db, accessLog, timezone }: JournalsServiceDeps
           total_debit: base.toFixed(4),
           journal_type: j.journalType,
           is_prior_period: priorPeriod(j.period),
+          budget_exceeded: await budgetExceeded(tx, j, lines),
         },
         amount: base.toFixed(2),
       };
@@ -860,6 +944,8 @@ export function journalsService({ db, accessLog, timezone }: JournalsServiceDeps
           allowRestrictedPeriod: j.journalType === 'adjustment',
         });
         if (j.journalType === 'opening') await writeOpenings(tx, id, actorId);
+        // An overrun under require_approval was the workflow's to approve; block refuses here.
+        await consumeJournal(tx, id, actorId);
         await auditAction(tx, JOURNAL_AUDIT, id, 'post', { actorId });
         await recordStatusChange(tx, JOURNAL_AUDIT.type, id, 'approved', 'posted', { actorId });
         return journalOut(tx, await journalOrNotFound(tx, id), true);
@@ -881,6 +967,13 @@ export function journalsService({ db, accessLog, timezone }: JournalsServiceDeps
         });
         // The reversal undoes the opening: a corrected opening journal may then post (D-3.04-9).
         if (j.journalType === 'opening') await tx.openingBalance.deleteMany({ where: { journalId: id } });
+        await reverseConsumption(tx, {
+          sourceType: 'journal',
+          sourceId: id,
+          by: { sourceType: 'journal', sourceId: written.id },
+          date: b.date,
+          actorId,
+        });
         await auditAction(tx, JOURNAL_AUDIT, id, 'reverse', { actorId, reason: b.narration ?? null });
         return journalOut(tx, await journalOrNotFound(tx, written.id), true);
       });
