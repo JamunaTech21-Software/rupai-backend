@@ -112,6 +112,12 @@ const ACCOUNT_REFERENCES: AccountReference[] = [
   { label: 'a bank account', count: (tx, id) => tx.bankAccount.count({ where: { accountId: id } }) },
   // P3.03.
   { label: 'posting rules', count: (tx, id) => tx.postingRuleLine.count({ where: { accountId: id } }) },
+  // P3.04: a manual journal not yet posted (posted ones count through their journal lines).
+  {
+    label: 'draft journals',
+    count: (tx, id) =>
+      tx.journalDraftLine.count({ where: { accountId: id, journal: { state: { not: 'posted' } } } }),
+  },
 ];
 /** Journal lines on an account (P3.03): postings fix its code, type, place and postability. */
 const ACCOUNT_POSTINGS: AccountReference[] = [

@@ -3,6 +3,8 @@ import type { z } from 'zod';
 import type { Database } from '../../core/db/prisma.js';
 import { dec } from '../../core/money/decimal.js';
 import { currentScope } from '../../core/scope/scope.js';
+import { businessDateToDb, todayIn } from '../../core/time/dates.js';
+import { expenseOfPeriods } from '../accounting/ledger.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { approvalsService } from '../approvals/approvals.service.js';
 import type { notificationsService } from '../notifications/notifications.service.js';
@@ -29,6 +31,7 @@ export interface PanelContext {
   readonly estateId: bigint | null;
   readonly approvals: ReturnType<typeof approvalsService>;
   readonly notifications: ReturnType<typeof notificationsService>;
+  readonly timezone: string;
 }
 
 export interface PanelDefinition {
@@ -133,6 +136,47 @@ async function welcome(ctx: PanelContext): Promise<PanelDataT> {
     );
   }
   return { kind: 'metrics', metrics };
+}
+
+// ---- monthly expense: live from P3.04 ------------------------------------------------------------------
+
+/**
+ * The posted expense of the period covering today against the previous period, from ledger_balance
+ * (D-3.04-11). Zero until something posts: a real zero, never an invented figure.
+ */
+async function monthlyExpense(ctx: PanelContext): Promise<MetricT> {
+  const today = businessDateToDb(todayIn(ctx.timezone));
+  const current = await ctx.db.accountingPeriod.findFirst({
+    where: { periodNumber: { lt: 13 }, startDate: { lte: today }, endDate: { gte: today } },
+    select: { id: true, name: true, startDate: true, endDate: true },
+  });
+  if (!current)
+    return later('monthly_expense', 'Monthly Expense', 'BDT', 'No accounting period covers today');
+  const previous = await ctx.db.accountingPeriod.findFirst({
+    where: { periodNumber: { lt: 13 }, endDate: { lt: current.startDate } },
+    select: { id: true, name: true },
+    orderBy: { endDate: 'desc' },
+  });
+  const filter = { estateId: ctx.estateId };
+  const value = await expenseOfPeriods(ctx.db, [current.id], filter);
+  const before = previous ? await expenseOfPeriods(ctx.db, [previous.id], filter) : null;
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return {
+    ...metric('monthly_expense', 'Monthly Expense', value.toFixed(2), 'BDT', {
+      resource: 'accounting/expenses',
+      filter: { from: iso(current.startDate), to: iso(current.endDate), ...estateFilter(ctx) },
+    }),
+    comparison:
+      before && previous
+        ? {
+            label: `vs ${previous.name}`,
+            previous_value: before.toFixed(2),
+            change_percentage: before.isZero()
+              ? '0.00'
+              : value.minus(before).div(before.abs()).times(100).toFixed(2),
+          }
+        : null,
+  };
 }
 
 // ---- recent activities: the audit trail ----------------------------------------------------------------
@@ -466,18 +510,20 @@ export const HOME_PANELS: readonly PanelDefinition[] = [
       permission: 'plucking.view',
     },
     // Each card names its own phase, so the layout can be checked now.
-    load: () =>
-      Promise.resolve({
-        kind: 'metrics',
-        metrics: [
-          later('today_plucking', "Today's Plucking", 'kg', PHASE_FIELD),
-          later('plucking_mtd', 'Month to Date', 'kg', PHASE_FIELD),
-          later('plucking_ytd', 'Year to Date', 'kg', PHASE_FIELD),
-          later('workers_today', "Today's Workers", 'count', PHASE_HR),
-          later('daily_wage_cost', 'Daily Wage Cost', 'BDT', PHASE_PAYROLL),
-          later('monthly_expense', 'Monthly Expense', 'BDT', PHASE_ACCOUNTING),
-        ],
-      }),
+    load: async (ctx) => ({
+      kind: 'metrics',
+      metrics: [
+        later('today_plucking', "Today's Plucking", 'kg', PHASE_FIELD),
+        later('plucking_mtd', 'Month to Date', 'kg', PHASE_FIELD),
+        later('plucking_ytd', 'Year to Date', 'kg', PHASE_FIELD),
+        later('workers_today', "Today's Workers", 'count', PHASE_HR),
+        later('daily_wage_cost', 'Daily Wage Cost', 'BDT', PHASE_PAYROLL),
+        // Live since P3.04 for whoever reads the ledger.
+        ctx.permissions.has('accounting.view')
+          ? await monthlyExpense(ctx)
+          : later('monthly_expense', 'Monthly Expense', 'BDT', PHASE_ACCOUNTING),
+      ],
+    }),
   },
   {
     key: 'plucking_trend',
