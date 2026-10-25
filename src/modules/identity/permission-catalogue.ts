@@ -145,7 +145,10 @@ export const MODULES: readonly CatalogueModule[] = [
     ['collection', 'Collections'],
     ['payment', 'Payments'],
   ]),
-  ...m('Procurement', 'master', [['supplier', 'Suppliers']]),
+  ...m('Procurement', 'master', [
+    // P4.01: setting is_approved_supplier, and approving a bank detail change (P7 §9.6).
+    ['supplier', 'Suppliers', ['approve']],
+  ]),
   ...m('Procurement', 'operational', [
     ['purchase_request', 'Purchase requests'],
     ['purchase_order', 'Purchase orders'],

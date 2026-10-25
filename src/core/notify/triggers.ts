@@ -119,7 +119,8 @@ export const TRIGGERS: readonly TriggerDefinition[] = [
     description: 'An item’s stock fell to or below its reorder level.',
     recipientRules: PEOPLE,
     usesLeadDays: false,
-    evaluated: false,
+    // P4.04: raw materials, daily (inventory.jobs.ts); made tea joins with its module.
+    evaluated: true,
     arrivesWith: 'Inventory',
   },
   {

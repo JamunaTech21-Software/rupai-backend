@@ -45,6 +45,9 @@ import {
 } from './notifications/notifications.jobs.js';
 import { notificationsModules } from './notifications/notifications.routes.js';
 import { organisationModules } from './organisation/organisation.routes.js';
+import { procurementModules } from './procurement/procurement.routes.js';
+import { INVENTORY_SCHEDULES, lowStockJob, rebuildBalancesJob } from './inventory/inventory.jobs.js';
+import { inventoryModules } from './inventory/inventory.routes.js';
 import { systemModules } from './system/system.routes.js';
 import { workflowsModule } from './workflows/workflows.routes.js';
 import { workforceModules } from './workforce/workforce.routes.js';
@@ -69,7 +72,7 @@ export interface ModuleDeps {
 
 /**
  * The application's modules, in mount order. Each epic adds its module here, starting with P1.01
- * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments), P1.13 (approval workflow definitions), P1.14 (approval runtime and queue), P1.15 (jobs and schedules), P1.16 (notifications), R.5 (dashboards), P1.17 (imports), P1.18 (system health) P2.01 (persons) … P3.01 (chart of accounts) … P3.05 (receivables and payables), P3.06 (budgets). server.ts mounts them, and the OpenAPI document is
+ * (users, roles, permissions), P1.02 (auth), P1.05 (audit), P1.07 (organisation and estate hierarchy) P1.08 (facilities, parties, contacts) P1.09 (calendars) P1.10 (reference lookups), P1.11 (numbering, settings), P1.12 (document attachments), P1.13 (approval workflow definitions), P1.14 (approval runtime and queue), P1.15 (jobs and schedules), P1.16 (notifications), R.5 (dashboards), P1.17 (imports), P1.18 (system health) P2.01 (persons) … P3.01 (chart of accounts) … P3.05 (receivables and payables), P3.06 (budgets), P4.01 (suppliers), P4.04 (raw materials, stock). server.ts mounts them, and the OpenAPI document is
  * generated from them.
  */
 export function buildModules(deps: ModuleDeps): ApiModule[] {
@@ -94,6 +97,8 @@ export function buildModules(deps: ModuleDeps): ApiModule[] {
     ...workforceModules(deps),
     ...accountingModules(deps),
     ...budgetModules(deps),
+    ...procurementModules(deps),
+    ...inventoryModules(deps),
   ];
 }
 
@@ -107,6 +112,7 @@ export const JOB_CATALOGUE_SCHEDULES: readonly ScheduleDefinition[] = [
   ...PERFORMANCE_SCHEDULES,
   ...ACCOUNTING_SCHEDULES,
   ...BUDGET_SCHEDULES,
+  ...INVENTORY_SCHEDULES,
   ...NOTIFICATION_SCHEDULES,
 ];
 
@@ -140,6 +146,8 @@ export function registerJobs(deps: {
   registerJob(verifyLedgerJob(db));
   registerJob(refreshAgeingJob(db, config.timezone));
   registerJob(budgetThresholdJob(db, config.timezone));
+  registerJob(rebuildBalancesJob(db));
+  registerJob(lowStockJob(db, config.timezone));
   registerJob(deliverJob(db, mailer, config.app.publicUrl));
   registerJob(purgeNotificationsJob(db));
 }
