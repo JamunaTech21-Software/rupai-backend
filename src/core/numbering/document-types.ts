@@ -62,6 +62,8 @@ export const DOCUMENT_TYPES: readonly DocumentType[] = [
   op('purchase_request', 'Purchase request', 'PR', ESTATE_FY),
   op('purchase_order', 'Purchase order', 'PO', ESTATE_FY),
   op('goods_receipt', 'Goods receipt', 'GRN', ESTATE_FY),
+  // P4.01: the supplier code, when none is given.
+  op('supplier', 'Supplier', 'SUP', []),
   fin('supplier_invoice', 'Supplier invoice', 'BILL', ESTATE_FY),
   fin('payment', 'Payment', 'PV', ESTATE_FY),
   // Workforce and payroll

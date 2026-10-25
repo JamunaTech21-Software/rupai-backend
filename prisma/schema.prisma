@@ -382,6 +382,13 @@ model User {
   updatedPayments              Payment[]              @relation("PaymentUpdatedBy")
   createdPaymentAllocations    PaymentAllocation[]    @relation("PaymentAllocationCreatedBy")
   updatedPaymentAllocations    PaymentAllocation[]    @relation("PaymentAllocationUpdatedBy")
+  createdSuppliers             Supplier[]             @relation("SupplierCreatedBy")
+  updatedSuppliers             Supplier[]             @relation("SupplierUpdatedBy")
+  createdSupplierBankChanges   SupplierBankChange[]   @relation("SupplierBankChangeCreatedBy")
+  updatedSupplierBankChanges   SupplierBankChange[]   @relation("SupplierBankChangeUpdatedBy")
+  submittedSupplierBankChanges SupplierBankChange[]   @relation("SupplierBankChangeSubmittedBy")
+  approvedSupplierBankChanges  SupplierBankChange[]   @relation("SupplierBankChangeApprovedBy")
+  rejectedSupplierBankChanges  SupplierBankChange[]   @relation("SupplierBankChangeRejectedBy")
 
   @@unique([username], map: "ux_user_username")
   @@unique([email], map: "ux_user_email")
@@ -5042,4 +5049,112 @@ model PaymentAllocation {
   @@index([createdBy], map: "ix_payment_allocation_created_by")
   @@index([updatedBy], map: "ix_payment_allocation_updated_by")
   @@map("payment_allocation")
+}
+
+// =====================================================================================================
+// Phase 4 — Procurement and payables
+// =====================================================================================================
+
+/// P4.01 (Spec P3 §16.1, P7 §9.6): a supplier of goods and services. Organisation tier (P6 §4.2: outside
+/// scope). Bank details are entered with the supplier; afterwards they change only through an approved
+/// supplier_bank_change, which stamps bank_details_changed_at: the payment workflow's recent-change
+/// condition (P7 §8.4). Contacts live in party_contact (owner_type supplier); contact_person, phone and
+/// email cache the primary one.
+model Supplier {
+  id                   BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  /// Numbered by the `supplier` format when not given.
+  code                 String    @db.VarChar(20)
+  name                 String    @db.VarChar(150)
+  /// manufacturer | distributor | retailer | service | contractor
+  businessType         String    @map("business_type") @db.VarChar(30)
+  contactPerson        String?   @map("contact_person") @db.VarChar(150)
+  phone                String?   @db.VarChar(30)
+  email                String?   @db.VarChar(150)
+  addressLine1         String?   @map("address_line1") @db.VarChar(200)
+  tin                  String?   @db.VarChar(30)
+  vatRegistration      String?   @map("vat_registration") @db.VarChar(30)
+  bankName             String?   @map("bank_name") @db.VarChar(150)
+  bankBranch           String?   @map("bank_branch") @db.VarChar(150)
+  bankAccountName      String?   @map("bank_account_name") @db.VarChar(150)
+  bankAccountNumber    String?   @map("bank_account_number") @db.VarChar(40)
+  bankRoutingNumber    String?   @map("bank_routing_number") @db.VarChar(20)
+  /// Set by an approved bank detail change; NULL while the details are the ones entered at creation.
+  bankDetailsChangedAt DateTime? @map("bank_details_changed_at") @db.DateTime(0)
+  paymentTermsDays     Int?      @map("payment_terms_days") @db.UnsignedSmallInt
+  /// A guard, not a workflow step (P7 §6): no procurement document is submitted for an unapproved supplier.
+  isApprovedSupplier   Boolean   @default(false) @map("is_approved_supplier")
+  /// active | inactive
+  status               String    @default("active") @db.VarChar(30)
+  version              Int       @default(1)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy            BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt            DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy            BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  bankChanges SupplierBankChange[]
+  creator     User                 @relation("SupplierCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_supplier_created_by")
+  updater     User?                @relation("SupplierUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_supplier_updated_by")
+
+  @@unique([code], map: "ux_supplier_code")
+  @@index([name], map: "ix_supplier_name")
+  @@index([businessType], map: "ix_supplier_business_type")
+  @@index([status], map: "ix_supplier_status")
+  @@index([createdBy], map: "ix_supplier_created_by")
+  @@index([updatedBy], map: "ix_supplier_updated_by")
+  @@map("supplier")
+}
+
+/// P4.01 (P7 §9.6): a proposed change of a supplier's bank details, approved through the
+/// supplier_bank_change workflow. draft → submitted → approved (applied to the supplier) or rejected; a
+/// returned change is a draft again. At most one open (draft or submitted) per supplier. previous_* record
+/// the details it replaced, captured when it is applied.
+model SupplierBankChange {
+  id                        BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  supplierId                BigInt    @map("supplier_id") @db.UnsignedBigInt
+  bankName                  String    @map("bank_name") @db.VarChar(150)
+  bankBranch                String?   @map("bank_branch") @db.VarChar(150)
+  bankAccountName           String?   @map("bank_account_name") @db.VarChar(150)
+  bankAccountNumber         String    @map("bank_account_number") @db.VarChar(40)
+  bankRoutingNumber         String?   @map("bank_routing_number") @db.VarChar(20)
+  previousBankName          String?   @map("previous_bank_name") @db.VarChar(150)
+  previousBankBranch        String?   @map("previous_bank_branch") @db.VarChar(150)
+  previousBankAccountName   String?   @map("previous_bank_account_name") @db.VarChar(150)
+  previousBankAccountNumber String?   @map("previous_bank_account_number") @db.VarChar(40)
+  previousBankRoutingNumber String?   @map("previous_bank_routing_number") @db.VarChar(20)
+  reason                    String    @db.VarChar(500)
+  /// draft | submitted | approved | rejected
+  state                     String    @default("draft") @db.VarChar(30)
+  stateChangedAt            DateTime? @map("state_changed_at") @db.DateTime(0)
+  // ---- approval block (P3 §3.3) ----
+  submittedAt               DateTime? @map("submitted_at") @db.DateTime(0)
+  submittedBy               BigInt?   @map("submitted_by") @db.UnsignedBigInt
+  approvedAt                DateTime? @map("approved_at") @db.DateTime(0)
+  approvedBy                BigInt?   @map("approved_by") @db.UnsignedBigInt
+  rejectedAt                DateTime? @map("rejected_at") @db.DateTime(0)
+  rejectedBy                BigInt?   @map("rejected_by") @db.UnsignedBigInt
+  rejectionReason           String?   @map("rejection_reason") @db.VarChar(500)
+  /// GENERATED: supplier_id while draft or submitted (one open change per supplier).
+  openKey                   BigInt?   @map("open_key") @db.UnsignedBigInt
+  version                   Int       @default(1)
+  createdAt                 DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdBy                 BigInt    @map("created_by") @db.UnsignedBigInt
+  updatedAt                 DateTime? @map("updated_at") @db.DateTime(0)
+  updatedBy                 BigInt?   @map("updated_by") @db.UnsignedBigInt
+
+  supplier  Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_supplier_bank_change_supplier")
+  creator   User     @relation("SupplierBankChangeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_supplier_bank_change_created_by")
+  updater   User?    @relation("SupplierBankChangeUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_supplier_bank_change_updated_by")
+  submitter User?    @relation("SupplierBankChangeSubmittedBy", fields: [submittedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_supplier_bank_change_submitted_by")
+  approver  User?    @relation("SupplierBankChangeApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_supplier_bank_change_approved_by")
+  rejecter  User?    @relation("SupplierBankChangeRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_supplier_bank_change_rejected_by")
+
+  @@unique([openKey], map: "ux_supplier_bank_change_open")
+  @@index([supplierId], map: "ix_supplier_bank_change_supplier")
+  @@index([state], map: "ix_supplier_bank_change_state")
+  @@index([createdBy], map: "ix_supplier_bank_change_created_by")
+  @@index([updatedBy], map: "ix_supplier_bank_change_updated_by")
+  @@index([submittedBy], map: "ix_supplier_bank_change_submitted_by")
+  @@index([approvedBy], map: "ix_supplier_bank_change_approved_by")
+  @@index([rejectedBy], map: "ix_supplier_bank_change_rejected_by")
+  @@map("supplier_bank_change")
 }

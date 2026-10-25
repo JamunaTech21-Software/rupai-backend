@@ -134,6 +134,8 @@ const DEMO_ESTATE_ADMIN_PERMISSIONS = [
     // P3.02: budget heads and bank accounts (cost centres are under accounting).
     'budget',
     'bank_account',
+    // P4.01: suppliers and their contacts; bank detail changes are proposed here, approved by the approver.
+    'supplier',
   ].flatMap((m) => ['view', 'create', 'edit', 'delete'].map((a) => [m, a] as const)),
   ['training', 'submit'],
   ['goal', 'submit'],
@@ -189,6 +191,9 @@ const DEMO_APPROVER_PERMISSIONS = [
   // P3.05: the finance manager reads both sub-ledgers.
   ['receivable', 'view'],
   ['payable', 'view'],
+  // P4.01: approves suppliers and, as finance, their bank detail changes (P7 §9.6).
+  ['supplier', 'view'],
+  ['supplier', 'approve'],
 ] as const;
 
 /** A demo role holding at least these permissions: created if missing, missing permissions added. */
@@ -342,6 +347,7 @@ export function demoSeeders(password: string): Seeder[] {
     demoDimensionsSeeder,
     demoJournalsSeeder,
     demoSettlementSeeder,
+    demoSuppliersSeeder,
   ];
 }
 
@@ -2896,5 +2902,181 @@ const demoSettlementSeeder: Seeder = {
         'Settlement of OB-AP-0001 to the contractor (demo)',
       );
       return { inserted: 1 + items.length + 4, updated: 0 };
+    }),
+};
+
+/**
+ * P4.01: the supplier bank detail ladder of P7 §9.6 as the active supplier_bank_change workflow (one step,
+ * the finance manager: the `approver` login on staging), and three suppliers: Meghna Fuel Supply and Sylhet
+ * Packaging Ltd (approved, with bank details) and Karim Hardware (not yet approved). Sylhet Packaging has a
+ * DRAFT bank detail change by the manager, to submit and have the approver decide. Added once.
+ */
+const demoSuppliersSeeder: Seeder = {
+  name: 'demo: P4.01 bank detail workflow and suppliers',
+  run: (tx) =>
+    runUnscoped('demo seed', async () => {
+      let inserted = 0;
+      const by = BOOTSTRAP_ADMIN_ID;
+      const now = new Date();
+      const day = (offset: number) =>
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset));
+
+      const flows = await tx.workflow.findMany({
+        where: { documentType: 'supplier_bank_change' },
+        select: { id: true, ruleCode: true },
+      });
+      const [seeded] = flows;
+      if (flows.length === 1 && seeded) {
+        const approverRole = await tx.role.findUniqueOrThrow({
+          where: { code: DEMO_APPROVER_ROLE },
+          select: { id: true },
+        });
+        await tx.workflow.update({ where: { id: seeded.id }, data: { effectiveTo: day(-1) } });
+        const w = await tx.workflow.create({
+          data: {
+            ruleCode: seeded.ruleCode,
+            name: 'Supplier bank detail change (demo of P7 §9.6)',
+            documentType: 'supplier_bank_change',
+            method: 'sequential',
+            parameters: {},
+            effectiveFrom: day(0),
+            supersedesId: seeded.id,
+            notes: 'Demo: the finance manager step is the approver login.',
+            state: 'active',
+            stateChangedAt: now,
+            approvedAt: now,
+            approvedBy: by,
+            createdBy: by,
+            steps: {
+              create: [
+                {
+                  stepNumber: 1,
+                  sequence: 1,
+                  name: 'Finance manager',
+                  approverRule: 'by_role',
+                  roleId: approverRole.id,
+                  createdBy: by,
+                },
+              ],
+            },
+          },
+        });
+        await tx.statusHistory.create({
+          data: {
+            recordType: 'workflow',
+            recordId: w.id.toString(),
+            toState: 'active',
+            changedBy: by,
+            comment: 'Demo seed',
+          },
+        });
+        inserted += 2;
+      }
+
+      if ((await tx.supplier.count({ where: { code: { startsWith: 'DEMO-S' } } })) > 0)
+        return { inserted, updated: 0 };
+      const manager = await tx.user.findUniqueOrThrow({
+        where: { username: 'manager' },
+        select: { id: true },
+      });
+      const plan = [
+        {
+          code: 'DEMO-S1',
+          name: 'Meghna Fuel Supply',
+          businessType: 'distributor',
+          contact: 'Mr. Kamrul Hasan',
+          phone: '+8801713000101',
+          email: 'sales@meghnafuel.example',
+          bank: ['Sonali Bank PLC', 'Srimangal', 'Meghna Fuel Supply', '0101-3300-4471', '200591234'],
+          approved: true,
+          terms: 30,
+        },
+        {
+          code: 'DEMO-S2',
+          name: 'Sylhet Packaging Ltd',
+          businessType: 'manufacturer',
+          contact: 'Ms. Farhana Akter',
+          phone: '+8801713000202',
+          email: 'accounts@sylhetpack.example',
+          bank: ['Dutch-Bangla Bank PLC', 'Sylhet', 'Sylhet Packaging Ltd', '1171100045521', '090911234'],
+          approved: true,
+          terms: 45,
+        },
+        {
+          code: 'DEMO-S3',
+          name: 'Karim Hardware',
+          businessType: 'retailer',
+          contact: 'Mr. Abdul Karim',
+          phone: '+8801713000303',
+          email: null,
+          bank: [null, null, null, null, null],
+          approved: false,
+          terms: null,
+        },
+      ] as const;
+      for (const p of plan) {
+        const [bankName, bankBranch, bankAccountName, bankAccountNumber, bankRoutingNumber] = p.bank;
+        const s = await tx.supplier.create({
+          data: {
+            code: p.code,
+            name: p.name,
+            businessType: p.businessType,
+            contactPerson: p.contact,
+            phone: p.phone,
+            email: p.email,
+            addressLine1: 'Demo address, Sylhet',
+            bankName,
+            bankBranch,
+            bankAccountName,
+            bankAccountNumber,
+            bankRoutingNumber,
+            paymentTermsDays: p.terms,
+            isApprovedSupplier: p.approved,
+            createdBy: by,
+          },
+        });
+        await tx.partyContact.create({
+          data: {
+            ownerType: 'supplier',
+            ownerId: s.id,
+            contactName: p.contact,
+            contactType: 'primary',
+            phone: p.phone,
+            email: p.email,
+            isPrimary: true,
+            status: 'active',
+            createdBy: by,
+          },
+        });
+        inserted += 2;
+        if (p.code === 'DEMO-S2') {
+          const c = await tx.supplierBankChange.create({
+            data: {
+              supplierId: s.id,
+              bankName: 'BRAC Bank PLC',
+              bankBranch: 'Zindabazar, Sylhet',
+              bankAccountName: 'Sylhet Packaging Ltd',
+              bankAccountNumber: '1501203345566001',
+              bankRoutingNumber: '060911489',
+              reason:
+                'Supplier letter: the Dutch-Bangla account is closed; pay to BRAC Bank from now on (demo).',
+              state: 'draft',
+              stateChangedAt: now,
+              createdBy: manager.id,
+            },
+          });
+          await tx.statusHistory.create({
+            data: {
+              recordType: 'supplier_bank_change',
+              recordId: c.id.toString(),
+              toState: 'draft',
+              changedBy: manager.id,
+              comment: 'Demo seed',
+            },
+          });
+          inserted += 1;
+        }
+      }
+      return { inserted, updated: 0 };
     }),
 };
