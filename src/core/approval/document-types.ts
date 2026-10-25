@@ -202,6 +202,8 @@ export const APPROVABLE_DOCUMENTS: readonly ApprovableDocument[] = [
     amount('total_debit', 'Total debit'),
     attr('journal_type', 'Journal type'),
     flag('is_prior_period', 'Affects a prior period'),
+    // P3.06 (D-3.06-12): a line's budget head would overrun under require_approval or block.
+    flag('budget_exceeded', 'Budget exceeded'),
   ]),
   doc(
     'period_reopen',

@@ -17,6 +17,7 @@ import type { Database } from '../../core/db/prisma.js';
 import { lockRowsForUpdate, withTransaction, type Tx } from '../../core/db/transaction.js';
 import { AppError, Errors, type ErrorDetail } from '../../core/errors/app-error.js';
 import type { ListQuery } from '../../core/http/list-query.js';
+import { recordConsumption } from '../../core/budget/budget.js';
 import { dec, toDecimalString, type Dec } from '../../core/money/decimal.js';
 import { allocateNumber } from '../../core/numbering/numbering.js';
 import { scopeToCheck } from '../../core/scope/scope.js';
@@ -220,7 +221,7 @@ export function benefitService({ db, accessLog, timezone }: BenefitServiceDeps) 
     audit: AuditedRecord,
     table: 'benefitEntitlement' | 'benefitIssue' | 'welfareCase',
     describe: ApprovalAdapter['describe'],
-    onApprove?: (tx: Tx, id: bigint) => Promise<Record<string, unknown>>,
+    onApprove?: (tx: Tx, id: bigint, ctx: ApprovalContext) => Promise<Record<string, unknown>>,
   ): ApprovalAdapter {
     const model = (tx: Tx) =>
       tx[table] as unknown as {
@@ -239,7 +240,7 @@ export function benefitService({ db, accessLog, timezone }: BenefitServiceDeps) 
             row.state,
             'Reload it.',
           );
-        const extra = onApprove ? await onApprove(tx, id) : {};
+        const extra = onApprove ? await onApprove(tx, id, ctx) : {};
         const now = new Date();
         await model(tx).update({
           where: { id },
@@ -628,8 +629,23 @@ export function benefitService({ db, accessLog, timezone }: BenefitServiceDeps) 
         amount: c.requestedAmount === null ? null : c.requestedAmount.toFixed(2),
       };
     },
-    // Approving grants the requested amount (P3 §23.4).
-    async (tx, id) => ({ approvedAmount: (await caseOrNotFound(tx, id)).requestedAmount }),
+    // Approving grants the requested amount (P3 §23.4) and commits it against the budget head (D-3.06-13).
+    async (tx, id, ctx) => {
+      const c = await caseOrNotFound(tx, id);
+      if (c.budgetHeadId !== null && c.requestedAmount?.greaterThan(0)) {
+        await recordConsumption(tx, {
+          stage: 'commitment',
+          sourceType: 'welfare_case',
+          sourceId: id,
+          date: today(),
+          lines: [
+            { budgetHeadId: c.budgetHeadId, estateId: c.estateId, amount: dec(c.requestedAmount.toString()) },
+          ],
+          actorId: ctx.actorId,
+        });
+      }
+      return { approvedAmount: c.requestedAmount };
+    },
   );
 
   return {
@@ -1106,6 +1122,26 @@ export function benefitService({ db, accessLog, timezone }: BenefitServiceDeps) 
             where: { id },
             data: { state: 'closed', stateChangedAt: new Date(), outcome, ...stamp(actorId) },
           });
+          // D-3.06-13: what was paid out is the actual; the commitment is released in full.
+          if (c.budgetHeadId !== null) {
+            const target = { budgetHeadId: c.budgetHeadId, estateId: c.estateId };
+            const source = { sourceType: 'welfare_case' as const, sourceId: id };
+            await recordConsumption(tx, {
+              stage: 'actual',
+              ...source,
+              date: today(),
+              lines: [{ ...target, amount: dec(c.disbursedAmount.toString()) }],
+              actorId,
+            });
+            await recordConsumption(tx, {
+              stage: 'release',
+              ...source,
+              releases: source,
+              date: today(),
+              lines: [],
+              actorId,
+            });
+          }
           const after = await caseOut(tx, await caseOrNotFound(tx, id));
           await auditUpdate(tx, WELFARE_CASE_AUDIT, id, old, after, { actorId });
           await recordStatusChange(tx, WELFARE_CASE_AUDIT.type, id, 'approved', 'closed', {

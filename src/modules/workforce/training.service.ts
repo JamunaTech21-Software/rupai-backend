@@ -17,7 +17,8 @@ import type { Database } from '../../core/db/prisma.js';
 import { lockRowsForUpdate, withTransaction, type Tx } from '../../core/db/transaction.js';
 import { AppError, Errors, type ErrorDetail } from '../../core/errors/app-error.js';
 import type { ListQuery } from '../../core/http/list-query.js';
-import { toDecimalString } from '../../core/money/decimal.js';
+import { recordConsumption } from '../../core/budget/budget.js';
+import { dec, toDecimalString } from '../../core/money/decimal.js';
 import { allocateNumber } from '../../core/numbering/numbering.js';
 import { scopeToCheck } from '../../core/scope/scope.js';
 import { businessDateFromDb, businessDateToDb, todayIn } from '../../core/time/dates.js';
@@ -240,6 +241,17 @@ export function trainingService({ db, accessLog, timezone }: TrainingServiceDeps
       const p = await programOrNotFound(tx, id);
       if (p.state !== 'submitted')
         throw transition(`A ${p.state} programme cannot be approved.`, p.state, 'Reload it.');
+      // D-3.06-13: the cost is committed against the budget head.
+      if (p.budgetHeadId !== null && p.cost?.greaterThan(0)) {
+        await recordConsumption(tx, {
+          stage: 'commitment',
+          sourceType: 'training_program',
+          sourceId: id,
+          date: today(),
+          lines: [{ budgetHeadId: p.budgetHeadId, estateId: p.estateId, amount: dec(p.cost.toString()) }],
+          actorId: ctx.actorId,
+        });
+      }
       const now = new Date();
       await tx.trainingProgram.update({
         where: { id },
@@ -497,6 +509,25 @@ export function trainingService({ db, accessLog, timezone }: TrainingServiceDeps
             where: { id },
             data: { state: 'completed', stateChangedAt: new Date(), ...stamp(actorId) },
           });
+          // D-3.06-13: the cost becomes the actual; the commitment is released.
+          if (p.budgetHeadId !== null && p.cost?.greaterThan(0)) {
+            const source = { sourceType: 'training_program' as const, sourceId: id };
+            await recordConsumption(tx, {
+              stage: 'actual',
+              ...source,
+              date: today(),
+              lines: [{ budgetHeadId: p.budgetHeadId, estateId: p.estateId, amount: dec(p.cost.toString()) }],
+              actorId,
+            });
+            await recordConsumption(tx, {
+              stage: 'release',
+              ...source,
+              releases: source,
+              date: today(),
+              lines: [],
+              actorId,
+            });
+          }
           const after = await programOut(tx, await programOrNotFound(tx, id));
           await auditUpdate(tx, PROGRAM_AUDIT, id, old, after, { actorId });
           await recordStatusChange(tx, PROGRAM_AUDIT.type, id, 'approved', 'completed', { actorId });
@@ -524,6 +555,18 @@ export function trainingService({ db, accessLog, timezone }: TrainingServiceDeps
               ...stamp(actorId),
             },
           });
+          // D-3.06-13: a cancelled programme spends nothing; its commitment is released.
+          if (p.state === 'approved') {
+            const source = { sourceType: 'training_program' as const, sourceId: id };
+            await recordConsumption(tx, {
+              stage: 'release',
+              ...source,
+              releases: source,
+              date: today(),
+              lines: [],
+              actorId,
+            });
+          }
           const after = await programOut(tx, await programOrNotFound(tx, id));
           await auditUpdate(tx, PROGRAM_AUDIT, id, old, after, { actorId, reason });
           await recordStatusChange(tx, PROGRAM_AUDIT.type, id, p.state, 'cancelled', {
